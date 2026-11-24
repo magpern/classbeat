@@ -272,3 +272,37 @@ def test_a_running_class_takes_no_shape_from_a_revise() -> None:
     got = layer(run, read(shape=[CLIMB]), None)
     assert got.brief.shape == []
     assert [(i.path, i.reason_code) for i in got.items] == [("shape.0", "cycling_only")]
+
+
+def test_a_shape_read_as_inferred_is_still_revised_through_the_reading() -> None:
+    inferred = Brief.model_validate(
+        {"length_min": 60, "text": REQUEST, "shape": [closed(s) for s in SHAPE]}
+    )
+    assert inferred.explicit == []
+    seven = {**EFFORTS, "count": {"min": 7, "max": 7}, "origin": "explicit", "quote": None}
+    reported = [*(s for s in SHAPE[:2]), seven, *SHAPE[3:]]
+    got = layer(inferred, read(shape=reported), None)
+    efforts = got.brief.shape[2].count
+    assert efforts is not None
+    assert (efforts.min, efforts.max) == (7, 7)
+    assert got.brief.explicit == ["shape"]
+    assert layer_of(got.brief)["shape"][2]["count"] == {"min": 7, "max": 7}
+
+
+async def test_the_revise_reading_runs_for_a_shape_and_not_for_a_brief_that_states_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    async def fake_run_stage(*args: Any, **kwargs: Any) -> Any:
+        calls.append("run")
+        raise RuntimeError("stop after the gate")
+
+    monkeypatch.setattr(revise_stated, "run_stage", fake_run_stage)
+    plain = Brief.model_validate({"length_min": 45})
+    inferred = Brief.model_validate({"length_min": 60, "shape": [closed(s) for s in SHAPE]})
+    assert await revise_stated.read(None, None, None, plain, "x", None) is None  # type: ignore[arg-type]
+    assert calls == []
+    with pytest.raises(RuntimeError, match="stop after"):
+        await revise_stated.read(None, None, None, inferred, "make it seven bursts", None)  # type: ignore[arg-type]
+    assert calls == ["run"]

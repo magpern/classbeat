@@ -87,7 +87,9 @@ RELEASED: dict[int, str] = {
     # the song stage's total.
     29: "dfcb13a3858bedf66ad4440167b0298d23c6f11502139c09dcb45afb0684588a",
     # #1485: the shape of the ride in the interpret prompt, the brief and the design input.
-    30: "7ff5875c8f0b6e61f18fc15a809c6e871d99f51c4f1be3db0ebff9edcb6c3d57",
+    30: "ed2a4b53b96ec22c664abc42109903883fe4b40f0c36de87fad438d9a1005641",
+    # #1485: the shape of the ride in the interpret prompt, the brief and the design input.
+    # #1485: the shape of the ride in the interpret prompt, the brief and the design input.
     # #1485: the shape of the ride in the interpret prompt, the brief and the design input.
     # #1485: the shape of the ride in the interpret prompt, the brief and the design input.
     # #1485: the shape of the ride in the interpret prompt, the brief and the design input.

@@ -3,9 +3,9 @@ section 4, #904).
 
 ``layered(job_run, model, brief, request, gates)``, before the ``revise`` stage:
 
-- a base brief that states nothing (``Brief.explicit`` empty) is returned as it is, with no
-  model call, so a revise of a class without stated values runs exactly as before (nothing there
-  is checked against the draft, so nothing can be refused twice);
+- a base brief that states nothing (``Brief.explicit`` empty and no ``shape``, #1485) is returned
+  as it is, with no model call, so a revise of a class without stated values runs exactly as
+  before (nothing there is checked against the draft, so nothing can be refused twice);
 - otherwise the ``interpret`` stage (``agent.interpret``: the same prompt, schema and eval key as
   a new request's) reads the request, told the class's values as ``current``
   (``interpret_input.current_values``: closed numbers, enums and games, never text), the class's
@@ -62,7 +62,7 @@ async def read(
     """The interpreter's reading of ``request``, or None for a brief that states nothing (no
     model call). ``agent`` carries the ceiling the run counts against; ``job_stage`` is the job's
     stage the run is shown under."""
-    if not brief.explicit:
+    if not (brief.explicit or brief.shape):
         return None
     ctx = context_for(brief, request, gates)
     outcome = await run_stage(

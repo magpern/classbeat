@@ -90,7 +90,7 @@ async def phase_one(
 ) -> tuple[Layered, dict[str, Any]]:
     """The class's brief with the request layered on it, and the provenance keys to store with
     the song list (none when nothing was read)."""
-    if not brief.explicit or given.match_revision_id is not None:
+    if not (brief.explicit or brief.shape) or given.match_revision_id is not None:
         return Layered(brief), {}
     model = await group_model(runtime, run, given.route_key, "design")  # the interpret key's
     reading = await revise_stated.read(
