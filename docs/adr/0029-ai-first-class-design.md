@@ -1,6 +1,6 @@
 # ADR 0029: AI-first class design: free-text start, four MOWL games, explicit vs assumed
 
-Status: Accepted (owner decisions 2026-11-10, roadmap Amendment 18). The plan and the PR split
+Status: Accepted (owner decisions 2026-11-10, roadmap Amendment 18). Amended 2026-11-24 (roadmap Amendment 36: the shape of the ride). The plan and the PR split
 are in [docs/plans/ai-first-design.md](../plans/ai-first-design.md).
 
 Amends: [ADR 0023](0023-multilingual.md) §7 (the interpreter reads sv and da requests).
@@ -445,3 +445,68 @@ met without a split. The PR names each such file. `egress.py` is not touched.
 - `mowl-workouts` v0.11.0 removes a `GAMES` value. CLI and MCP specs that use `ghost_target` stop
   validating.
 - Historical Ghost Target revisions stay readable but can't be saved, duplicated or refitted.
+
+## Amendment of 2026-11-24: the shape of the ride (#1491)
+
+Status: Accepted (Architect, under the owner's delegation of 2026-11-24; roadmap Amendment 36).
+Implementation: #1485, #1493, #1494, #1497.
+
+### Context
+
+The brief (§4) holds one ride-wide intensity, three class-wide counts (climbs, sprints, races), a class
+type and games. A request that describes the ride in parts ("starts off slow … a hilly section, that turns
+into a tough intervall section, thinking 5-7 short heavy bursts, back on flats, bulding up for a new hilly
+section, finishing of with a few bursts of power") has nowhere to go: the interpreter, told to set only
+what the request settles, left the counts out, the brief took its defaults, and the design stage received
+`climbs: 0, sprints: 0` next to text that says otherwise (#1485). Summing the bursts into one sprint count
+would lose the order, the ranges, and the meaning (a classbeat sprint is a seated ~30 s burst; "heavy" is
+resistance; "tough" was about one section).
+
+### Decision
+
+1. **`Brief.shape`**: an ordered list of at most 12 sections, cycling only, **closed values and numbers
+   only** (§4's rule that no model-written text returns to a model through the brief holds):
+   `kind` (`warmup`, `climb`, `efforts`, `flat`, `recovery`, `cooldown`), and optionally `trend`
+   (`steady`, `rising`, `falling`), `effort` (`easy`, `moderate`, `hard`, the section's own), `count`
+   (`{min, max}`, 1 to 20; only for `climb`, the number of hills, and `efforts`), `length` (`short`,
+   `long`, each effort's), `load` (`light`, `heavy`) and `minutes`. Left out of the serialized brief when
+   empty, so every stored brief stays byte-identical. `explicit` may name `shape`.
+2. **The reading** reports the sections in the request's order, each with its origin and a verbatim quote
+   (kept only in the interpretation items `shape.N`, for display). A number is exact; a range keeps its
+   ends ("5-7" is 5 to 7); "a couple" is 2, "a few" 2 to 4, "several" 3 to 5. A section's "tough" is that
+   section's effort; the ride-wide `intensity` is set only when the request describes the whole class.
+   Class-wide counts with no parts ("three climbs") keep using `climbs`, `sprints`, `races`; a class-wide
+   range with no parts ("5-7 sprints") is a one-section shape.
+3. **Unsaid is absent.** The design stages receive `climbs`, `sprints` and `races` only when they are
+   above zero or stated; a zero that only means "not said" is not sent. A shape with an `efforts` section
+   derives the `interval` class type.
+4. **The latest instruction is the current revision's.** A chat change is read with the class's current
+   values, `shape` included, and the revision's stated layer (`provenance.stated`) carries the shape after
+   the change. Every later stage (the song search, a change or swap, phase 2's fit and its checks) uses the
+   brief with the base revision's nearest layer applied, never the first design's `classes.brief` alone.
+5. **The design follows the shape.** Draft segments may name their section (`section`, an index; left out
+   of the stored content when absent, never sent to MOWL). An ordered check, run with the stated checks and
+   their correction rounds (§4), verifies that every section is realised, in order, and that counts are
+   inside their ranges (an `efforts` section counts its intervals at zone 5 or above lasting at most 90 s;
+   a `climb` section counts its `main` segments). A miss that survives the corrections is a Not as asked
+   item (`shape_off`).
+6. **A miss is never saved by itself.** Not as asked items are shown before Approve and before Save.
+   Composer phase 2's `kept` fit re-times the approved design and cannot change its shape; a `redesigned`
+   fit is checked, and is saved only by the instructor's own Save (ADR 0038 §7, unchanged).
+
+### Alternatives
+
+- **Turn ranges into a middle value and sum the bursts** (#1485's first proposal). Rejected: it loses the
+  order and the ranges, and maps "heavy" efforts onto seated sprints.
+- **Keep the instructor's words for each section in the brief.** Rejected: the brief stays closed values;
+  the quotes live in the interpretation items, which are display only.
+- **Infer sections from the draft without tags.** Rejected: matching a free design to sections by its
+  zones is fragile; a tag the model sets and the check verifies is simple and testable.
+
+### Consequences
+
+- The interpret and design prompts and the model input change: the suite version is bumped and the
+  recorded routes are stale until the owner's next live run (served with a warning, ADR 0012 §5).
+- The reading card shows the ride in the instructor's words; nothing says "0 climbs".
+- A design model that ignores the shape costs correction rounds before its result is kept with a Not as
+  asked item.

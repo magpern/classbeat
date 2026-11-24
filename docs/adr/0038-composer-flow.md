@@ -1,6 +1,6 @@
 # ADR 0038: The composer flow: describe, shape it together, approve and save
 
-Status: Accepted (owner decision and mockup approval, 2026-11-17; roadmap Amendment 29; issue #1184).
+Status: Accepted (owner decision and mockup approval, 2026-11-17; roadmap Amendment 29; issue #1184). Amended 2026-11-24 (roadmap Amendment 36; the sketch gate, a ride follows its class, the music decision).
 Implementation: #1185, #1186, #1188, #1189, #1190, #1191. Behind the `composer_flow` flag until the owner's
 live check.
 
@@ -430,3 +430,85 @@ class credit.
   idempotent, runs in a fixed order (§8) and is tested with two concurrent callers.
 - The old flow and the new one live side by side behind `composer_flow` until the cleanup issue.
 - Only Spotify playlists can be attached as favoured music. SwedeBeat music stays on its own studio path.
+
+## Amendment of 2026-11-24: the sketch gate, a ride follows its class, and the music decision (#1491)
+
+Status: Accepted (Architect, under the owner's delegation of 2026-11-24; roadmap Amendment 36).
+Implementation: #1484, #1492, #1495, #1496, #1497, #1498.
+
+### Context
+
+A free-text cycling request with music was read and then refused `feature_off` at the hand-off
+(#1484). The sketch is a `design_draft` with `NoMusicChoice` in mode `sketch` (§4), so every sketch
+path went through the gate of a *no-music class*, `music_kind.admit_soundless`: the environment's
+`CLASSBEAT_SOUNDLESS_ENABLED`, the job's plan's coverage and every plan's coverage. That switch exists
+for one external write that is not verified live: a MOWL save or update with `PlaylistID: -1` (ADR
+0007, amendment of 2026-11-03, owner steps 1 and 2). A sketch is never written anywhere (§4,
+`revision_ready`). Separately, the flow could not ask about music: a request that left music open was
+read as "pick for me", the song search started as soon as the sketch existed, and an instructor with
+no Spotify connection could not start at all (Amendment 25).
+
+### Decision
+
+1. **One sketch gate** (amends §4). Every sketch path checks only that the job's **own plan's**
+   `design` route covers the no-songs prompt (`soundless_not_evaluated` otherwise), and in the worker
+   `require_covered(model)`. No sketch path reads `CLASSBEAT_SOUNDLESS_ENABLED`: the first sketch's
+   admit and run, a sketch edit's admit and run, whether editing a sketch is offered (`can_change`),
+   and a change of shape after songs (which runs the sketch revise). A guard test lists these call
+   sites. A no-music class (`music_source = none`), its revise, duplicate, Save and Update keep ADR
+   0007's gate unchanged, including the switch.
+2. **Availability per plan** (amends §2). The composer is available to a user when the operator's
+   pair is on (`CLASSBEAT_COMPOSER_FLOW` and a stored `on`, unchanged) **and** the user's plan has the
+   sketch's coverage. The interpret admit, the hand-off and `GET /api/connections` (`composer_flow`,
+   now per user) use it. When it is not available at hand-off time, the class takes the older route
+   (`design_with_songs` or `design_draft`) and is recorded as such (`interpretation.route`), so it is an
+   ordinary class from then on.
+3. **A ride in progress follows its class.** A class that took the sketch route opens in the composer
+   workspace whatever the flag says now. If its plan's coverage lapses, sketch edits and changes of
+   shape are refused `soundless_not_evaluated` and the waiting version is kept, while the song search,
+   swap, change with songs, Approve and Save still work (none of them runs the no-songs prompt). If the
+   operator switches the composer off, the composer's endpoints answer `feature_off` and the workspace
+   says the ride is paused; nothing is lost.
+4. **`CLASSBEAT_COMPOSER_FLOW` is settable in production** (amends §2's "stays unset"): default off,
+   the stored `on` still needed, so the owner can run the live check on a pre-production server
+   (#1498).
+5. **The music decision** (amends §3 and §5). The reading stores `music_decision` on the class:
+   `decided` (`request`) when the request attached playlists, chose a source, named a playlist or gave
+   a music taste; otherwise `undecided`. While undecided the workspace asks once, beside the sketch:
+   choose for me (`pick`), describe the sound (`describe`, the instructor's own words, at most 200
+   characters, given to the song search as data), share up to 5 Spotify playlists (`playlists`), or
+   decide later. The sketch does not wait; `fill-songs` refuses `music_undecided` until the decision is
+   made, and takes its sources from the decision. The answer can change until a fill was started for
+   the current sketch (`music_fixed` after). A row stored before has no decision and is read as
+   `decided` (`request`), today's behaviour.
+6. **Starting without Spotify** (amends Amendment 25 for composer classes). A request admitted with the
+   composer available is not refused `needs_spotify` or `song_picking_unavailable`; the sketch needs no
+   Spotify. The Spotify connection and the working-playlist consent are checked by the song search, as
+   today (`not_connected`, `consent_missing`), before any write. The older flow keeps the early refusal.
+7. **Consent at the moment it is needed.** The song search writes candidates into the instructor's
+   public working playlist and attaches it in MOWL (ADR 0008 §2, §4); the workspace explains that and
+   asks for the consent before the first search. Only Approve and save creates the final playlist and
+   the workout (§7).
+8. **Refusals say what happened** (amends §10). The hand-off panel words each stored reason as one of
+   three kinds: about the request, about the account (with the action), or about the site ("not
+   available here right now; nothing was charged; your request is kept", with no retry that cannot
+   succeed).
+
+### Alternatives
+
+- **Fall back to the older flow whenever the soundless switch is off** (#1484's first proposal).
+  Rejected as the rule: it makes the composer depend on a switch unrelated to it and hides the cause from
+  the operator. Kept only for the real dependency, missing coverage (decision 2).
+- **Proceed without asking when only one music option can finish.** Rejected: a missing connection says
+  what is possible now, not what the instructor wants.
+- **Ask about music before the sketch.** Rejected: the sketch needs no songs, so asking first only adds a
+  wait.
+
+### Consequences
+
+- An installation with the soundless switch off can use the composer once its plans' routes cover the
+  no-songs prompt (or, outside production, the fake covers).
+- Two users on plans with different coverage can see different flows for a new request.
+- The older flow stays as the fallback until the owner decides otherwise; it is not retired.
+- The sketch still takes the class credit; an instructor who never connects Spotify has used it on a
+  sketch they can shape but not fill.
