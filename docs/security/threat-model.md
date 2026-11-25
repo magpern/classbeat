@@ -42,7 +42,7 @@ browser ──TLS── (Cloudflare) ── swag ── web ──── Postgre
    │                                    ├── model APIs (our keys; receives class data)
    │                                    ├── MOWL / Spotify (the user's tokens)
    │                                    ├── SwedeBeat gateway match (the user's bearer, the client key)
-   │                                    └── spotdown (planned, ADR 0040: service key, audio bytes or track metadata; compose network only)
+   │                                    └── spotdown (a separate project, ADR 0040 and its 2026-11-25 amendment: service key, audio bytes or track metadata; its own internal Docker network, joined by the worker only)
    └── challenges.cloudflare.com (Turnstile widget, sign-in pages only; ADR 0025)
 GitHub repo ── Actions ── GHCR image (private) ── VPS (owner-deployed)
 development agents ── the repository, issues, PRs (their input is untrusted text too)

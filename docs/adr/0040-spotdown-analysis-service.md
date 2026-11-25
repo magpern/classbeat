@@ -1264,6 +1264,31 @@ all of the overlay or none of it, with a self-test per rule; the install check a
 `secrets/spotdown_service_key` when the overlay is in `COMPOSE_FILE`. Deploying and enabling are the
 owner's (runbook section 5d).
 
+### Amendment (2026-11-25, #1526): classbeat never runs spotdown; it calls one at a URL (supersedes the hosting part of §10 and the amendments of #1481 and #1489)
+
+Owner decision (2026-11-25): "It should definitely not start spotdown. Classbeat is classbeat, spotdown is
+spotdown. I will set up spotdown on server, I will set up classbeat on server. Classbeat points to spotdown
+by url/port." And, on keeping this small: "please just fix it... Spotdown is just a service, classbeat uses
+it." The Architect's reversible defaults:
+
+1. **No spotdown in classbeat's compose.** `compose.prod.spotdown.yaml` holds only the worker's side: the
+   URL (`CLASSBEAT_SPOTDOWN_URL`, `${SPOTDOWN_URL:-http://spotdown-api:8000}`), the secret file
+   `secrets/spotdown_service_key` (a copy of spotdown's key value, with the group 10010 and mode 640 rules of
+   every classbeat secret, worker only) and spotdown's own external network `spotdown`, joined by the worker
+   only. classbeat never creates that network; spotdown's runbook does, as `--internal`.
+   `compose.prod.spotdown-egress.yaml` is deleted. The spotdown services, their volumes and the version, ceiling
+   and YouTube settings are spotdown's own now.
+2. **Refused by the check.** `scripts/check-prod-compose.sh` refuses any production render with a service
+   named `spotdown*`, a service running a spotdown image, a volume named `spotdown*` or a spotdown network that
+   is not the external one.
+3. **The URL policy is unchanged** (`classbeat.spotdown.url_policy` already accepts `http://spotdown-api:8000`,
+   the alias spotdown's own compose gives its API); only its docstring changes.
+4. **Superseded.** The hosting items of §10 and of the #1481 amendment (the three services, the internal
+   networks, the pinned images, the ceilings), and the #1489 amendment (the route out and the YouTube switch:
+   sourcing from YouTube and its network are spotdown's own settings; the terms-of-service decision of
+   "#1296 accepted" stays the owner's). Their text is left as written. Breaking change: the upgrade steps are in
+   the runbook, section 5d.
+
 ## Status
 
 Accepted. §12 took effect on 2026-11-20, when the owner accepted #1296.

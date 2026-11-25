@@ -27,9 +27,9 @@ from the release images `ghcr.io/magpern/classbeat:X.Y.Z` and `ghcr.io/magpern/c
 ([swag-classbeat.subdomain.conf](swag-classbeat.subdomain.conf)). Caddy, the edge of the first
 version of this runbook (#341), was removed in #492: swag already owns ports 80 and 443 on this
 machine, and a second, unused edge config would only drift. spotdown, the music-analysis service
-(ADR 0040 section 10), is the optional overlay `compose.prod.spotdown.yaml`: **off** until you add it
-to `COMPOSE_FILE` (section 5d). Its route out for YouTube sourcing is a second overlay,
-`compose.prod.spotdown-egress.yaml`, also off until you add it (section 5d).
+(ADR 0040 section 10), is a separate project that you install on its own: classbeat never runs it.
+The optional overlay `compose.prod.spotdown.yaml` only links classbeat's worker to it: **off** until
+you add it to `COMPOSE_FILE` (section 5d).
 
 **Nothing is cloned.** The server needs Docker, the files of one GitHub Release (section 3), a
 `.env`, a `secrets/` folder and a token to pull the private images (section 4): ADR 0020, #519.
@@ -77,9 +77,9 @@ public, so no login is needed to download them (the images are private, section 
 sudo mkdir -p /opt/classbeat && sudo chown "$USER" /opt/classbeat
 cd /opt/classbeat
 V=X.Y.Z                                           # the release, without the v
-for f in compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml compose.prod.spotdown.yaml compose.prod.spotdown-egress.yaml check-prod-compose.sh \
+for f in compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml compose.prod.spotdown.yaml check-prod-compose.sh \
   check-prod-compose-rollback.bash check-prod-compose-setup.bash check-prod-compose-rules.bash check-prod-compose-spotdown.bash check-prod-compose-secrets.bash \
-  check-prod-compose-selftest-compose.bash check-prod-compose-selftest-yaml.bash check-prod-compose-owner.bash check-prod-compose-secretfiles.bash \
+  check-prod-compose-selftest-compose.bash check-prod-compose-selftest-spotdown.bash check-prod-compose-selftest-yaml.bash check-prod-compose-owner.bash check-prod-compose-secretfiles.bash \
   check-prod-compose-turnstile.bash check-prod-compose-runbook.bash check-prod-compose-site.bash check-prod-compose-site-selftest.bash check-prod-compose-probe.bash \
   swag-classbeat.subdomain.conf swag-classbeat-logrotate.conf install-swag-logrotate.sh prod.env.example backup.sh restore.sh validate-backup.sh SHA256SUMS; do
   curl --proto '=https' --tlsv1.2 -fsSLO "https://github.com/magpern/classbeat/releases/download/v$V/$f"
@@ -147,10 +147,7 @@ the SQL baked in) are private (never change that). On the server, once:
 Never use `latest` (there is none); `CLASSBEAT_VERSION` in `.env` pins a release, and both images
 and the compose files come from that one release.
 
-With spotdown (section 5d) the token's account also needs read access to the private package
-`ghcr.io/magpern/spotdown`, and `docker pull ghcr.io/magpern/spotdown:$SPOTDOWN_VERSION` must work.
-spotdown has its own releases and versions (`SPOTDOWN_VERSION`, never `latest`); the compose file that
-runs it is classbeat's `compose.prod.spotdown.yaml`, from the classbeat release you run.
+spotdown has its own releases, images and runbook (section 5d); classbeat's token needs nothing of it.
 
 ## 5. Secrets and settings
 
@@ -424,107 +421,46 @@ for memory. The defaults, and the `.env` variables that change them:
 ### 5d. spotdown, the music-analysis service (optional, off by default)
 
 spotdown analyses the music of a class ([ADR 0040](../adr/0040-spotdown-analysis-service.md) section
-10): classbeat's worker relays the audio it already fetches (SwedeBeat) to spotdown's `upload` source
-and reads the analysis back. **Without spotdown nothing calls it**, and a class with music cannot be
-analysed (ADR 0040, "spotdown is the only analysis path"); a class without music is unaffected. It
-runs from `compose.prod.spotdown.yaml`, an overlay that adds three services on this box:
+10): classbeat's worker relays the audio it already fetches (SwedeBeat) to spotdown and reads the
+analysis back. **classbeat never runs spotdown** (ADR 0040, amendment of 2026-11-25, #1526): spotdown is
+its own project, with its own release, images, queue, volumes and settings (YouTube sourcing and its
+route out included), and classbeat calls it at a URL. **Without the link nothing calls it**, and a class
+with music cannot be analysed; a class without music is unaffected.
 
-| Service | Image | Networks | Secret | Ceiling (`.env`) |
-|---|---|---|---|---|
-| `spotdown-api` | `ghcr.io/magpern/spotdown:$SPOTDOWN_VERSION` | `spotdown`, `spotdown-internal` (with YouTube also `spotdown-egress`) | `spotdown_service_key` | `SPOTDOWN_API_CPUS=0.5`, `SPOTDOWN_API_MEMORY=1g` |
-| `spotdown-worker` | the same image, `rq worker` | `spotdown-internal` (with YouTube also `spotdown-egress`) | none | `SPOTDOWN_WORKER_CPUS=1.0`, `SPOTDOWN_WORKER_MEMORY=4g` |
-| `spotdown-redis` | `redis:7.4.12-alpine` (pinned by digest, as spotdown's own `deploy/compose.yaml`) | `spotdown-internal` | none | 0.5 CPU, 256 MiB (fixed) |
+1. **Install spotdown** from its own release and runbook (magpern/spotdown,
+   `docs/runbooks/docker-image.md`). That creates the internal Docker network `spotdown` (`docker
+   network create --internal spotdown`) and spotdown's service key.
+2. **Give classbeat the key**, without printing it (the file keeps the group and mode of every secret,
+   section 5):
+   `( umask 027; sudo cat <spotdown's key file> > secrets/spotdown_service_key )`, then
+   `sudo chgrp 10010 secrets/spotdown_service_key`. Never point anything at spotdown's own file.
+3. **Add the overlay** after any overlay above it (bridge last) in `.env`:
+   `COMPOSE_FILE=compose.prod.yaml:compose.prod.spotdown.yaml`. Optionally `SPOTDOWN_URL` (default
+   `http://spotdown-api:8000`, the name spotdown's own compose gives its API on that network; the worker
+   refuses to start on an origin `classbeat.spotdown.url_policy` does not accept).
+4. `./check-prod-compose.sh`, then `docker compose up -d --wait`.
 
-- **No published port, no route out** (unless you turn YouTube on, below). Both networks are internal. `spotdown` joins classbeat's
-  `worker` and `spotdown-api` only (the worker calls `http://spotdown-api:8000`, its
-  `CLASSBEAT_SPOTDOWN_URL`, set by the overlay); `spotdown-internal` joins the three spotdown services,
-  so Redis (no password) is reachable from spotdown alone. `web` joins neither.
-- **The key** (`classbeat.spotdown.key_policy`) is one shared secret file,
-  `secrets/spotdown_service_key`, mounted on classbeat's `worker` (it sends it as `Authorization:
-  Bearer`) and on `spotdown-api` (which checks it); never on `web`, `spotdown-worker` or Redis, never in
-  `.env`. 32 to 256 printable ASCII characters without whitespace, or the worker refuses to start
-  (the message names the file, never the value); `spotdown-api` refuses to start without one.
-- **The `url` source is off** (`URL_ALLOWED_HOSTS` empty, fixed in the overlay: classbeat never uses
-  it). **YouTube sourcing is off by default** (`ALLOW_YTDLP_SOURCING` is your `.env` switch
-  `SPOTDOWN_YTDLP_SOURCING`, `false` unless set); while it is off a Spotify-catalogue pick cannot be
-  analysed (`analysis_unavailable`). Turning it on is the owner's deployment step, below.
-- **Ceilings (ADR 0026 stage 1, section 5c).** The analysis runs one at a time in `spotdown-worker`,
-  in a subprocess limited to spotdown's `ANALYSIS_MAX_MEMORY_MB` (3072 by default): keep
-  `SPOTDOWN_WORKER_MEMORY` above 3g. With spotdown the box needs about 5.25 GiB more than the table in
-  section 5c (4g + 1g + 256m); add the spotdown CPUs to the others and never set one above `nproc`.
-- **Data** is the named volumes `spotdown-data` (`/data`, the image's `DATA_DIR`: spotdown's cache
-  and provenance databases and the temporary audio of running jobs, deleted at the end of each job)
-  and `spotdown-redis` (the queue). A new volume takes `/data`'s owner from the image (uid 10001, mode
-  0750). The services run as the images' own non-root users (spotdown `10001:10001`, Redis
-  `999:1000`), read-only with no capability; spotdown's caches go to a 512 MiB tmpfs on `/tmp`.
-- **Health.** `spotdown-api` runs spotdown's `python -m app.healthcheck api` (its `/healthz` on
-  loopback), `spotdown-worker` `python -m app.healthcheck worker` (a Redis ping: the image's own
-  `HEALTHCHECK` probes the API, which the worker does not run) and Redis `redis-cli ping`, so
-  `docker compose up -d --wait` waits for all three.
+The overlay gives the **worker only** the URL, the key (a secret file, never on `web`) and the external
+network `spotdown` (never on `web`). classbeat never creates that network: `up` fails with "declared as
+external, but could not be found" until spotdown's runbook has made it. The check refuses any production
+render that defines a service, image or volume of spotdown's.
 
-**Enable it** (the owner's step; nothing here is done by agents):
+**Rotate the key** in spotdown first, then write the new value into `secrets/spotdown_service_key` the
+same way, and `docker compose up -d --wait` (both copies change). **Turn it off:** take
+`compose.prod.spotdown.yaml` out of `COMPOSE_FILE` and run `docker compose up -d --wait
+--remove-orphans`.
 
-```bash
-cd /opt/classbeat
-( umask 027; head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > secrets/spotdown_service_key )   # 64 hex characters
-ls -ln secrets/spotdown_service_key          # <your uid> 10010, -rw-r-----
-# in .env (the overlay after any of section 6b/6c, compose.bridge.yaml last):
-#   COMPOSE_FILE=compose.prod.yaml:compose.prod.spotdown.yaml
-#   SPOTDOWN_VERSION=X.Y.Z                    # a spotdown release; never latest
-docker run --rm --entrypoint id ghcr.io/magpern/spotdown:X.Y.Z   # after the pull: uid=10001(spotdown) gid=10001(spotdown)
-./check-prod-compose.sh                       # the overlay's rules, the key file's mode and that it is filled
-docker compose pull && ./check-prod-compose.sh --probe
-docker compose up -d --wait                   # recreates the worker with the key and the URL
-```
-
-Back up `secrets/spotdown_service_key` with the other secret files (section 5). Losing it costs only a
-new key: write a new one and run `docker compose up -d --wait` (both ends read the same file). The
-`spotdown-data` volume is not part of [backup-restore.md](backup-restore.md). Losing it means each
-track is analysed again on its next request, and spotdown's provenance records (ADR 0040 section 6) are
-gone. To keep them, copy the volume while spotdown is stopped (`docker compose stop spotdown-api
-spotdown-worker`, then for example `docker run --rm -v classbeat-prod_spotdown-data:/d:ro -v
-"$PWD":/out alpine:3.22 tar czf /out/spotdown-data.tgz -C /d .`, with your `COMPOSE_PROJECT_NAME` in
-the volume name). `docker compose down -v` deletes it with everything else.
-
-**YouTube sourcing for Spotify classes** (optional; the owner's decision and step, never an agent's).
-Downloading from YouTube is against YouTube's terms of service, and using it for Spotify-catalogue
-classes touches Spotify's Developer Policy; the owner accepted that risk (ADR 0040, amendment "#1296
-accepted", and its amendment of 2026-11-24, item 7). It needs two things together, and
-`./check-prod-compose.sh` refuses either without the other:
-
-1. **The route out:** `compose.prod.spotdown-egress.yaml` right after `compose.prod.spotdown.yaml` in
-   `COMPOSE_FILE`. It adds one network, `spotdown-egress` (the project's own, not internal, like
-   spotdown's own `deploy/compose.yaml` `egress`), joined by `spotdown-api` and `spotdown-worker` only.
-   Redis, classbeat's `worker` and `web` never join it, no port is published, and the internal
-   networks `spotdown` and `spotdown-internal` are unchanged. classbeat's worker keeps its own `egress`.
-2. **The switch:** `SPOTDOWN_YTDLP_SOURCING=true` in `.env` (exactly `true` or `false`; the check
-   refuses `yes`, `1`, `on` and the like, which spotdown would also read as true). Without the variable,
-   Compose itself refuses the route-out file.
-
-```bash
-# in .env:
-#   COMPOSE_FILE=compose.prod.yaml:compose.prod.spotdown.yaml:compose.prod.spotdown-egress.yaml
-#   SPOTDOWN_YTDLP_SOURCING=true
-./check-prod-compose.sh                       # both or neither, the switch true or false, who joins spotdown-egress
-docker compose up -d --wait                   # recreates spotdown-api and spotdown-worker
-```
-
-**Turn YouTube off again:** take `compose.prod.spotdown-egress.yaml` out of `COMPOSE_FILE`, delete the
-`SPOTDOWN_YTDLP_SOURCING` line (or set `false`) and run `docker compose up -d --wait
---remove-orphans` (spotdown-api and its worker are recreated without it); the then unused network
-stays until `docker network rm <COMPOSE_PROJECT_NAME>_spotdown-egress`.
-Analyses already cached from YouTube stay in `spotdown-data` until they expire (ADR 0040, retention).
-
-**Pin and upgrade spotdown** on its own: change `SPOTDOWN_VERSION` in `.env`, then `docker compose
-pull`, `./check-prod-compose.sh --probe` and `docker compose up -d --wait` (only the spotdown services
-and nothing of classbeat change). Back: set the old version again and `up`. A spotdown release that
-changes its contract is listed in classbeat's release notes; classbeat's contract test pins the schema
-it reads.
-
-**Turn it off:** take `compose.prod.spotdown.yaml` (and `compose.prod.spotdown-egress.yaml`) out of
-`COMPOSE_FILE` and run `docker compose up -d
---wait --remove-orphans` (the worker is recreated without the key and the URL; the volumes stay until
-`docker volume rm`).
+**Upgrading from the old overlay (breaking, #1526).** Until now this overlay ran spotdown inside
+classbeat's project. To move to the separate spotdown: install spotdown from its own release first
+(step 1); take `compose.prod.spotdown-egress.yaml` out of `COMPOSE_FILE` (the file no longer exists, so
+Compose would refuse the name); delete `SPOTDOWN_VERSION`, `SPOTDOWN_YTDLP_SOURCING` and every
+`SPOTDOWN_*_CPUS` and `SPOTDOWN_*_MEMORY` from `.env` (they are spotdown's own settings now); keep or
+copy the key as in step 2; then `docker compose up -d --wait --remove-orphans`. The old `spotdown-data`
+and `spotdown-redis` volumes stay until you remove them by hand (`docker volume ls`, then `docker volume
+rm <COMPOSE_PROJECT_NAME>_spotdown-data <COMPOSE_PROJECT_NAME>_spotdown-redis`); the old `spotdown` and
+`spotdown-internal` networks go with `docker network rm` once nothing uses them. The `spotdown` network
+is now spotdown's own, so remove the old classbeat-made one (named `<COMPOSE_PROJECT_NAME>_spotdown`)
+only; do not touch the new `spotdown`.
 
 ### 5e. Pre-production testing (optional, off by default; roadmap Amendment 36, ADR 0038)
 
@@ -912,9 +848,9 @@ OLD="$(sed -n 's/^CLASSBEAT_VERSION=//p' .env | tr -d "\"' \r")"; NEW=X.Y.Z   # 
 echo "$OLD"                                       # write it down: a new shell has no $OLD (Rollback, below)
 # 1. Download into a staging folder and verify there: a failed download changes nothing that runs.
 rm -rf "staging-$NEW" && mkdir "staging-$NEW"
-for f in compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml compose.prod.spotdown.yaml compose.prod.spotdown-egress.yaml check-prod-compose.sh \
+for f in compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml compose.prod.spotdown.yaml check-prod-compose.sh \
   check-prod-compose-rollback.bash check-prod-compose-setup.bash check-prod-compose-rules.bash check-prod-compose-spotdown.bash check-prod-compose-secrets.bash \
-  check-prod-compose-selftest-compose.bash check-prod-compose-selftest-yaml.bash check-prod-compose-owner.bash check-prod-compose-secretfiles.bash \
+  check-prod-compose-selftest-compose.bash check-prod-compose-selftest-spotdown.bash check-prod-compose-selftest-yaml.bash check-prod-compose-owner.bash check-prod-compose-secretfiles.bash \
   check-prod-compose-turnstile.bash check-prod-compose-runbook.bash check-prod-compose-site.bash check-prod-compose-site-selftest.bash check-prod-compose-probe.bash \
   swag-classbeat.subdomain.conf swag-classbeat-logrotate.conf install-swag-logrotate.sh prod.env.example backup.sh restore.sh validate-backup.sh SHA256SUMS; do
   curl --proto '=https' --tlsv1.2 -fsSLo "staging-$NEW/$f" "https://github.com/magpern/classbeat/releases/download/v$NEW/$f"
@@ -939,7 +875,7 @@ docker compose up -d --wait
 
 Your own `compose.bridge.yaml` (`proton-bridge-smtp.md`) is not a release asset and is never touched.
 With spotdown in `COMPOSE_FILE` (section 5d) the same steps update its compose file;
-`SPOTDOWN_VERSION` changes only when you change it.
+spotdown itself is updated from its own release, never from this one.
 
 **From the release that carries SG-4 (#1080, ADR 0035 section 8)** no service mounts
 `secrets/swedebeat_app` any more: SwedeBeat's app key is gone from classbeat, and
@@ -1112,22 +1048,14 @@ assets, the `classbeat-db` image holds the repository's SQL, and the released `c
 passes and fails (a local compose edit, a bad `.env`, each wrong secret mode or group, the LAN
 overlay's address, `--probe` and `--rollback-check` against a stub `docker`) from a folder with no `docs/`.
 
-For spotdown (section 5d, `check-prod-compose-spotdown.bash`) it checks that a render holds all of the
-overlay or none of it: the three services on internal networks only, no port, only the worker and
-`spotdown-api` on `spotdown`, the key on those two only (never `web`), `CLASSBEAT_SPOTDOWN_URL` on the
-worker only, a SemVer `SPOTDOWN_VERSION` (never `latest`) and Redis pinned by digest, spotdown's data
-on `/data`, exactly the images' own users (`10001:10001`, Redis `999:1000`), read-only with `/tmp` the
-only tmpfs, no capability, spotdown's own healthchecks on all three (the worker's Redis ping, not the
-image's API probe), a ceiling on each (at most 64g, the worker above 3g), the `url` source off
-(`URL_ALLOWED_HOSTS` empty, so no host and no wildcard), YouTube off or on only together with the route
-out of `compose.prod.spotdown-egress.yaml` (`ALLOW_YTDLP_SOURCING` exactly `true` or `false` and the same
-on both; `spotdown-egress` not internal, not external, no address plan, joined by `spotdown-api` and
-`spotdown-worker` only, never Redis, classbeat's worker or web; #1489), and in an install folder with the overlay in `COMPOSE_FILE` that `secrets/spotdown_service_key` is
-filled (size only) and has the mode and group of every secret. On every render (spotdown or not) no
+For spotdown (section 5d, `check-prod-compose-spotdown.bash`) it refuses any production render with a
+service named `spotdown*`, a service running a spotdown image (under any name), a volume named `spotdown*`
+or a spotdown network that is not the external `spotdown` one; a render holds all of the link or none of
+it: the URL on the worker only, the key on the worker only (never `web`), the external network joined by
+the worker only, and in an install folder with the overlay in `COMPOSE_FILE` that
+`secrets/spotdown_service_key` is filled (size only) and has the mode and group of every secret. On every render (spotdown or not) no
 service has a network alias except web's `classbeat-web` on `proxy`, so nothing can take a name another
-container resolves (`db`, a model provider). The overlay's paths, users, environment, command and
-healthchecks were read against spotdown's merged `Dockerfile` (`USER 10001:10001`, `DATA_DIR=/data`,
-`/data` owned by 10001), `deploy/compose.yaml` and `app/config.py`. Not checked: a running spotdown
+container resolves (`db`, a model provider). Not checked: a running spotdown
 (the image is private and agents never pull it).
 
 Not checked: the release run itself (the first real tag builds both images and attaches the assets;

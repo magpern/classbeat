@@ -1,7 +1,9 @@
 """``CLASSBEAT_SPOTDOWN_URL``: spotdown's origin (ADR 0040 section 10). Pure: no I/O.
 
-spotdown runs as extra services in the same compose project, on the internal network with no
-published port, so its origin is a deploy-time setting of the operator (as the player's host,
+spotdown is a separate project that the operator installs from its own release and runbook, on its
+own Docker network with no published port (classbeat never runs it, ADR 0040 amendment of
+2026-11-25, #1526). classbeat's worker joins that external network and reaches spotdown's API
+there, so its origin is a deploy-time setting of the operator (as the player's host,
 ADR 0034 section 2, and the gateway's origin, ADR 0035 section 1). This amends the rule in
 ``classbeat.egress`` that "the list is code, not a setting" for one more origin. The player's rule
 (``https``, 443, a public DNS name) refuses an internal origin such as ``http://spotdown-api:8000``
