@@ -14,12 +14,13 @@ FROM postgres:17.12
 # zlib1g (HIGH CVE-2026-76844, CVE-2026-85091; fixed in 1.3.1-1+deb13u1; base has 1.3.1-1+b1, checked
 # 2026-11-13) and, since 2026-11-23, the four krb5 packages libgssapi-krb5-2, libkrb5-3,
 # libkrb5support0 and libk5crypto3 (HIGH CVE-2026-107364; installed 1.21.3-5+deb13u1, fixed in
-# 1.21.3-5+deb13u2). Upgrade only these packages. Remove this block when the postgres base image
+# 1.21.3-5+deb13u2) and, since 2026-11-25, libzstd1 (HIGH CVE-2026-124851; installed 1.5.7+dfsg-1, fixed
+# in 1.5.7+dfsg-1+deb13u1). Upgrade only these packages. Remove this block when the postgres base image
 # carries the fixes.
 USER root
 RUN apt-get update \
     && apt-get install -y --no-install-recommends --only-upgrade \
-        zlib1g libgssapi-krb5-2 libkrb5-3 libkrb5support0 libk5crypto3 \
+        zlib1g libgssapi-krb5-2 libkrb5-3 libkrb5support0 libk5crypto3 libzstd1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY init /docker-entrypoint-initdb.d
