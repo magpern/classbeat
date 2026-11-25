@@ -215,7 +215,7 @@ services:
         target: database_owner_password
 
   mailpit:
-    image: axllent/mailpit:v1.33.1
+    image: axllent/mailpit:v1.34.0
     restart: unless-stopped
     ports:
       - "127.0.0.1:${MAILPIT_PORT:-8025}:8025"
