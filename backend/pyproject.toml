@@ -7,7 +7,7 @@ dependencies = [
     "alembic>=1.14",
     "anthropic==0.125.0",
     "argon2-cffi==25.1.0",
-    "authlib==1.9.6",
+    "authlib==1.9.10",
     "certifi>=2026.10.23",  # imported by classbeat.egress: the model transport's trust store
     "cryptography==50.0.2",
     "fastapi>=0.138",  # fastapi.routing.iter_route_contexts (the admin router guard)
@@ -20,14 +20,14 @@ dependencies = [
     # The render child (studio/renderchild.py) and the preview key (preview/identity.py) import
     # these; they came through mowl-workouts and librosa until #1358. Pinned at the versions
     # locked before, so renders and preview keys (libsndfile and soxr versions) do not change.
-    "numpy==2.5.4",
+    "numpy==2.5.5",
     # ADR 0012 section 3: 2.54.0 is the last release on httpx (3.x requires httpx2, which the
     # egress allowlist is not built on); the `httpx2` extra is never installed. Review with #120.
     "openai==2.54.0",
     "psycopg[binary]>=3.2",
     "pydantic>=2.10",
     "pydantic-settings>=2.7",
-    "pyotp==2.11.2",
+    "pyotp==2.12.1",
     "rfc8785==0.1.4",
     "segno==1.6.6",
     "soundfile==0.14.0",
