@@ -33,7 +33,7 @@ for e in "${hosted[@]}"; do expect_refused real "$spotdown" "${e#*|}" "${e%%|*}"
 # The link, whole: the worker only gets the URL, the key and the external network.
 link=(
   "only classbeat's worker joins the spotdown network|.services.web.networks.spotdown = null"
-  "only classbeat's worker joins the spotdown network|.services.migrate.networks.spotdown = null"
+  "db, migrate and db-functions live on backend only|.services.migrate.networks.spotdown = null"
   "only classbeat's worker joins the spotdown network|.services.worker.networks |= del(.spotdown)"
   "worker joins backend and egress only|.services.worker.networks.proxy = null"
   "worker joins backend and egress only|.services.worker.networks[\"web-out\"] = null"
@@ -63,8 +63,8 @@ expect_refused real "$spotdown" '.services.web.networks.spotdown = null' "only c
 # Without the overlay, any one piece of the link is refused: all of it or none of it.
 for v in shared loopback lan; do
   case "$v" in shared) base="$shared" ;; loopback) base="$loopback" ;; *) base="$lan" ;; esac
-  expect_refused "$v" "$base" '.services.worker.environment.CLASSBEAT_SPOTDOWN_URL = "http://spotdown-api:8000"' 'services.worker.environment: 1 variable'
-  expect_refused "$v" "$base" '.secrets.spotdown_service_key = {"file": (.secrets.app_secret_key.file | rtrimstr("app_secret_key") + "spotdown_service_key")} | .services.worker.secrets += [{"source":"spotdown_service_key"}]' 'CLASSBEAT_SPOTDOWN_URL is set'
+  expect_refused "$v" "$base" '.services.worker.environment.CLASSBEAT_SPOTDOWN_URL = "http://spotdown-api:8000"' 'networks.spotdown is the external network named spotdown'
+  expect_refused "$v" "$base" '.secrets.spotdown_service_key = {"file": (.secrets.app_secret_key.file | rtrimstr("app_secret_key") + "spotdown_service_key")} | .services.worker.secrets += [{"source":"spotdown_service_key"}]' 'networks.spotdown is the external network named spotdown'
   expect_refused "$v" "$base" '.networks.spotdown = {"name":"spotdown","external":true} | .services.worker.networks.spotdown = null' 'declares the secret spotdown_service_key'
 done
 # The empty-key check (install mode, the overlay in COMPOSE_FILE): size only, nothing is printed.
