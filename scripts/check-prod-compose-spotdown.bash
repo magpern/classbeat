@@ -1,156 +1,78 @@
 # shellcheck shell=bash
-# spotdown's overlay (compose.prod.spotdown.yaml, ADR 0040 section 10, #1481): all of it or none of it.
+# spotdown's link (compose.prod.spotdown.yaml, ADR 0040 section 10 and its amendment of 2026-11-25, #1526).
 # Sourced by check-prod-compose.sh, never run on its own; it shares that script's shell, variables and functions.
-# Called by check_common on every render. A render with no spotdown piece (no spotdown-* service,
-# network or volume, no spotdown_service_key, no CLASSBEAT_SPOTDOWN_URL) passes untouched: that is
-# compose.prod.yaml alone, exactly as before. A render with any piece must have the whole overlay:
-# three services on internal networks only, no port, the service key on classbeat's worker and
-# spotdown-api only (never web), a pinned spotdown image (never `latest`), bounded ADR 0026 stage 1
-# ceilings, no capability, no-new-privileges, read-only, the images' own non-root users and spotdown's
-# own healthchecks on each, and the `url` source off. YouTube (#1489) is off, or on together with the
-# route out of compose.prod.spotdown-egress.yaml: the outbound network spotdown-egress, joined by
-# spotdown-api and spotdown-worker only (never Redis, classbeat's worker or web), never one without the
-# other, and ALLOW_YTDLP_SOURCING exactly "true" or "false" (the owner's SPOTDOWN_YTDLP_SOURCING).
-spotdown_services='["spotdown-api","spotdown-redis","spotdown-worker"]'
+# classbeat never runs spotdown: it is its own project, installed from its own release, and classbeat's
+# worker calls it at CLASSBEAT_SPOTDOWN_URL. Two rules, both called by check_common on every render:
+#   check_no_spotdown_hosted  every production render, overlay or not: no service named spotdown*, no
+#                             service running a spotdown image (whatever its name), no volume named
+#                             spotdown*, no spotdown* network but the one external `spotdown` network;
+#   check_spotdown_parts      a render with any piece of the link must have all of it (check_spotdown): the
+#                             URL on the worker only, the key file mounted by the worker only, the external
+#                             network joined by the worker only. No piece at all is compose.prod.yaml alone.
+# check_spotdown_key (install mode) asks for a filled key file when the overlay is in the render.
 # shellcheck disable=SC2016  # jq variables, not shell ones
-check_spotdown_parts() {
+check_no_spotdown_hosted() {
+  q '[.services // {} | keys[] | select(startswith("spotdown"))] | length == 0' \
+    || fail "classbeat never runs spotdown: no service named spotdown* (install spotdown from its own release, runbook section 5d)" || return 1
+  q '[.services // {} | to_entries[] | select((.value.image // "") | tostring
+        | test("^ghcr\\.io/magpern/spotdown|(^|/)spotdown[^/]*$"; "i"))] | length == 0' \
+    || fail "classbeat never runs spotdown: no service runs a spotdown image, whatever the service is called (runbook section 5d)" || return 1
+  q '([.volumes // {} | keys[] | select(startswith("spotdown"))]
+      + [.services // {} | .[] | .volumes // [] | .[] | (.source // "") | select(startswith("spotdown"))]) | length == 0' \
+    || fail "classbeat never runs spotdown: no volume named spotdown* (spotdown keeps its own data, runbook section 5d)" || return 1
+  q '[.networks // {} | to_entries[] | select(.key | startswith("spotdown"))
+      | select(.key != "spotdown" or (.value.external // false) != true)] | length == 0' \
+    || fail "the only spotdown network is the external one spotdown created (networks.spotdown with external: true), never one of classbeat's own" || return 1
+}
+check_spotdown_parts() {   # check_spotdown_parts [real]  (real: the owner's render, any URL)
   local present
   present="$(jq -r '
-      [(.services // {} | keys[] | select(startswith("spotdown"))),
-       (.networks // {} | keys[] | select(startswith("spotdown"))),
-       (.volumes // {} | keys[] | select(startswith("spotdown"))),
+      [(.networks // {} | keys[] | select(startswith("spotdown"))),
        (.secrets // {} | keys[] | select(startswith("spotdown"))),
+       (.services[] | .networks // {} | keys[] | select(startswith("spotdown"))),
        (.services[] | .secrets // [] | .[] | .source | select(startswith("spotdown"))),
        (.services[] | .environment // {} | keys[] | select(startswith("CLASSBEAT_SPOTDOWN_")))]
       | length' <<<"$J")" || fail "the rendered file could not be read for spotdown" || return 1
   (( present == 0 )) && return 0
-  check_spotdown || return 1
+  check_spotdown "${1:-}" || return 1
 }
-# shellcheck disable=SC2016  # jq variables, not shell ones
-check_spotdown() {
-  local yt
-  q --argjson s "$spotdown_services" '[.services | keys[] | select(startswith("spotdown"))] == $s' \
-    || fail "spotdown is the three services spotdown-api, spotdown-worker and spotdown-redis, all of them" || return 1
-  # Never `latest`, never a digest-less floating tag: a SemVer release, the same on api and worker.
-  q '[.services["spotdown-api"].image, .services["spotdown-worker"].image]
-     | all(test("^ghcr\\.io/magpern/spotdown:[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.]+)?$")) and .[0] == .[1]' \
-    || fail "spotdown-api and spotdown-worker run ghcr.io/magpern/spotdown:\$SPOTDOWN_VERSION, a release tag (X.Y.Z, never latest)" || return 1
-  q '.services["spotdown-redis"].image | test("^redis:[0-9]+\\.[0-9]+\\.[0-9]+-alpine@sha256:[0-9a-f]{64}$")' \
-    || fail "spotdown-redis runs a pinned redis:X.Y.Z-alpine@sha256:<digest>" || return 1
-  # YouTube sourcing (#1489): the owner's switch SPOTDOWN_YTDLP_SOURCING, exactly "true" or "false"
-  # (spotdown would also read yes, 1 or on as true), the same on both, and on only with the route out.
-  yt="$(jq -r '[.services["spotdown-api"], .services["spotdown-worker"] | .environment.ALLOW_YTDLP_SOURCING]
-      | if . == ["false","false"] then "off" elif . == ["true","true"] then "on" else "bad" end' <<<"$J")" \
-    || fail "the rendered file could not be read for spotdown's YouTube switch" || return 1
-  [[ "$yt" != bad ]] \
-    || fail "ALLOW_YTDLP_SOURCING is SPOTDOWN_YTDLP_SOURCING, exactly true or false (the default), the same on spotdown-api and spotdown-worker" || return 1
-  q --arg yt "$yt" '(.networks | has("spotdown-egress")) == ($yt == "on")' \
-    || fail "YouTube sourcing and spotdown's route out go together: SPOTDOWN_YTDLP_SOURCING=true with compose.prod.spotdown-egress.yaml in COMPOSE_FILE, or neither (runbook section 5d)" || return 1
-  # The route out: the project's own plain network (no subnet of its own), spotdown-api and
-  # spotdown-worker on it and nobody else: never Redis (no password), classbeat's worker or web.
-  q '.networks["spotdown-egress"] // {} | (.internal // false) == false and (.external // false) == false and (.ipam // {}) == {}' \
-    || fail "spotdown-egress is an outbound network of the project's own (not internal, not external, no ipam)" || return 1
-  q --arg yt "$yt" '[.services | to_entries[] | select(.value.networks // {} | has("spotdown-egress")) | .key] | sort
-      == (if $yt == "on" then ["spotdown-api","spotdown-worker"] else [] end)' \
-    || fail "only spotdown-api and spotdown-worker join spotdown-egress (never spotdown-redis, classbeat's worker or web)" || return 1
-  # Internal networks, and who joins which: the worker reaches spotdown-api and nothing else.
-  q '[.networks.spotdown, .networks["spotdown-internal"]] | all(. != null and .internal == true)' \
-    || fail "the spotdown and spotdown-internal networks are internal (no route out)" || return 1
-  q '[.services | to_entries[] | select(.value.networks // {} | has("spotdown")) | .key] | sort == ["spotdown-api","worker"]' \
-    || fail "only classbeat's worker and spotdown-api join the spotdown network (never web)" || return 1
-  q --argjson s "$spotdown_services" '[.services | to_entries[] | select(.value.networks // {} | has("spotdown-internal")) | .key] | sort == $s' \
-    || fail "only the three spotdown services join spotdown-internal" || return 1
-  q --arg yt "$yt" '(if $yt == "on" then ["spotdown-egress"] else [] end) as $e
-     | (.services["spotdown-api"].networks | keys) == (["spotdown","spotdown-internal"] + $e | sort)
-     and (.services["spotdown-worker"].networks | keys) == (["spotdown-internal"] + $e | sort)
-     and (.services["spotdown-redis"].networks | keys) == ["spotdown-internal"]' \
-    || fail "spotdown-api joins spotdown and spotdown-internal, its worker and Redis spotdown-internal only (with the route out, spotdown-api and its worker also spotdown-egress)" || return 1
-  # The one service key (classbeat.spotdown.key_policy): classbeat's worker and spotdown-api only.
-  q '[.services | to_entries[] | select(.value.secrets // [] | map(.source) | index("spotdown_service_key")) | .key] | sort == ["spotdown-api","worker"]' \
-    || fail "spotdown_service_key belongs to classbeat's worker and spotdown-api only (never web)" || return 1
-  q '(.services["spotdown-api"].secrets | map(.source)) == ["spotdown_service_key"]
-     and ([.services["spotdown-worker"], .services["spotdown-redis"]] | all((.secrets // []) == []))' \
-    || fail "spotdown-api mounts the service key and nothing else; spotdown-worker and Redis mount no secret" || return 1
-  q '.services["spotdown-api"].environment.SERVICE_KEY_FILE == "/run/secrets/spotdown_service_key"' \
-    || fail "spotdown-api reads the key from /run/secrets/spotdown_service_key" || return 1
+# The link, whole. With "real" (the owner's own render) the URL is the owner's; without it (the dummy
+# renders) it is the default. The key file is secrets/<its name> by check_secret_mounts like every secret.
+check_spotdown() {   # check_spotdown [real]
+  local real="${1:-}"
+  q '(.networks.spotdown // null) as $n | $n != null and ($n | type) == "object" and (($n | keys) - ["name","external","ipam"]) == []
+     and ($n.ipam // {}) == {} and $n.external == true and $n.name == "spotdown"' \
+    || fail "networks.spotdown is the external network named spotdown that spotdown's own runbook creates (external: true, no other key)" || return 1
+  q '[.services | to_entries[] | select(.value.networks // {} | has("spotdown")) | .key] == ["worker"]' \
+    || fail "only classbeat's worker joins the spotdown network (never web or another service)" || return 1
+  q '(.services.worker.networks | keys) == ["backend","egress","spotdown"]' \
+    || fail "classbeat's worker joins backend, egress and spotdown, nothing else" || return 1
+  q '.secrets.spotdown_service_key != null' \
+    || fail "the spotdown overlay declares the secret spotdown_service_key" || return 1
+  q '[.services | to_entries[] | select(.value.secrets // [] | map(.source) | index("spotdown_service_key")) | .key] == ["worker"]' \
+    || fail "spotdown_service_key belongs to classbeat's worker only (never web)" || return 1
   q '[.services | to_entries[] | select(.value.environment // {} | keys | any(startswith("CLASSBEAT_SPOTDOWN_"))) | .key] == ["worker"]
-     and (.services.worker.environment | with_entries(select(.key | startswith("CLASSBEAT_SPOTDOWN_"))))
-       == {"CLASSBEAT_SPOTDOWN_URL": "http://spotdown-api:8000"}' \
-    || fail "CLASSBEAT_SPOTDOWN_URL is http://spotdown-api:8000, on classbeat's worker only" || return 1
-  # Service mode, no UI, the queue on its own Redis; the url source off, always (classbeat never uses
-  # it: no host, no pattern), with or without the route out.
-  q '[.services["spotdown-api"], .services["spotdown-worker"] | .environment
-      | .SERVICE_MODE == "true" and .SERVE_UI == "false" and .DATA_DIR == "/data"
-        and .REDIS_URL == "redis://spotdown-redis:6379/0" and .URL_ALLOWED_HOSTS == ""] | all' \
-    || fail "spotdown runs in service mode without UI, with the url source off (URL_ALLOWED_HOSTS empty)" || return 1
-  # Each service: no capability, no-new-privileges, a named non-root user, a ceiling, log rotation.
-  q --argjson s "$spotdown_services" '[.services[$s[]] | (.cap_drop // []) == ["ALL"] and (.security_opt // []) == ["no-new-privileges:true"]] | all' \
-    || fail "every spotdown service drops every capability and sets no-new-privileges" || return 1
-  q --argjson s "$spotdown_services" '[.services[$s[]] | .user // "" | tostring | test("^[1-9][0-9]*:[1-9][0-9]*$")] | all' \
-    || fail "every spotdown service names a non-root uid:gid" || return 1
-  # Exactly the images' own users (spotdown's Dockerfile, redis's image): no other group, the secrets
-  # group 10010 included, which only group_add on spotdown-api gives.
-  q '[.services["spotdown-api"].user, .services["spotdown-worker"].user, .services["spotdown-redis"].user]
-     == ["10001:10001","10001:10001","999:1000"]' \
-    || fail "spotdown runs as 10001:10001 and its Redis as 999:1000, exactly" || return 1
-  q --argjson s "$spotdown_services" '[.services[$s[]] | .read_only == true] | all' \
-    || fail "every spotdown service is read-only (data on its volume, caches on /tmp)" || return 1
-  q --argjson s "$spotdown_services" '[.services[$s[]] | (.cpus | tonumber? // 0) > 0 and ((.mem_limit // "") | tostring | test("^[1-9][0-9]*$"))] | all' \
-    || fail "every spotdown service keeps a cpus and a mem_limit ceiling (ADR 0026 stage 1)" || return 1
-  # Bounded: at most 64 GiB each, and the worker above the analysis subprocess's 3 GiB rlimit
-  # (spotdown's ANALYSIS_MAX_MEMORY_MB default 3072), or the kernel kills it mid-analysis.
-  q --argjson s "$spotdown_services" '(.services["spotdown-worker"].mem_limit | tonumber? // 0) as $w
-     | ([.services[$s[]] | .mem_limit | tonumber? // 0 | . <= 68719476736] | all) and $w > 3221225472' \
-    || fail "spotdown's mem_limit is at most 64g each, and above 3g on spotdown-worker" || return 1
-  # spotdown's own probes (app/healthcheck.py): the API's /healthz, the worker's Redis ping (the
-  # image's HEALTHCHECK probes the API, which the worker does not run), Redis's ping.
-  q '.services["spotdown-api"].healthcheck.test == ["CMD","python","-m","app.healthcheck","api"]
-     and .services["spotdown-worker"].healthcheck.test == ["CMD","python","-m","app.healthcheck","worker"]
-     and .services["spotdown-redis"].healthcheck.test == ["CMD","redis-cli","ping"]' \
-    || fail "spotdown-api, spotdown-worker and spotdown-redis keep their own healthchecks (app.healthcheck api, app.healthcheck worker, redis-cli ping)" || return 1
-  # spotdown's data on its named volumes, nothing else.
-  q '(.volumes | keys) == ["db-data","spotdown-data","spotdown-redis"]
-     and ([.services["spotdown-api"], .services["spotdown-worker"]] | all(.volumes == [{"type":"volume","source":"spotdown-data","target":"/data","volume":{}}]))
-     and .services["spotdown-redis"].volumes == [{"type":"volume","source":"spotdown-redis","target":"/data","volume":{}}]' \
-    || fail "spotdown's data is the volumes spotdown-data (/data) and spotdown-redis (/data), nothing else" || return 1
-  q --argjson s "$spotdown_services" '[.services | to_entries[] | select(.value.volumes // [] | map(.source // "") | any(startswith("spotdown"))) | .key] | sort == $s' \
-    || fail "only the spotdown services mount spotdown's volumes" || return 1
+     and (.services.worker.environment | with_entries(select(.key | startswith("CLASSBEAT_SPOTDOWN_"))) | keys) == ["CLASSBEAT_SPOTDOWN_URL"]
+     and (.services.worker.environment.CLASSBEAT_SPOTDOWN_URL | type == "string" and length > 0)' \
+    || fail "CLASSBEAT_SPOTDOWN_URL is set (SPOTDOWN_URL, never empty), on classbeat's worker only" || return 1
+  [[ -n "$real" ]] || q '.services.worker.environment.CLASSBEAT_SPOTDOWN_URL == "http://spotdown-api:8000"' \
+    || fail "CLASSBEAT_SPOTDOWN_URL defaults to http://spotdown-api:8000" || return 1
 }
-# compose.prod.yaml with compose.prod.spotdown.yaml (and compose.prod.spotdown-egress.yaml): the shared
-# variant's rules, and spotdown is there.
+# compose.prod.yaml with compose.prod.spotdown.yaml: the shared variant's rules, and the link is there.
 check_withspotdown() {
   check_shared || return 1
   check_spotdown || return 1
 }
 
-# In an install folder whose COMPOSE_FILE names the overlay: spotdown-api refuses to start without a
-# key (and classbeat's worker would treat an empty file as "no spotdown"), so an empty or missing
-# secrets/spotdown_service_key is a failure here, before `up` (runbook section 5d). Size only (`-s`):
-# the file is never opened and nothing of it is printed. Without the overlay nothing is asked.
+# In an install folder whose COMPOSE_FILE names the overlay: an empty or missing secrets/spotdown_service_key
+# would make the worker treat spotdown as off (spotdown_available), so it is a failure here, before `up`
+# (runbook section 5d). Size only (`-s`): the file is never opened and nothing of it is printed. Its group
+# and mode are check_secret_files's, like every secret's. Without the overlay nothing is asked.
 check_spotdown_key() {   # check_spotdown_key RENDERED_JSON SECRETS_DIR
   local on
-  on="$(jq -r '.services | has("spotdown-api")' <<<"$1")" || fail "the real render could not be read (spotdown)" || return 1
+  on="$(jq -r '(.secrets // {}) | has("spotdown_service_key")' <<<"$1")" || fail "the real render could not be read (spotdown)" || return 1
   [[ "$on" == true ]] || return 0
   [[ -s "$2/spotdown_service_key" ]] \
-    || fail "compose.prod.spotdown.yaml is in COMPOSE_FILE but secrets/spotdown_service_key is missing or empty, so spotdown-api would refuse to start: write the key into it (runbook section 5d) or take the overlay out of COMPOSE_FILE" \
+    || fail "compose.prod.spotdown.yaml is in COMPOSE_FILE but secrets/spotdown_service_key is missing or empty, so the worker would treat spotdown as off: copy spotdown's key into it (runbook section 5d) or take the overlay out of COMPOSE_FILE" \
     || return 1
 }
-if [[ $mode == repo ]]; then   # the self-test; the install-folder cases are in scripts/test-install-check.sh
-  sk_dir="$tmp/spotdown-key"; mkdir "$sk_dir"
-  sk_canary="spotdown-canary-$RANDOM$RANDOM"
-  sk_expect() {   # sk_expect WANT(ok|refused) SPOTDOWN(on|off) KEY(none|empty|full)
-    local want="$1" j='{"services":{"worker":{}}}' rc=0 out
-    [[ "$2" == off ]] || j='{"services":{"worker":{},"spotdown-api":{}}}'
-    rm -f "$sk_dir/spotdown_service_key"
-    case "$3" in empty) : > "$sk_dir/spotdown_service_key" ;; full) printf '%s' "$sk_canary" > "$sk_dir/spotdown_service_key" ;; esac
-    out="$( (check_spotdown_key "$j" "$sk_dir") 2>&1)" || rc=$?
-    if [[ "$want" == ok && "$rc" != 0 ]] || [[ "$want" == refused && "$rc" == 0 ]] || grep -qF -- "$sk_canary" <<<"$out"; then
-      echo "check-prod-compose: self-test: spotdown $2, key $3: wanted $want, rc $rc (or the key was printed)" >&2; exit 1
-    fi
-  }
-  sk_expect ok on full
-  sk_expect refused on empty
-  sk_expect refused on none
-  sk_expect ok off none
-  sk_expect ok off empty
-fi

@@ -197,14 +197,14 @@ strip_bridge='
     else . end'
 check_real() {
   J="$(jq "$strip_bridge" <<<"$J")" || fail "the real render could not be read" || return 1
+  check_no_spotdown_hosted || return 1   # first: its message is clearer than the allow-list's
   check_keys || return 1
   check_secret_mounts || return 1
-  check_spotdown_parts || return 1   # spotdown in COMPOSE_FILE: the whole overlay, its rules (#1481)
+  check_spotdown_parts real || return 1   # the link to spotdown in COMPOSE_FILE: all of it (#1526)
 }
 
 J="$shared"; check_shared || exit 1
 J="$loopback"; check_loopback || exit 1
 J="$lan"; check_lan || exit 1
 J="$spotdown"; check_withspotdown || exit 1
-J="$spotdown_egress"; check_withspotdown || exit 1
 J="$defaults"; check_oauth_defaults || exit 1

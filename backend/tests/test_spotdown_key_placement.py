@@ -4,8 +4,9 @@ creates it empty (no key: spotdown off). Static checks over the repository's own
 network, no key.
 
 In production only the spotdown overlay ``compose.prod.spotdown.yaml`` (#1481, off unless the owner
-adds it to ``COMPOSE_FILE``) names it: on classbeat's worker and on spotdown's own API, which checks
-it; never on web. ``compose.prod.yaml`` alone does not name it (no spotdown, nothing changes)."""
+adds it to ``COMPOSE_FILE``) names it, on classbeat's worker only (spotdown runs elsewhere and holds
+its own copy, #1526); never on web. ``compose.prod.yaml`` alone does not name it (no spotdown,
+nothing changes)."""
 
 import re
 from pathlib import Path
@@ -43,19 +44,17 @@ def test_no_other_compose_file_names_it_and_no_environment_holds_it() -> None:
             assert NAME not in content, path.name
 
 
-def test_the_production_overlay_mounts_the_key_on_the_worker_and_spotdown_api_only() -> None:
+def test_the_production_overlay_mounts_the_key_on_the_worker_only() -> None:
     overlay: dict[str, Any] = yaml.safe_load(text("compose.prod.spotdown.yaml"))
     holders = sorted(n for n, s in overlay["services"].items() if NAME in mounts(s))
-    assert holders == ["spotdown-api", "worker"]  # never web, spotdown's worker or Redis
-    assert "web" not in overlay["services"]
-    assert overlay["secrets"][NAME] == {"file": f"./secrets/{NAME}"}
-    api_env = overlay["services"]["spotdown-api"]["environment"]
-    assert api_env["SERVICE_KEY_FILE"] == f"/run/secrets/{NAME}"  # spotdown reads the file
+    assert holders == ["worker"]  # never web; classbeat runs no spotdown service (#1526)
+    assert sorted(overlay["services"]) == ["worker"]
+    assert overlay["secrets"][NAME] == {"file": f"./secrets/{NAME}"}  # classbeat's own copy
     worker_env = overlay["services"]["worker"]["environment"]
-    assert worker_env == {"CLASSBEAT_SPOTDOWN_URL": "http://spotdown-api:8000"}
+    assert worker_env == {"CLASSBEAT_SPOTDOWN_URL": "${SPOTDOWN_URL:-http://spotdown-api:8000}"}
     for name, service in overlay["services"].items():
         env = service.get("environment") or {}
-        keys = [str(k).upper() for k in env if k != "SERVICE_KEY_FILE"]
+        keys = [str(k).upper() for k in env]
         assert not any("SERVICE_KEY" in k for k in keys), name  # a path, never the key itself
 
 

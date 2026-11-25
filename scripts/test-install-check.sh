@@ -25,7 +25,7 @@ bad()  { echo "FAIL: $*" >&2; fails=$((fails + 1)); }
 "$root/scripts/release-assets.sh" build "$work/assets"
 ( cd "$work/assets" && sha256sum -c --quiet SHA256SUMS ) || bad "SHA256SUMS does not verify"
 # The asset list is exactly what the runbook downloads.
-want="SHA256SUMS backup.sh check-prod-compose-owner.bash check-prod-compose-probe.bash check-prod-compose-rollback.bash check-prod-compose-rules.bash check-prod-compose-runbook.bash check-prod-compose-secretfiles.bash check-prod-compose-secrets.bash check-prod-compose-selftest-compose.bash check-prod-compose-selftest-yaml.bash check-prod-compose-setup.bash check-prod-compose-site-selftest.bash check-prod-compose-site.bash check-prod-compose-spotdown.bash check-prod-compose-turnstile.bash check-prod-compose.sh compose.prod.lan.yaml compose.prod.loopback.yaml compose.prod.spotdown-egress.yaml compose.prod.spotdown.yaml compose.prod.yaml install-swag-logrotate.sh prod.env.example restore.sh swag-classbeat-logrotate.conf swag-classbeat.subdomain.conf validate-backup.sh"
+want="SHA256SUMS backup.sh check-prod-compose-owner.bash check-prod-compose-probe.bash check-prod-compose-rollback.bash check-prod-compose-rules.bash check-prod-compose-runbook.bash check-prod-compose-secretfiles.bash check-prod-compose-secrets.bash check-prod-compose-selftest-compose.bash check-prod-compose-selftest-spotdown.bash check-prod-compose-selftest-yaml.bash check-prod-compose-setup.bash check-prod-compose-site-selftest.bash check-prod-compose-site.bash check-prod-compose-spotdown.bash check-prod-compose-turnstile.bash check-prod-compose.sh compose.prod.lan.yaml compose.prod.loopback.yaml compose.prod.spotdown.yaml compose.prod.yaml install-swag-logrotate.sh prod.env.example restore.sh swag-classbeat-logrotate.conf swag-classbeat.subdomain.conf validate-backup.sh"
 # find, not a glob: a glob (`*`) would not list a dotfile, so a hidden asset (a .env) could never fail this.
 list_dir() { find "$work/assets" -mindepth 1 -maxdepth 1 -printf '%f\n'; }
 got="$(list_dir | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
@@ -258,41 +258,34 @@ if (( can_gid )); then
   expect "Turnstile off, no keys" 0 '^install check'
   mksecrets; cp "$work/env.ts" "$install/.env"; echo 'TURNSTILE_ENABLED=true' >> "$install/.env"
   expect "Turnstile on explicitly, both keys present" 0 '^install check'
-  # 2d. spotdown (#1481): off unless COMPOSE_FILE names its overlay. The good installs above have no
-  # secrets/spotdown_service_key at all; with the overlay the key file must exist, be filled and have
-  # the group and mode of every secret, and SPOTDOWN_VERSION must be a release tag.
+  # 2d. spotdown (#1526): classbeat never runs it; the overlay only links the worker to one. Off unless
+  # COMPOSE_FILE names the overlay. The good installs above have no secrets/spotdown_service_key at all;
+  # with the overlay the key file must exist, be filled and have the group and mode of every secret.
   mksecrets; cp "$work/env.good" "$install/.env"
   [ ! -e "$install/secrets/spotdown_service_key" ] || bad "the install fixture already holds a spotdown key"
   printf 'COMPOSE_FILE=compose.prod.yaml:compose.prod.spotdown.yaml\n' >> "$install/.env"
-  expect "spotdown overlay without SPOTDOWN_VERSION" 1 'docker compose config fails with your .env'
-  echo 'SPOTDOWN_VERSION=0.4.0' >> "$install/.env"
   expect "spotdown overlay without the key file" 1 'secrets/spotdown_service_key is missing'
   install -m 640 /dev/null "$install/secrets/spotdown_service_key"; as_root chgrp "$gid" "$install/secrets/spotdown_service_key"
   expect "spotdown overlay with an empty key file" 1 'spotdown_service_key is missing or empty.*section 5d'
   printf '%s-spotdown_service_key' "$canary" > "$install/secrets/spotdown_service_key"
   expect "good install with spotdown" 0 '^install check'
+  echo 'SPOTDOWN_URL=http://spotdown-api:8000' >> "$install/.env"
+  expect "good install with SPOTDOWN_URL set" 0 '^install check'
   chmod 644 "$install/secrets/spotdown_service_key"
   expect "spotdown key of mode 644" 1 'chmod 640 secrets/spotdown_service_key'
-  chmod 640 "$install/secrets/spotdown_service_key"
-  sed -i 's/^SPOTDOWN_VERSION=.*/SPOTDOWN_VERSION=latest/' "$install/.env"
-  expect "spotdown overlay on latest" 1 'never latest'
-  # 2e. YouTube (#1489): the owner's SPOTDOWN_YTDLP_SOURCING=true and the route out of
-  # compose.prod.spotdown-egress.yaml together, or neither; the switch exactly true or false.
-  sed -i 's/^SPOTDOWN_VERSION=.*/SPOTDOWN_VERSION=0.4.0/' "$install/.env"
-  echo 'SPOTDOWN_YTDLP_SOURCING=false' >> "$install/.env"
-  expect "spotdown with YouTube explicitly off" 0 '^install check'
-  sed -i 's/^SPOTDOWN_YTDLP_SOURCING=.*/SPOTDOWN_YTDLP_SOURCING=true/' "$install/.env"
-  expect "YouTube on without the route out" 1 'go together'
+  chmod 640 "$install/secrets/spotdown_service_key"; as_root chgrp 0 "$install/secrets/spotdown_service_key"
+  expect "spotdown key of another group" 1 'sudo chgrp 10010 secrets/spotdown_service_key'
+  as_root chgrp "$gid" "$install/secrets/spotdown_service_key"
+  # An old install: the egress overlay is gone, and so is spotdown's own file; Compose refuses the name.
   sed -i 's/^COMPOSE_FILE=.*/COMPOSE_FILE=compose.prod.yaml:compose.prod.spotdown.yaml:compose.prod.spotdown-egress.yaml/' "$install/.env"
-  expect "good install with YouTube and its route out" 0 '^install check'
-  for v in yes 1 True on; do
-    sed -i "s/^SPOTDOWN_YTDLP_SOURCING=.*/SPOTDOWN_YTDLP_SOURCING=$v/" "$install/.env"
-    expect "YouTube switch $v" 1 'exactly true or false'
-  done
-  sed -i 's/^SPOTDOWN_YTDLP_SOURCING=.*/SPOTDOWN_YTDLP_SOURCING=false/' "$install/.env"
-  expect "the route out with YouTube off" 1 'go together'
-  sed -i '/^SPOTDOWN_YTDLP_SOURCING=/d' "$install/.env"
-  expect "the route out without the switch" 1 'docker compose config fails with your .env'
+  expect "the removed egress overlay in COMPOSE_FILE" 1 'docker compose config fails with your .env'
+  # A local edit that runs spotdown inside classbeat's project is refused (the real render).
+  sed -i 's/^COMPOSE_FILE=.*/COMPOSE_FILE=compose.prod.yaml:compose.prod.spotdown.yaml:compose.mine.yaml/' "$install/.env"
+  printf 'services:\n  spotdown-api:\n    image: ghcr.io/magpern/spotdown:0.4.0\n    logging: {driver: json-file, options: {max-size: 10m}}\n' > "$install/compose.mine.yaml"
+  expect "a spotdown service in the real render" 1 'classbeat never runs spotdown'
+  printf 'services:\n  analysis:\n    image: ghcr.io/magpern/spotdown:0.4.0\n    logging: {driver: json-file, options: {max-size: 10m}}\n' > "$install/compose.mine.yaml"
+  expect "a spotdown image under another name in the real render" 1 'no service runs a spotdown image'
+  rm -f "$install/compose.mine.yaml"
   cp "$work/env.good" "$install/.env"; mksecrets
   cp "$work/env.ts" "$install/.env"
   mksecrets

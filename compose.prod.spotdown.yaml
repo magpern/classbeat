@@ -1,165 +1,37 @@
-# Overlay for compose.prod.yaml (ADR 0040 section 10, #1481): spotdown, classbeat's music-analysis
-# service, on the same box. OFF until the owner adds this file to COMPOSE_FILE: without it the stack,
-# its settings and its behaviour are exactly compose.prod.yaml's (nothing calls spotdown).
+# Overlay for compose.prod.yaml (ADR 0040 section 10 and its amendment of 2026-11-25, #1526): classbeat's
+# worker calls a spotdown that runs somewhere else. OFF until the owner adds this file to COMPOSE_FILE:
+# without it the stack, its settings and its behaviour are exactly compose.prod.yaml's (nothing calls
+# spotdown).
 #
 #   COMPOSE_FILE=compose.prod.yaml:compose.prod.spotdown.yaml      (in .env; runbook section 5d)
 #   (with an overlay of section 6b or 6c: that overlay first, this file after it, bridge last)
+#   SPOTDOWN_URL   spotdown's internal origin, optional, default http://spotdown-api:8000
 #
-#   SPOTDOWN_VERSION       release tag of ghcr.io/magpern/spotdown (X.Y.Z, never `latest`)  required
-#   SPOTDOWN_API_CPUS, SPOTDOWN_API_MEMORY, SPOTDOWN_WORKER_CPUS, SPOTDOWN_WORKER_MEMORY   optional
-#   SPOTDOWN_YTDLP_SOURCING  true or false (default); true only with compose.prod.spotdown-egress.yaml
-#
-# Three services: spotdown-api (the v2 API, service mode), spotdown-worker (the rq worker that runs
-# the analysis in its rlimited subprocess) and spotdown-redis (their queue). None publishes a port;
-# each runs read-only as a non-root user with no capability (spotdown's deploy/compose.yaml).
-# Two internal networks (no route out): `spotdown` joins classbeat's worker and spotdown-api only, so
-# the worker reaches the API and nothing else of spotdown; `spotdown-internal` joins the three spotdown
-# services, so Redis (no password) is reachable from spotdown alone. Web joins neither.
-#
-# The one shared service key (classbeat.spotdown.key_policy) is the secret file
-# secrets/spotdown_service_key, mounted on classbeat's worker (it sends it as Bearer) and on
-# spotdown-api (its SERVICE_KEY_FILE, which checks it), never on web, spotdown-worker or Redis. It
-# must be filled (32 to 256 printable ASCII characters without whitespace) before this file is added:
-# spotdown-api refuses to start without a key, and classbeat's worker treats an empty file as "no
-# spotdown" (spotdown_available).
-#
-# classbeat relays SwedeBeat audio with spotdown's `upload` source; the `url` source is off
-# (URL_ALLOWED_HOSTS empty, fixed: classbeat never uses it). YouTube sourcing (ALLOW_YTDLP_SOURCING) is
-# the owner's switch SPOTDOWN_YTDLP_SOURCING in .env, `false` unless set; with this file alone spotdown
-# has no route out. YouTube needs both (#1489, runbook section 5d): SPOTDOWN_YTDLP_SOURCING=true and
-# compose.prod.spotdown-egress.yaml after this file in COMPOSE_FILE (the outbound network, for
-# spotdown-api and spotdown-worker only). The check refuses one without the other, and any value but
-# `true` or `false`. Turning it on is the owner's deployment step (ADR 0040, amendment "#1296 accepted").
-# scripts/check-prod-compose.sh checks all of this. Needs Docker Compose 2.24.4 or later.
-
-x-spotdown-logging: &spotdown-logging
-  driver: json-file
-  options:
-    max-size: "10m"
-    max-file: "5"
-
-x-spotdown-env: &spotdown-env
-  SERVICE_MODE: "true"
-  SERVE_UI: "false"
-  DATA_DIR: /data
-  REDIS_URL: redis://spotdown-redis:6379/0
-  URL_ALLOWED_HOSTS: ""
-  ALLOW_YTDLP_SOURCING: ${SPOTDOWN_YTDLP_SOURCING:-false}
-
-x-spotdown: &spotdown
-  image: ghcr.io/magpern/spotdown:${SPOTDOWN_VERSION:?set SPOTDOWN_VERSION to a spotdown release tag}
-  restart: unless-stopped
-  logging: *spotdown-logging
-  security_opt:
-    - no-new-privileges:true
-  cap_drop:
-    - ALL
-  # The image's own non-root user (spotdown's Dockerfile: USER 10001:10001); a new named volume
-  # takes the ownership of the image's /data (10001, mode 0750). The image is read-only: spotdown
-  # writes only to /data and its caches to /tmp (XDG_CACHE_HOME, NUMBA_CACHE_DIR), as in spotdown's
-  # own deploy/compose.yaml.
-  user: "10001:10001"
-  read_only: true
-  tmpfs:
-    - /tmp:size=512m,mode=1777
-  volumes:
-    - spotdown-data:/data
-  depends_on:
-    spotdown-redis:
-      condition: service_healthy
+# classbeat never runs spotdown ("Classbeat is classbeat, spotdown is spotdown."): spotdown is its own
+# project, installed from its own release and runbook (magpern/spotdown, docs/runbooks/docker-image.md).
+# This file gives the worker, and nothing else, the three things it needs to call it:
+#   - the URL (classbeat.spotdown.url_policy decides which origins the worker accepts);
+#   - the service key, secrets/spotdown_service_key, a copy of spotdown's key value with the same file rules
+#     as every classbeat secret (group 10010, mode 640); never on web;
+#   - spotdown's network, an external one that spotdown's runbook creates (`--internal`); classbeat never
+#     creates it, and `up` fails if it is missing. Only the worker joins it, never web.
+# scripts/check-prod-compose.sh checks this, and refuses any production render with a spotdown service,
+# image or volume. Needs Docker Compose 2.24.4 or later.
 
 services:
   worker:
     environment:
-      # ADR 0040 section 10: spotdown's internal origin (spotdown.url_policy), worker only.
-      CLASSBEAT_SPOTDOWN_URL: http://spotdown-api:8000
+      CLASSBEAT_SPOTDOWN_URL: ${SPOTDOWN_URL:-http://spotdown-api:8000}
     secrets:
       - spotdown_service_key
     networks:
       - spotdown
-
-  spotdown-api:
-    <<: *spotdown
-    # ADR 0026 stage 1: the API takes uploads (at most 60 MiB each, streamed to disk) and serves the
-    # results; the analysis is the worker's.
-    cpus: ${SPOTDOWN_API_CPUS:-0.5}
-    mem_limit: ${SPOTDOWN_API_MEMORY:-1g}
-    # The image's user reads the key through the group classbeat-secrets (runbook section 5).
-    group_add:
-      - "10010"
-    environment:
-      <<: *spotdown-env
-      SERVICE_KEY_FILE: /run/secrets/spotdown_service_key
-    secrets:
-      - spotdown_service_key
-    networks:
-      - spotdown
-      - spotdown-internal
-    # spotdown's own probe (app/healthcheck.py): /healthz on loopback over plain http.client, so no
-    # HTTP_PROXY setting can send it anywhere else; it prints nothing.
-    healthcheck:
-      test: ["CMD", "python", "-m", "app.healthcheck", "api"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 20s
-
-  spotdown-worker:
-    <<: *spotdown
-    command: ["rq", "worker", "-u", "redis://spotdown-redis:6379/0", "spotdown"]
-    # ADR 0026 stage 1: one analysis at a time, in a subprocess whose rlimit is spotdown's
-    # ANALYSIS_MAX_MEMORY_MB (default 3072) inside this ceiling; the rest is the rq process. Keep
-    # SPOTDOWN_WORKER_MEMORY above 3g, never a CPU value above the host's core count (runbook 5c).
-    cpus: ${SPOTDOWN_WORKER_CPUS:-1.0}
-    mem_limit: ${SPOTDOWN_WORKER_MEMORY:-4g}
-    environment:
-      <<: *spotdown-env
-    # The image's HEALTHCHECK probes the API, which does not run here: the worker pings Redis
-    # instead (spotdown's deploy/compose.yaml does the same), or `up --wait` would never pass.
-    healthcheck:
-      test: ["CMD", "python", "-m", "app.healthcheck", "worker"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
-    networks:
-      - spotdown-internal
-
-  spotdown-redis:
-    # The same patch release and index digest as spotdown's deploy/compose.yaml.
-    image: redis:7.4.12-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
-    restart: unless-stopped
-    logging: *spotdown-logging
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    # The image's redis user from the start: its root entrypoint would chown and gosu, which needs
-    # capabilities this file drops.
-    user: "999:1000"
-    read_only: true
-    cpus: 0.5
-    mem_limit: 256m
-    volumes:
-      - spotdown-redis:/data
-    networks:
-      - spotdown-internal
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
 
 networks:
   spotdown:
-    internal: true
-  spotdown-internal:
-    internal: true
+    external: true
+    name: spotdown
 
 secrets:
   spotdown_service_key:
     file: ./secrets/spotdown_service_key
-
-volumes:
-  spotdown-data: {}
-  spotdown-redis: {}
