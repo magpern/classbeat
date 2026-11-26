@@ -37,8 +37,8 @@ from classbeat.design import (
     composer,
     interpret_policy,
     interpretation_row,
+    limits,
     mixadmit,
-    music_kind,
     revision,
     sport,
 )
@@ -81,7 +81,6 @@ class InterpretRequestInput(ModelJobInput):
     song_picking: bool | None = None  # song picking admits the user (None: queued before it)
     swedebeat_mixes: bool | None = None
     composer: bool | None = None  # the composer flow was on at admit (None: before #1185)
-    soundless: bool | None = None  # soundless classes are on: "No music" may be offered (#1536)
     # A re-read of the class's own reading (#1536, ``classes.reread``): the interpret job whose
     # reading the instructor answered, and the answers as plain sentences, which are the next chat
     # message; ``request`` is the earlier request plus them. Set by the route, never a browser.
@@ -167,7 +166,6 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         "song_picking": picking,
         "swedebeat_mixes": mixes,
         "composer": composing,
-        "soundless": await music_kind.soundless_on(db),
     }
     return Admitted(fields, after_insert)
 
@@ -181,12 +179,19 @@ _DESIGNED = text(
 )
 
 
+_REQUESTS = text(
+    "SELECT count(*) FROM class_messages WHERE owner_id = :owner_id AND class_id = :class_id "
+    "AND role = 'user'"
+)
+
+
 async def _reread_refusal(
     db: AsyncSession, ctx: UserContext, parsed: InterpretRequestInput
 ) -> Refused | None:
     """A re-read only of the reading the answers were derived from (``not_ready`` once another
     one was stored), and only before any design: a revision or a job of another kind (a design
-    job, ``class_designed``). An open job of the class is refused ``class_busy`` by the create."""
+    job, ``class_designed``), and while the chat holds fewer than its most requests (``chat_full``).
+    An open job of the class is refused ``class_busy`` by the create."""
     class_id = parsed.class_id
     if class_id is None:
         return Refused("invalid_input")
@@ -196,6 +201,11 @@ async def _reread_refusal(
     ids = {"owner_id": ctx.user_id, "class_id": class_id, "kind": _INTERPRET}
     if (await db.execute(_DESIGNED, ids)).first() is not None:
         return Refused("class_designed")
+    # The answers are the chat's next message: a re-read counts toward the chat's request cap.
+    asked = (await db.execute(_REQUESTS, ids)).scalar_one()
+    max_requests = limits.current().max_requests
+    if asked >= max_requests:
+        return Refused("chat_full", {"limit": max_requests, "count": asked})
     return None
 
 

@@ -50,6 +50,24 @@ describe('the composer part of the reading (ADR 0038 section 3)', () => {
     expect(screen.getByText('What about the music? For now: Pick songs for me')).toBeTruthy()
   })
 
+  it('keeps a required music question that assumes nothing, and shows no assumed answer for it', () => {
+    const body = {
+      questions: [
+        { topic: 'music', text: 'What music do you want?', options: ['Pop hits', 'No music'] },
+        { topic: 'length', text: 'No assumption allowed?', options: ['a', 'b'] }, // only music may go without one
+      ],
+    }
+    const { questions } = decodeReadingExtras(body)
+    expect(questions).toEqual([{ topic: 'music', text: 'What music do you want?', options: ['Pop hits', 'No music'], assumedIndex: null }])
+    render(
+      <I18nProvider initial="en">
+        <RequestBlock request={null} items={[]} extras={decodeReadingExtras(body)} />
+      </I18nProvider>,
+    )
+    expect(screen.getByText('What music do you want?')).toBeTruthy()
+    expect(screen.queryByText(/For now/)).toBeNull()
+  })
+
   it('shows nothing new for a class without them', () => {
     render(
       <I18nProvider initial="en">

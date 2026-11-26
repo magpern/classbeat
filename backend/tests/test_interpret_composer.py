@@ -134,19 +134,6 @@ def test_the_message_says_how_many_playlists_are_attached_and_nothing_else() -> 
     assert PLAYLIST not in json.dumps(attached)
 
 
-def test_no_music_is_offered_to_the_interpreter_only_when_soundless_is_on() -> None:
-    kwargs: dict[str, Any] = {
-        "sports": ("cycling",),
-        "max_class_minutes": 60,
-        "games_allowed": True,
-        "music": (),
-    }
-    plain = first_message(REQUEST, **kwargs)
-    assert plain == first_message(REQUEST, soundless=False, **kwargs)  # byte-identical
-    assert "no_music_offered" not in json.loads(plain)
-    assert json.loads(first_message(REQUEST, soundless=True, **kwargs))["no_music_offered"] is True
-
-
 # --- the reading: pinned songs --------------------------------------------------------------
 
 
@@ -233,7 +220,7 @@ def ask(topic: str, text: str = "Which?", options: Any = None, assumed: int = 0)
     }
 
 
-def kept(reading: dict[str, Any], skip: Any = ()) -> list[tuple[str, int]]:
+def kept(reading: dict[str, Any], skip: Any = ()) -> list[tuple[str, int | None]]:
     read = submitted("A climbing class", reading)
     return [(q.topic, q.assumed_index) for q in composer_reading(read, skip)[1]]
 
@@ -286,6 +273,44 @@ def test_the_models_questions_are_kept_one_per_topic_in_range_and_never_of_a_sta
     assert kept(reading, skip) == expected
 
 
+def required_music(**over: Any) -> dict[str, Any]:
+    question = ask("music", options=["Pop hits", "Playlists", "No music"]) | {"no_music_index": 2}
+    del question["assumed_index"]
+    return question | over
+
+
+def test_a_music_question_with_no_hint_is_required_and_marks_its_no_music_option() -> None:
+    read = submitted("A climbing class", {"questions": [required_music()]})
+    only = composer_reading(read)[1][0]
+    assert only.assumed_index is None  # nothing is assumed: the instructor answers it
+    assert only.no_music_index == 2
+    assert only.options[only.no_music_index] == "No music"
+
+
+def test_only_a_music_question_may_go_without_an_assumed_answer() -> None:
+    other = ask("length")
+    del other["assumed_index"]
+    assert kept({"questions": [other, ask("intensity")]}) == [("intensity", 0)]
+
+
+def test_the_no_music_marker_follows_its_option_through_cleaning_and_is_for_music_only() -> None:
+    read = submitted(
+        "A climbing class",
+        {
+            "questions": [
+                required_music(options=["Rock", "rock", "No music"], no_music_index=2),
+                ask("length") | {"no_music_index": 1},  # not a music question: no marker
+            ]
+        },
+    )
+    music, length = composer_reading(read)[1]
+    assert music.options == ["Rock", "No music"]
+    assert music.no_music_index == 1  # the duplicate "rock" left, the marker followed its option
+    assert length.no_music_index is None
+    out_of_range = submitted("A class", {"questions": [required_music(no_music_index=9)]})
+    assert composer_reading(out_of_range)[1][0].no_music_index is None
+
+
 def test_the_question_schema_is_closed_and_capped() -> None:
     bad: list[dict[str, Any]] = [
         ask("climbs"),  # not a topic
@@ -322,6 +347,7 @@ def test_question_text_is_cleaned_and_duplicate_options_are_merged() -> None:
     assert len(questions) == 1
     only = questions[0]
     assert only.options == ["Easy", "Hard", "Medium"]
+    assert only.assumed_index is not None
     assert only.options[only.assumed_index] == "Medium"  # the assumed answer follows its option
     assert "\n" not in only.text
     assert only.text == only.text.strip()  # a link stays text: the page renders it as plain text

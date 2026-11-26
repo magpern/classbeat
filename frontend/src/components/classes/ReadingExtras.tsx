@@ -3,6 +3,7 @@ import { useT } from '../../i18n/I18n'
 
 function QuestionLine({ question }: { question: ReadingQuestion }) {
   const t = useT()
+  if (question.assumedIndex === null) return <>{question.text}</>
   return <>{`${question.text} ${t('interp.question.assumed', { answer: question.options[question.assumedIndex] ?? '' })}`}</>
 }
 

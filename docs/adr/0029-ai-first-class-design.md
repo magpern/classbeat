@@ -242,9 +242,10 @@ The fields are:
    hand-off designs it through the song pick's approval on a new private playlist in that
    playlist's order (ADR 0008 amendment of 2026-11-16).)*
    *(Roadmap Amendment 37, 2026-11-26, #1536: when the request names no music, the reading asks about
-   it as one of its questions, with "Pick songs for me", "Use one of my playlists" and, only when
-   soundless classes are on, "No music". The order above does not change; the brief keeps the assumed
-   default, and free-text "no music" is still not read as soundless.)*
+   it as one of its questions; with no hint of the music the question has no assumed answer, its options
+   are styles, "Use one of my playlists" and always "No music" (the stored `no_music_index` marks it;
+   decisions 6 and 7), and a pick with no hint is refused `music_unanswered` at the hand-off. The order
+   above does not change, and free-text "no music" is still not read as soundless.)*
 5. The allowed sports go to the interpreter.
 
 **`Brief`** (moved into `agent/brief.py`)
@@ -339,7 +340,9 @@ The fields are:
   `classes/reread.py`). The owner only (another user's class is 404); refused with a revision, an open
   job or a design job; no class credit, but the cost cap and the per-user job limit apply; concurrent
   calls admit one job. The new reading replaces `classes.interpretation` under the fence and the hand-off
-  uses it.
+  uses it. The body names the reading it answers (`interpret_job_id`, `not_ready` when another one is
+  stored); an answer on the marked "No music" option sets `music_override` `none` (the marker, never the
+  words); the chat's request cap applies (`chat_full`).
 - **It does not enqueue.** The worker cannot import `jobs.service` (`test_session_guard.py`).
   While it is running, a design job would also be refused by the one-open-job-per-class index.
 

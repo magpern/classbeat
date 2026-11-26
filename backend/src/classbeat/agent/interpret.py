@@ -108,9 +108,13 @@ structure, sport or other); text, one short question in the language of the requ
 with no markup or link, at most 160 characters; options, 2 to 5 short answers in the same \
 language, each at most 60 characters; assumed_index, the 0-based index of the option the app \
 assumes if the instructor does not answer. The app assumes it and does not wait for an answer. \
-Music rule: when the request mentions no music at all (no playlist, mix, style, era, artist or \
-song), always ask about music, with options such as "Pick songs for me" (assumed) and "Use one of \
-my playlists"; add the option "No music" only when the message says "no_music_offered": true.
+Music rule: songs are never picked at random. When the request gives no hint of the music (no \
+playlist, mix, style, era, language, artist or song, and the message has no "attached_playlists"), \
+always ask about music and leave assumed_index out of that question: the instructor must answer \
+it. Its at most 5 options are up to 3 style suggestions in the language of the request (such as \
+"Pop hits", "80s and 90s", "Rock"), "Use one of my playlists", and always "No music"; set \
+no_music_index on that question to the index of the "No music" option (leave no_music_index out \
+on every other question). Leave assumed_index out only for that question, never for another.
 
 A message with "current" holds a change to an existing class whose values are "current". Then \
 report only the fields the request changes, each with the value it should have after the change \
@@ -155,8 +159,6 @@ class InterpretContext:
     current: Mapping[str, Any] | None = None
     # The composer's attached Spotify playlists (ADR 0038 section 3): only how many, never an id.
     attached: int = 0
-    # "No music" may be offered as an answer to the music question (soundless is on, #1536).
-    soundless: bool = False
 
     def first_message(self) -> str:
         return interpret_input.first_message(
@@ -167,7 +169,6 @@ class InterpretContext:
             music=self.music,
             current=self.current,
             attached=self.attached,
-            soundless=self.soundless,
         )
 
 

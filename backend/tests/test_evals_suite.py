@@ -101,7 +101,7 @@ RELEASED: dict[int, str] = {
     33: "d9bcc86fcf944947d854b50ca0eba4ed0255ebb87225bafe42abcea9510a008b",
     # #1536: model-chosen questions (topic, text, options, assumed answer) in the interpret
     # prompt and schema, four new question cases, the soundless offer in the case.
-    34: "cacda3042bcbdacf6675356990a847a0dc78cb67fd6bb594214bf71ecd2da260",
+    34: "8a8fb8d2124ade4196a69aec2a9d1921a15fa77829735c3b448ad1b6e068ef77",
 }
 
 SUITE = load_suite()

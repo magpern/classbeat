@@ -61,7 +61,7 @@ PINNED = {
     # changed interpret, design and soundless_design once more, on purpose (suite version 30): the
     # ride's shape in the interpret prompt, and the design prompts' sentence on what a brief holds.
     # #1536 changed interpret once more, on purpose (suite version 34): the model-chosen questions.
-    "interpret": "329b02c1486d2dcf2083f51e6b6a6d7f411d8bfd93cbcccf2c3c120c665076ed",
+    "interpret": "e51082c20cef69f3a5bbe6b5fc7efd8a02daf11f78a953fd79622a4292138d61",
 }
 PLANTED = "Zq9 planted brief text"
 PLANTED_STYLE = "Zq9 planted style"

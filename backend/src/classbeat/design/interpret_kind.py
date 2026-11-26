@@ -73,7 +73,6 @@ async def run(job_run: JobRun) -> Complete:
         games_allowed=True if gates is None else gates.games,
         music=tuple(MusicName(o.kind, o.name) for o in options),
         attached=len(given.music_sources or ()) if given.composer else 0,
-        soundless=bool(given.soundless),
     )
     outcome = await run_stage(
         JobStageHost(job_run),
@@ -153,7 +152,6 @@ INTERPRET_REQUEST: Final = KINDS.register(
                 "pick_ready",
                 "song_picking",
                 "swedebeat_mixes",
-                "soundless",
                 "reread_of",
                 "answers",
                 "composer",

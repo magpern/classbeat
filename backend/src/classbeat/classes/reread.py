@@ -5,9 +5,16 @@ questions into one more ``interpret_request`` job on the **same** class, before 
 
 - only for the user's own class (another user's, or an unknown one, is ``not_found``) whose reading
   is stored (``not_ready``); the checks that need the class and its jobs under the owner lock (no
-  revision and no job of another kind, ``class_designed``; the reading is still the one the answers
-  were derived from, ``not_ready``) are ``interpret_admit``'s, and an open job of the class is
-  ``class_busy`` from the create;
+  revision and no job of another kind, ``class_designed``; the reading is still the stored one,
+  ``not_ready``; the chat is not full, ``chat_full``) are ``interpret_admit``'s, and an open job of
+  the class is ``class_busy`` from the create;
+- the body names the reading the answers belong to (``interpret_job_id``): another one stored since
+  is ``not_ready``, before any index is read (a stale tab's answers are never applied to another
+  reading's questions);
+- an answer that picks the question's marked "No music" option (``no_music_index``) makes the new
+  job's ``music_override`` ``none`` (the marker is the stored question's own, never the option's
+  words and never a field of the body; a typed "no music" is not read, #1137). A soundless design
+  the switch does not admit is refused at the hand-off, before any job or credit;
 - the answers are checked against the stored questions and made into sentences
   (``design.interpret_reread_policy``: ``invalid_answer``); the new request is the request of the
   reading's own interpret job plus those sentences (``too_large`` over the request's limit), and
@@ -37,7 +44,11 @@ from classbeat.classes.interpret_again import BROWSER_FIELDS
 from classbeat.classes.interpretation import Handoff
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
-from classbeat.design import INTERPRET_REQUEST, interpret_reread_policy, interpretation_row
+from classbeat.design import (
+    INTERPRET_REQUEST,
+    interpret_reread_policy,
+    interpretation_row,
+)
 from classbeat.design.interpret_admit import InterpretRequestInput, PickChoice
 from classbeat.jobs.credits import CreditLedger
 from classbeat.jobs.http import JobEnqueue
@@ -81,6 +92,8 @@ async def reread(
         if row is None:
             found = (await db.execute(_EXISTS, owner)).first()
             return Handoff(reason="not_ready" if found is not None else "not_found")
+        if row.job_id != body.interpret_job_id:
+            return Handoff(reason="not_ready")  # the answers belong to another reading
         params = {**owner, "job_id": row.job_id, "kind": INTERPRET_REQUEST.name}
         earlier = (await db.execute(_READING_JOB, params)).scalar_one_or_none()
         ended = (await db.execute(_ENDED, {**owner, "kind": INTERPRET_REQUEST.name})).scalar_one()
@@ -92,6 +105,7 @@ async def reread(
     said = interpret_reread_policy.sentences(row.questions, body)
     if said is None:
         return Handoff(reason="invalid_answer")
+    no_music = interpret_reread_policy.chose_no_music(row.questions, body)
     try:
         given = InterpretRequestInput.model_validate(earlier)
         request = interpret_reread_policy.combined(given.request, said)
@@ -109,6 +123,7 @@ async def reread(
                 "class_id": str(class_id),
                 "reread_of": str(row.job_id),
                 "answers": said,
+                **({"music_override": {"source": "none"}} if no_music else {}),
                 "mowl_connection_id": str(mowl),
                 **({"spotify_connection_id": str(spotify)} if spotify else {}),
             }

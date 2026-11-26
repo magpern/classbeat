@@ -97,6 +97,8 @@ class InterpretExpect(BaseModel):
         default_factory=lambda: list[QuestionTopic](), max_length=MAX_QUESTIONS
     )
     no_questions: bool = False
+    # The music question has no assumed answer and marks a "No music" option (#1536).
+    music_required: bool = False
     named: bool = False  # a new class gets a short name that survives the cleaning (#1233)
     # The ride's sections in order (#1485); ``None``: not judged, ``[]``: the reading has none.
     shape: list[SectionFields] | None = Field(default=None, max_length=MAX_SECTIONS)
@@ -118,6 +120,8 @@ class InterpretExpect(BaseModel):
         stated = {p for p, o in self.origins.items() if o == "explicit"}
         if {TOPIC_PATHS[t] for t in self.asks if t in TOPIC_PATHS} & stated:
             raise ValueError("a question is never asked of a stated field")
+        if self.music_required and "music" not in self.asks:
+            raise ValueError("a required music question must also be in asks")
         if set(self.asks) & set(self.not_asks) or (self.no_questions and self.asks):
             raise ValueError("a topic is expected asked or not asked, not both")
         if set(self.values) & set(self.absent):
@@ -142,7 +146,6 @@ class InterpretCase(BaseModel):
     )
     current: Brief | None = None  # a revise: the class as it stands
     attached: int = Field(default=0, ge=0, le=5)  # the composer's attached playlists (#1185)
-    soundless: bool = False  # "No music" is offered as a music answer (#1536)
     expect: InterpretExpect
 
     @model_validator(mode="after")

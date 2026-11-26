@@ -8,12 +8,16 @@ instructor's own words (a typed answer, the note) and the stored question text (
 and the chosen option are put into it, never an index or markup: the interpreter reads them as
 the instructor's words, as it read the first request.
 
+``chose_no_music`` reports an answer that picked the marked "No music" option (the route then sets
+``music_override`` ``none``; a typed "no music" is never read as one, #1137).
+
 Codes: ``invalid_answer`` (an index no question or option has, a question answered twice, or no
 answer and no note) and ``too_large`` (the new request is over ``MAX_REQUEST`` characters).
 """
 
 from collections.abc import Sequence
 from typing import Annotated, Final, Self
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -45,6 +49,9 @@ class Answer(BaseModel):
 class RereadIn(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
+    # The reading these answers belong to (``GET .../interpretation``'s ``interpret_job_id``): the
+    # route refuses ``not_ready`` when another reading was stored since, before any index is read.
+    interpret_job_id: UUID
     answers: Annotated[list[Answer], Field(max_length=MAX_QUESTIONS)] = Field(
         default_factory=lambda: []
     )
@@ -73,6 +80,18 @@ def sentences(questions: Sequence[Question], body: RereadIn) -> str | None:
     if note:
         parts.append(f"Also: {note}")
     return " ".join(parts) if parts else None
+
+
+def chose_no_music(questions: Sequence[Question], body: RereadIn) -> bool:
+    """An answer picked the option a ``music`` question marked as "No music" (``no_music_index``:
+    a closed marker, so the option's words, in any language, are never read). Free text is never."""
+    for given in body.answers:
+        if given.option_index is None or given.question_index >= len(questions):
+            continue
+        asked = questions[given.question_index]
+        if asked.topic == "music" and asked.no_music_index == given.option_index:
+            return True
+    return False
 
 
 def combined(request: str, addition: str) -> str | None:

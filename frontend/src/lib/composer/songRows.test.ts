@@ -46,4 +46,9 @@ describe('the quick answers', () => {
       { index: 2, label: '60 minutes' },
     ])
   })
+
+  it('offers every option of a required question, which assumes none', () => {
+    const question = { topic: 'music' as const, text: 'Music?', options: ['Pop hits', 'No music'], assumedIndex: null }
+    expect(quickAnswers(question).map((a) => a.label)).toEqual(['Pop hits', 'No music'])
+  })
 })

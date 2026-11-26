@@ -2095,6 +2095,8 @@ const da: Catalogue = {
     'Et design af dette hold kører stadig. Vent til det er færdigt, og prøv igen.',
   'ws.refused.not_ready':
     'Din anmodning bliver stadig læst. Vent et øjeblik, og prøv igen.',
+  'ws.refused.music_unanswered':
+    'Fortæl os, hvilken musik du vil have, eller vælg Ingen musik. Der vælges ingen sange, før du har svaret.',
   'ws.refused.class_designed':
     'Dette hold er allerede designet. Åbn dine hold for at se det.',
   'ws.interpretAgain': 'Fortolk igen',

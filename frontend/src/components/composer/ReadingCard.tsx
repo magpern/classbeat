@@ -18,22 +18,24 @@ function Question({
   const t = useT()
   const [kept, setKept] = useState(false)
   if (kept) return null
-  const assumed = question.options[question.assumedIndex] ?? ''
-  const keep = t('cw.answer.keep', { answer: assumed })
-  const text = `${question.text} ${t('interp.question.assumed', { answer: assumed })}`
+  // A required question (no assumed answer) has no "keep": it closes only when answered.
+  const assumed = question.assumedIndex === null ? null : (question.options[question.assumedIndex] ?? '')
+  const text = assumed === null ? question.text : `${question.text} ${t('interp.question.assumed', { answer: assumed })}`
   return (
     <li className="m-0 flex flex-col gap-2">
       <span>{text}</span>
       <div role="group" aria-label={t('cw.answer.group')} className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            setKept(true)
-          }}
-          className="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-brand bg-surface px-4 text-sm font-semibold text-brand"
-        >
-          {keep}
-        </button>
+        {assumed !== null ? (
+          <button
+            type="button"
+            onClick={() => {
+              setKept(true)
+            }}
+            className="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-brand bg-surface px-4 text-sm font-semibold text-brand"
+          >
+            {t('cw.answer.keep', { answer: assumed })}
+          </button>
+        ) : null}
         {quickAnswers(question).map((answer) => (
           <button
             key={answer.index}

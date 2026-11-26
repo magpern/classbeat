@@ -16,6 +16,7 @@ from classbeat.design.interpret_music_policy import (
 )
 from classbeat.design.interpretation_row import StoredInterpretation
 from classbeat.design.kind import DesignDraftInput, NoMusicChoice, SpotifyMusicChoice
+from classbeat.design.music_hint_policy import MUSIC_UNANSWERED, has_hint, is_pick
 from classbeat.jobs.inputs import JobInput
 from classbeat.jobs.kinds import JobKind
 from classbeat.songs.inputs import DesignWithSongsInput
@@ -74,6 +75,14 @@ def design_input(
     try:
         given = InterpretRequestInput.model_validate(job_input)
         brief = Brief.model_validate(row.brief)
+        if is_pick(row.music) and not has_hint(
+            row.items,
+            brief.music_taste,
+            pinned=len(row.pinned_songs),
+            override=given.music_override,
+            sources=given.music_sources,
+        ):
+            return MUSIC_UNANSWERED  # no song is picked at random (#1536)
         if composer and given.composer is True and _sketched(row, brief):
             return DESIGN_DRAFT, DesignDraftInput(
                 class_id=class_id,

@@ -93,35 +93,57 @@ class InterpretedQuestion(BaseModel):
         list[Annotated[str, Field(min_length=1, max_length=OPTION_CHARS)]],
         Field(min_length=MIN_OPTIONS, max_length=MAX_OPTIONS),
     ]
-    assumed_index: Annotated[int, Field(ge=0)]  # range-checked by the policy, never a correction
+    # Range-checked by the policy, never a correction. ``None``: the question has no assumed answer
+    # and is required: only a ``music`` question with no hint of what to play (no song is picked
+    # at random), otherwise the question is dropped.
+    assumed_index: Annotated[int, Field(ge=0)] | None = None
+    # The option that means "No music", a closed marker the app reads (the option's words are the
+    # model's, in the request's language); only for a ``music`` question, left out by the policy
+    # on any other.
+    no_music_index: Annotated[int, Field(ge=0)] | None = None
 
     def sanitised(self) -> "InterpretedQuestion | None":
         """The question with its text and options cleaned (``clean_text``), an option said twice
         (case aside) kept once and ``assumed_index`` following its option; ``None`` when nothing
         usable is left: no text, fewer than ``MIN_OPTIONS`` options, or an assumed index that
-        points at no option."""
+        points at no option (or none, unless this is a ``music`` question)."""
         text = clean_text(self.text)
-        if not text or self.assumed_index >= len(self.options):
+        held = self.assumed_index
+        if not text or (held is None and self.topic != "music"):
+            return None
+        if held is not None and held >= len(self.options):
             return None
         options: list[str] = []
-        assumed = -1
+        assumed: int | None = None if held is None else -1
+        none: int | None = None  # ``no_music_index`` following its option
         for index, option in enumerate(self.options):
             kept = clean_text(option)
             known = [o.casefold() for o in options]
             if not kept:
-                if index == self.assumed_index:
+                if index == held:
                     return None
                 continue
             if kept.casefold() in known:
-                if index == self.assumed_index:
+                if index == held:
                     assumed = known.index(kept.casefold())
+                if index == self.no_music_index:
+                    none = known.index(kept.casefold())
                 continue
-            if index == self.assumed_index:
+            if index == held:
                 assumed = len(options)
+            if index == self.no_music_index:
+                none = len(options)
             options.append(kept)
-        if len(options) < MIN_OPTIONS or assumed < 0:
+        if len(options) < MIN_OPTIONS or (assumed is not None and assumed < 0):
             return None
-        return self.model_copy(update={"text": text, "options": options, "assumed_index": assumed})
+        return self.model_copy(
+            update={
+                "text": text,
+                "options": options,
+                "assumed_index": assumed,
+                "no_music_index": none,
+            }
+        )
 
 
 def from_request(words: str | None, request: str, limit: int) -> str | None:

@@ -1067,6 +1067,8 @@ export const en = {
     'A design of this class is still running. Wait for it to finish, then try again.',
   'ws.refused.not_ready':
     'Your request is still being read. Wait a moment, then try again.',
+  'ws.refused.music_unanswered':
+    'Tell us what music you want, or choose No music, and no songs are picked until you do.',
   'ws.refused.class_designed':
     'This class has already been designed. Open your classes to see it.',
   'ws.interpretAgain': 'Interpret again',

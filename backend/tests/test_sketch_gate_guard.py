@@ -26,6 +26,7 @@ SKETCH_ONLY = [
     "design/revise_sketch.py",
     "design/composer.py",
     "design/interpret_kind.py",
+    "design/interpret_admit.py",  # split out of interpret_kind.py: reads no switch (#1536)
     "songs/composer_change.py",
     "classes/interpretation.py",
     "classes/change_view.py",

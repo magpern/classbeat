@@ -20,7 +20,8 @@ export interface ReadingQuestion {
   topic: QuestionTopic
   text: string
   options: string[]
-  assumedIndex: number
+  /** The option the app assumes; null for a required question (a music question with no hint of what to play: nothing is assumed). */
+  assumedIndex: number | null
 }
 
 const TOPICS: readonly string[] = ['music', 'length', 'intensity', 'structure', 'sport', 'other']
@@ -56,6 +57,11 @@ export function decodeReadingExtras(body: Record<string, unknown>): ReadingExtra
     if (typeof text !== 'string' || text === '') continue
     if (!Array.isArray(options) || options.length < MIN_OPTIONS || options.length > MAX_OPTIONS) continue
     if (!options.every((o): o is string => typeof o === 'string' && o !== '')) continue
+    if (assumedIndex === undefined || assumedIndex === null) {
+      if (topic !== 'music') continue // only a music question goes without an assumed answer
+      questions.push({ topic, text, options, assumedIndex: null })
+      continue
+    }
     if (typeof assumedIndex !== 'number' || !Number.isInteger(assumedIndex) || assumedIndex < 0 || assumedIndex >= options.length) continue
     questions.push({ topic: topic as QuestionTopic, text, options, assumedIndex })
   }

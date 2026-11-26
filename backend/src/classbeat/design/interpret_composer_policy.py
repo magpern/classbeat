@@ -37,6 +37,7 @@ from classbeat.agent.interpreted_composer import (
     OPTION_CHARS,
     QUESTION_CHARS,
     TITLE_CHARS,
+    InterpretedQuestion,
     QuestionTopic,
 )
 
@@ -66,7 +67,10 @@ class Question(BaseModel):
         list[Annotated[str, Field(min_length=1, max_length=OPTION_CHARS)]],
         Field(min_length=MIN_OPTIONS, max_length=MAX_OPTIONS),
     ]
-    assumed_index: Annotated[int, Field(ge=0, lt=MAX_OPTIONS)]
+    # ``None``: required, no assumed answer (a music question with no hint, #1536).
+    assumed_index: Annotated[int, Field(ge=0, lt=MAX_OPTIONS)] | None = None
+    # The option that means "No music" (a ``music`` question only).
+    no_music_index: Annotated[int, Field(ge=0, lt=MAX_OPTIONS)] | None = None
 
 
 def legacy_dropped(value: Any) -> Any:
@@ -95,7 +99,8 @@ def questions(
 ) -> list[Question]:
     """The interpreter's questions, in its order, as stored: one per topic (``other`` as often as
     it is asked), none whose ``assumed_index`` is no option, none about a path in ``stated`` (read
-    with origin ``explicit``) or a topic in ``skip``, at most ``MAX_QUESTIONS``."""
+    with origin ``explicit``) or a topic in ``skip``, at most ``MAX_QUESTIONS``.
+    The "No music" marker is kept only on a ``music`` question, and in range."""
     explicit = set(stated)
     out: list[Question] = []
     for asked in read.questions:
@@ -106,19 +111,30 @@ def questions(
             continue
         if not MIN_OPTIONS <= len(asked.options) <= MAX_OPTIONS:
             continue
-        if not 0 <= asked.assumed_index < len(asked.options):
+        held = asked.assumed_index
+        if held is not None and not 0 <= held < len(asked.options):
+            continue
+        if held is None and topic != "music":
             continue
         out.append(
             Question(
                 topic=topic,
                 text=asked.text,
                 options=list(asked.options),
-                assumed_index=asked.assumed_index,
+                assumed_index=held,
+                no_music_index=_none_index(asked),
             )
         )
         if len(out) == MAX_QUESTIONS:
             break
     return out
+
+
+def _none_index(asked: InterpretedQuestion) -> int | None:
+    index = asked.no_music_index
+    if asked.topic != "music" or index is None:
+        return None
+    return index if index < len(asked.options) else None
 
 
 def chosen_topics(*, music: bool, sport: bool) -> frozenset[str]:

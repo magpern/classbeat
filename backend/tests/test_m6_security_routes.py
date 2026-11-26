@@ -963,7 +963,10 @@ OWNED_ROUTES = [
     OwnedRoute(
         "POST",
         "/api/classes/{class_id}/reread",
-        lambda rows: {"answers": [{"question_index": 0, "text": "x"}]},
+        lambda rows: {
+            "interpret_job_id": "00000000-0000-4000-8000-000000000001",
+            "answers": [{"question_index": 0, "text": "x"}],
+        },
         frozenset({409}),
     ),
     # ADR 0007 amendment "beat-one corrections": the planted draft has no beat data, so the

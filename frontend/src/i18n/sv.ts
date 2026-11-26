@@ -2108,6 +2108,8 @@ const sv: Catalogue = {
     'En design av det här passet pågår fortfarande. Vänta tills den är klar och försök igen.',
   'ws.refused.not_ready':
     'Din begäran läses fortfarande. Vänta en stund och försök igen.',
+  'ws.refused.music_unanswered':
+    'Berätta vilken musik du vill ha, eller välj Ingen musik. Inga låtar väljs innan du har svarat.',
   'ws.refused.class_designed':
     'Det här passet är redan designat. Öppna dina pass för att se det.',
   'ws.interpretAgain': 'Tolka igen',

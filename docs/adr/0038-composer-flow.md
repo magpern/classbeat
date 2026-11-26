@@ -93,7 +93,10 @@ questions with the assumed answers, and the instructor may answer them; the answ
   each `{topic, text, options 2 to 5, assumed_index}`, one per topic except `other`; the old closed pair
   `{path, question, assumed}` below is superseded. A stored question in the old shape is dropped when
   read. The text is plain text. The instructor answers through `POST /api/classes/{id}/reread`, and the
-  hand-off and the sketch start from the reading the instructor confirmed.)*
+  hand-off and the sketch start from the reading the instructor confirmed. A re-read is a request of the
+  chat and counts toward `chat_max_requests` (refused `chat_full` at the cap). A question may carry no
+  assumed answer: a `music` question with no hint of the music, which the instructor must answer (a pick
+  with no hint is refused `music_unanswered`, amendment 37 decision 7).)*
   - They are asked only for a brief field with no explicit value whose default changes the class's shape:
     length and intensity. The brief has no warm-up field yet, so a question about the warm-up needs a later
     brief change (a design decision of its own); the reading never asks one.

@@ -1,9 +1,10 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
-## Amendment 37 (2026-11-26, owner decisions 1 to 5: the reading asks what it assumed and can be read again; issue #1536)
+## Amendment 37 (2026-11-26, owner decisions 1 to 7: the reading asks what it assumed and can be read again; issue #1536)
 
-The owner tried the composer with a request that named a class and left most of it open ("45 minutes,
-hard, three climbs") and found that the reading answered silently with defaults, and that nothing could
+The owner tried the composer with the request of issue #1536 (a 60-minute class that builds up, with a
+hilly section, short heavy bursts and a finish, and no word about the music) and found that the reading
+answered silently with defaults, and that nothing could
 be said about the reading before a design started. Decisions:
 
 1. **The model chooses the questions.** The reading asks about everything the request leaves unstated
@@ -11,19 +12,41 @@ be said about the reading before a design started. Decisions:
    assumed_index}` (topics `music`, `length`, `intensity`, `structure`, `sport`, `other`). It replaces
    the closed pair of ADR 0038 section 3 (length and intensity, at most 2). One question per topic is
    kept, except `other`. The text is cleaned, length-capped and shown as plain text.
-2. **Music is asked when it is not mentioned.** Options such as "Pick songs for me" and "Use one of my
-   playlists", and "No music" only when soundless classes are on. The music order (ADR 0029 section 4,
-   rule 4) is unchanged, and free-text "no music" still does not make a class soundless (#1137).
+2. **Music is asked when it is not mentioned.** See decisions 6 and 7: the question is required (no
+   assumed answer) when the request gives no hint, and always offers "No music". The music order
+   (ADR 0029 section 4, rule 4) is unchanged, and free-text "no music" still does not make a class
+   soundless (#1137).
 3. **The brief keeps the assumed defaults.** A question never blocks and never changes the brief by
    itself.
 4. **The reading can be read again before any design.** `POST /api/classes/{id}/reread` takes the
    instructor's answers (an option or a short text per question, and an optional note), stores them as
    the next chat message and runs `interpret_request` again on the same class; the new reading replaces
    the stored one. It takes no class credit, counts toward the cost cap and the per-user job limit, and
-   is refused once a design job or a revision exists.
+   is refused once a design job or a revision exists. The body names the reading the answers belong to
+   (`interpret_job_id`): another one stored since is `not_ready`, before any index is read, and the
+   hand-off may name it too. A re-read is the chat's next request, so it counts toward
+   `chat_max_requests` and is refused `chat_full` at the cap (ADR 0038 note).
 5. **The hand-off waits for the instructor's confirmation.** The sketch and the design start from the
    reading the instructor confirmed (the confirm and answer screen is #1538; this amendment covers the
    backend and the eval).
+
+6. **"No music" is always offered (owner, 2026-11-26: "There should be no such thing [as soundless off].
+   Sound is always on, but user can opt out if he says no").** The music question always has a "No music"
+   option, marked by the closed field `no_music_index` of the stored question (never by the option's
+   words). A re-read that answers with the marked option sets the new job's `music_override` `none`; the
+   browser cannot set the override through the body, and a typed "no music" is still not read (#1137).
+   The soundless switch is not read for the offer. Until a separate issue retires
+   `CLASSBEAT_SOUNDLESS_ENABLED`, a soundless design is still admitted by the switch, so with it off a
+   "No music" reading ends in a closed refusal at the hand-off (`feature_off`), before any job or credit.
+7. **A song pick needs a hint (owner, 2026-11-26: "music should never be totally random. Some hint from
+   user is needed, unless user says no").** A pick is made only with a hint: a taste item (`music_era.*`,
+   `music_language`, `music_genre.*`, `music_hits`), a pinned song, an override the instructor chose, or
+   attached playlists (`music_sources`). With none, the reading's music question has no assumed answer
+   (`assumed_index` absent: the instructor must answer, with a style, one of the playlists, or "No
+   music"), and `design-from-interpretation` refuses a pick with no hint `music_unanswered`, before any
+   job or credit (`design/music_hint_policy.py`). The composer's `PUT /api/classes/{id}/music` (a
+   decision made after the sketch, Amendment 36) is not changed here: its `pick` choice can still pick
+   with no hint, left to #1538.
 
 The designs are the notes in ADR 0029 section 4 (rule 4) and section 5 and in ADR 0038 sections 1 and 3.
 Eval suite 34 (ADR 0012) adds the cases for the questions.

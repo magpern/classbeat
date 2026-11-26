@@ -85,6 +85,8 @@ def check_interpretation(case: InterpretCase, got: InterpretedRequest) -> list[C
             f"{', '.join(stated) or '-'}; asked but not wanted: {', '.join(unwanted) or '-'}",
         )
     )
+    if expect.music_required:
+        checks.append(_music_required(got))
     if expect.named or got.name is not None:
         kept = got.name is not None and proposed_name(got.name) == got.name
         checks.append(Check("name", kept, "a short name that survives the cleaning: given or not"))
@@ -161,3 +163,17 @@ def _covers(eras: list[list[int]], span: list[int]) -> bool:
 
 def _set_of(absent: list[str], read: Collection[str]) -> str:
     return "set: " + (", ".join(sorted(set(absent) & set(read))) or "-")
+
+
+def _music_required(got: InterpretedRequest) -> Check:
+    """The music question has no assumed answer and marks one of its options as "No music"
+    (#1536): songs are never picked at random."""
+    asked = next((q for q in got.questions if q.topic == "music"), None)
+    ok = asked is not None and asked.assumed_index is None and asked.no_music_index is not None
+    return Check(
+        "music_required",
+        ok,
+        "the music question is required with a marked No music option"
+        if ok
+        else "the music question has an assumed answer or no marked No music option",
+    )

@@ -44,6 +44,9 @@ class HandoffIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     retry: bool = False
+    # The reading the instructor confirmed (``GET .../interpretation``'s ``interpret_job_id``):
+    # optional so older clients keep working; another stored since is refused ``not_ready``.
+    interpret_job_id: UUID | None = None
 
 
 class DesignJobOut(BaseModel):
@@ -144,6 +147,7 @@ async def design_from_interpretation(
         ctx,
         wanted,
         retry=body.retry,
+        interpret_job_id=body.interpret_job_id,
         ledger=ledger,
         limit=limit,
         enqueue=job_enqueue(),

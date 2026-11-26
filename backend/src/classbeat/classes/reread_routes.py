@@ -1,11 +1,13 @@
 """``POST /api/classes/{id}/reread`` (#1536; ``classbeat.classes.reread``).
 
-Body ``{answers: [{question_index, option_index | text}], note?}``: 201 with the new interpret
-job ``{job_id, kind, state}``, 200 with the same job for a repeated or concurrent call; 422
+Body ``{interpret_job_id, answers: [{question_index, option_index | text}], note?}``: 201 with the
+new interpret job ``{job_id, kind, state}``, 200 with the same job for a repeated or concurrent
+call; 422
 ``invalid_input`` for a body that is not that and 422 ``invalid_answer`` or ``too_large`` for
 answers that name no question or option or a request over its limit; 409 ``{reason}`` (``not_ready``
-while the reading is not stored or another one was stored since, ``class_designed`` once the class
-has a revision or a design job, ``class_busy`` while a job of the class is open, ``not_connected``,
+while the reading is not stored or ``interpret_job_id`` names another one, ``chat_full``,
+``class_designed`` once the class has a revision or a design job, ``class_busy`` while a job of
+the class is open, ``not_connected``,
 the jobs API's own refusals); 404 ``not_found`` for another user's class like an unknown one. No
 ``Idempotency-Key`` header: the key is derived in ``classbeat.classes.reread``.
 """
