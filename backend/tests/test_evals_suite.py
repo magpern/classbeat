@@ -99,6 +99,9 @@ RELEASED: dict[int, str] = {
     32: "cc3a588986f081bfc6990b342025ddc2d65213ab69376ad15dabf8402f28f038",
     # #1516: a draft with no section tag records its own reason, shape_untagged.
     33: "d9bcc86fcf944947d854b50ca0eba4ed0255ebb87225bafe42abcea9510a008b",
+    # #1536: model-chosen questions (topic, text, options, assumed answer) in the interpret
+    # prompt and schema, four new question cases, the soundless offer in the case.
+    34: "a098be48336a9495b760e3ebf123e31b80581c8dc13aec9f2fef68af88b9cc21",
 }
 
 SUITE = load_suite()
@@ -229,12 +232,13 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
     # (the music taste: three eras, a long range split), #1185: four (pinned songs in English and
     # Swedish, attached music, questions), #1233: one (a new class's short name)
     # #1485: five (a ride in parts, a range with no parts, Swedish parts, no parts, a revise)
-    assert len(SUITE.interpret_cases) == 8 + 3 + 1 + 1 + 2 + 4 + 1 + 5
+    # #1536: four more question cases (music, none needed, structure, none at all)
+    assert len(SUITE.interpret_cases) == 8 + 3 + 1 + 1 + 2 + 4 + 1 + 5 + 4
     assert set(SUITE.interpret_cases) == set(MANIFEST.cases_of("interpret", "design")) | {
         "interpret_playlist_injection"
     }  # the injection is judged in adversarial: every run
     assert (
-        len(index) == 30 + 70 + 3 + 15 + 1 + 1 + 1 + 8 + 3 + 1 + 1 + 2 + 4 + 1 + 5 + 1
+        len(index) == 30 + 70 + 3 + 15 + 1 + 1 + 1 + 8 + 3 + 1 + 1 + 2 + 4 + 1 + 5 + 4 + 1
     )  # #1485, #1493 (a soundless ride in parts)
     assert all(index[n][1] == "design" for n in SUITE.design_cases)
     assert all(index[n][1] == "songs" for n in SUITE.song_cases)

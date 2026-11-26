@@ -241,6 +241,17 @@ The fields are:
    unchanged. When a cycling class's music is a playlist and song picking admits the user, the
    hand-off designs it through the song pick's approval on a new private playlist in that
    playlist's order (ADR 0008 amendment of 2026-11-16).)*
+   *(Roadmap Amendment 37, 2026-11-26, #1536: when the request names no music, the reading asks about
+   it as one of its questions; with no hint of the music the question has no assumed answer, its options
+   are styles, "Use one of my playlists" and always "No music" (the stored `no_music_index` marks it;
+   decisions 6 and 7), and a pick with no hint is refused `music_unanswered` at the hand-off, on the
+   route that starts the song pick now, after `needs_spotify` (a composer reading reaches its sketch
+   with the music undecided). A hint is a taste item, a pinned song, attached playlists, or a source
+   chosen in the form (`music_override`) other than a pick: "Pick songs for me" is no hint and does not
+   drop the music question, so songs are never picked at random unless the instructor chooses "No
+   music" (the owner's rules of 2026-11-26). With no music question from the model, the backend adds
+   the closed `which_music` question. The order above does not change, and free-text "no music" is
+   still not read as soundless.)*
 5. The allowed sports go to the interpreter.
 
 **`Brief`** (moved into `agent/brief.py`)
@@ -330,6 +341,14 @@ The fields are:
   credit** but counts toward the cost cap and the per-user job limit.
 - **Worker:** the `interpret` stage, then `request_policy`. It stores the resolved
   `{brief, music}` and the items in `classes.interpretation` under its fence, then completes.
+- **Re-read (roadmap Amendment 37, #1536).** `POST /api/classes/{id}/reread` runs this job again on the
+  same class with the instructor's answers as the next chat message (`design/interpret_admit.py`,
+  `classes/reread.py`). The owner only (another user's class is 404); refused with a revision, an open
+  job or a design job; no class credit, but the cost cap and the per-user job limit apply; concurrent
+  calls admit one job. The new reading replaces `classes.interpretation` under the fence and the hand-off
+  uses it. The body names the reading it answers (`interpret_job_id`, `not_ready` when another one is
+  stored); an answer on the marked "No music" option sets `music_override` `none` (the marker, never the
+  words); the chat's request cap applies (`chat_full`).
 - **It does not enqueue.** The worker cannot import `jobs.service` (`test_session_guard.py`).
   While it is running, a design job would also be refused by the one-open-job-per-class index.
 

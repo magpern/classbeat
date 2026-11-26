@@ -1,19 +1,20 @@
 import type { ReadingQuestion } from '../../api/readingExtras'
+import type { TFunction } from '../../i18n/t'
+import { optionLabel } from '../readingQuestionWords'
 
-// The quick answers of a reading question (ADR 0038 section 3): each sends a prepared sentence as
-// an ordinary chat change. A value equal to the assumed one is not offered as a change (it would
-// spend one of the class's revises on nothing); "keep it" is a local dismissal instead.
+// The quick answers of a reading question (ADR 0038 section 3): one per option other than the
+// assumed one (every option of a required question, which has none), each sending a prepared sentence as an ordinary chat change. The assumed option is
+// not offered as a change (it would spend one of the class's revises on nothing); "keep it" is a
+// local dismissal instead. The model's option text is shown and sent as plain text; a closed
+// question's options are phrased from the catalogue (`lib/readingQuestionWords.ts`).
 
-export type QuickAnswer =
-  | { kind: 'length'; minutes: number }
-  | { kind: 'effort'; effort: 'easy' | 'moderate' | 'hard' }
+export interface QuickAnswer {
+  index: number
+  label: string
+}
 
-const LENGTHS = [30, 45, 60] as const
-const EFFORTS = ['easy', 'moderate', 'hard'] as const
-
-export function quickAnswers(question: ReadingQuestion): QuickAnswer[] {
-  if (question.question === 'how_long') {
-    return LENGTHS.filter((m) => m !== question.assumed).map((minutes) => ({ kind: 'length', minutes }))
-  }
-  return EFFORTS.filter((e) => e !== question.assumed).map((effort) => ({ kind: 'effort', effort }))
+export function quickAnswers(question: ReadingQuestion, t: TFunction): QuickAnswer[] {
+  return question.options.flatMap((_, index) =>
+    question.assumedIndex !== null && index === question.assumedIndex ? [] : [{ index, label: optionLabel(question, index, t) }],
+  )
 }

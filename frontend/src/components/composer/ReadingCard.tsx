@@ -2,19 +2,10 @@ import { useState } from 'react'
 import type { InterpretationItem } from '../../api/interpretationItems'
 import type { ReadingExtras, ReadingQuestion } from '../../api/readingExtras'
 import { useT } from '../../i18n/I18n'
-import { quickAnswers, type QuickAnswer } from '../../lib/composer/quickAnswers'
+import { quickAnswers } from '../../lib/composer/quickAnswers'
+import { optionLabel, questionText } from '../../lib/readingQuestionWords'
 import { ReadingExtras as PinnedAndQuestions } from '../classes/ReadingExtras'
 import { InterpretationNote } from '../classes/InterpretationNote'
-
-function answerLabel(answer: QuickAnswer, t: ReturnType<typeof useT>): string {
-  return answer.kind === 'length' ? t('cw.answer.length', { minutes: answer.minutes }) : t(`cw.answer.${answer.effort}`)
-}
-
-function answerSentence(answer: QuickAnswer, t: ReturnType<typeof useT>): string {
-  return answer.kind === 'length'
-    ? t('cw.answer.sentence.length', { minutes: answer.minutes })
-    : t(`cw.answer.sentence.${answer.effort}`)
-}
 
 function Question({
   question,
@@ -28,38 +19,39 @@ function Question({
   const t = useT()
   const [kept, setKept] = useState(false)
   if (kept) return null
-  const keep = question.question === 'how_long' ? t('cw.answer.keepLength', { minutes: question.assumed }) : t('cw.answer.keepEffort')
-  const text =
-    question.question === 'how_long'
-      ? t('interp.question.how_long', { minutes: question.assumed })
-      : t('interp.question.how_hard', { effort: t(`newclass.effort.${question.assumed}`) })
+  // A required question (no assumed answer) has no "keep": it closes only when answered.
+  const asked = questionText(question, t)
+  const assumed = question.assumedIndex === null ? null : optionLabel(question, question.assumedIndex, t)
+  const text = assumed === null ? asked : `${asked} ${t('interp.question.assumed', { answer: assumed })}`
   return (
     <li className="m-0 flex flex-col gap-2">
       <span>{text}</span>
       <div role="group" aria-label={t('cw.answer.group')} className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            setKept(true)
-          }}
-          className="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-brand bg-surface px-4 text-sm font-semibold text-brand"
-        >
-          {keep}
-        </button>
-        {quickAnswers(question).map((answer) => (
+        {assumed !== null ? (
           <button
-            key={answerLabel(answer, t)}
+            type="button"
+            onClick={() => {
+              setKept(true)
+            }}
+            className="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-brand bg-surface px-4 text-sm font-semibold text-brand"
+          >
+            {t('cw.answer.keep', { answer: assumed })}
+          </button>
+        ) : null}
+        {quickAnswers(question, t).map((answer) => (
+          <button
+            key={answer.index}
             type="button"
             disabled={disabled}
             onClick={() => {
               // The question closes only when the answer was stored; a refusal keeps it open.
-              void onAnswer(answerSentence(answer, t)).then((stored) => {
+              void onAnswer(t('cw.answer.sentence', { text: asked, answer: answer.label })).then((stored) => {
                 if (stored) setKept(true)
               })
             }}
             className="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-line bg-surface px-4 text-sm text-text disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {answerLabel(answer, t)}
+            {answer.label}
           </button>
         ))}
       </div>
@@ -100,7 +92,7 @@ export function ReadingCard({
       {extras.questions.length > 0 ? (
         <ul className="m-0 flex list-none flex-col gap-3 p-0">
           {extras.questions.map((question) => (
-            <Question key={question.question} question={question} onAnswer={onAnswer} disabled={disabled} />
+            <Question key={`${question.topic}-${question.code ?? question.text}`} question={question} onAnswer={onAnswer} disabled={disabled} />
           ))}
         </ul>
       ) : null}

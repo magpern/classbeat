@@ -40,6 +40,8 @@ export const REFUSALS: Readonly<Record<string, RefusalCopy>> = {
   pool_busy: { kind: 'transient', text: 'ws.refused.pool_busy', actions: ['retry'] },
   class_busy: { kind: 'transient', text: 'ws.refused.class_busy', actions: ['retry'] },
   not_ready: { kind: 'transient', text: 'ws.refused.not_ready', actions: ['retry'] },
+  // No song is picked at random: the music question must be answered (a style, a playlist, or No music).
+  music_unanswered: { kind: 'request', text: 'ws.refused.music_unanswered', actions: ['interpretAgain', 'startAgain'] },
   class_designed: { kind: 'state', text: 'ws.refused.class_designed', actions: ['classes'] },
 }
 

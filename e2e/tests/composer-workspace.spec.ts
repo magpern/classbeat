@@ -30,7 +30,7 @@ const READ = 'A hard climbing ride. Put Signal Harbor 18 by The Invented Band on
 const PINNED = 'Signal Harbor 18'
 const PIN_URI = 'spotify:track:FakeTrack0000000000018'
 const FAVOURED_URI = 'spotify:track:FakeTrack0000000000031'
-const ANSWER = 'Make the class 60 minutes long.'
+const ANSWER = 'How long should the class be? Answer: 60 minutes'
 const CHANGE = 'Make the last climb longer.'
 // The song the swap script replaces: slot 4 (position 3, 0-based). Found by name: the rows need not follow the slots.
 const SWAPPED = 'Summit Neon 1'

@@ -1954,6 +1954,7 @@ const sv: Catalogue = {
   'start.music.autoHint': 'Avgörs av vad du skrev.',
   'start.music.noMatch': 'Inget matchar.',
   'start.music.pick': 'classbeat väljer låtar (Spotify)',
+  'start.music.pickHint': 'Ange en stil, en epok eller en artist i din begäran, annars frågar vi.',
   'start.music.src.playlist': 'Spotify-spellista · i MOWL',
   'start.music.src.mix': 'Swedebeat-mix',
   'start.spotify.needed': 'Ett pass med musik kräver Spotify: classbeat hittar låtarna där och sparar spellistan där. {link} först.',
@@ -2027,8 +2028,10 @@ const sv: Catalogue = {
   'interp.pinned.byArtist': '{title} med {artist}',
   'interp.pinned.at': 'Var: {at}',
   'interp.questions': 'Frågor',
-  'interp.question.how_long': 'Hur långt ska passet vara? Tills vidare: {minutes} minuter.',
-  'interp.question.how_hard': 'Hur hårt ska det vara? Tills vidare: {effort}.',
+  'interp.question.assumed': 'Tills vidare: {answer}',
+  'interp.question.whichMusic': 'Vilken musik vill du ha? Ange en stil, en epok eller en artist.',
+  'interp.question.whichMusic.myPlaylists': 'Använd en av mina spellistor',
+  'interp.question.whichMusic.noMusic': 'Ingen musik',
   'interp.line': '{what}: {value}',
   'interp.line.notAsked': '{what}. {why}',
   'interp.path.sport': 'Sport',
@@ -2109,6 +2112,8 @@ const sv: Catalogue = {
     'En design av det här passet pågår fortfarande. Vänta tills den är klar och försök igen.',
   'ws.refused.not_ready':
     'Din begäran läses fortfarande. Vänta en stund och försök igen.',
+  'ws.refused.music_unanswered':
+    'Berätta vilken musik du vill ha, eller välj Ingen musik. Inga låtar väljs innan du har svarat.',
   'ws.refused.class_designed':
     'Det här passet är redan designat. Öppna dina pass för att se det.',
   'ws.interpretAgain': 'Tolka igen',

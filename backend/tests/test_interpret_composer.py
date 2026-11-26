@@ -20,7 +20,6 @@ from classbeat.design.interpret_kind import InterpretRequestInput
 from classbeat.design.interpret_policy import Offer, resolve
 from classbeat.design.interpretation_row import StoredInterpretation
 from classbeat.flags import core
-from classbeat.plan_gates import PlanGates
 
 PLAYLIST = "0123456789abcdefABCDEF"
 OTHER = "ZZZZZZZZZZabcdefABCDEF"
@@ -189,8 +188,8 @@ def test_pinned_songs_are_kept_in_the_requests_words_with_their_place(
     pins: list[dict[str, Any]], expected: list[dict[str, Any]]
 ) -> None:
     read = submitted(REQUEST, {"pinned_songs": pins})
-    resolved = resolve(read, REQUEST, Offer(spotify=True, pick_ready=True))
-    stored, _ = composer_reading(read, resolved.brief)
+    resolve(read, REQUEST, Offer(spotify=True, pick_ready=True))
+    stored, _ = composer_reading(read)
     assert [p.model_dump(exclude_none=True) for p in stored] == expected
 
 
@@ -212,63 +211,160 @@ def stated(value: Any, origin: str = "explicit") -> dict[str, Any]:
     return {"value": value, "origin": origin}
 
 
-GATES = PlanGates(max_class_minutes=30, games=True, races=False, ftp_tests=False)
+def ask(topic: str, text: str = "Which?", options: Any = None, assumed: int = 0) -> dict[str, Any]:
+    return {
+        "topic": topic,
+        "text": text,
+        "options": ["One", "Two", "Three"] if options is None else options,
+        "assumed_index": assumed,
+    }
+
+
+def kept(reading: dict[str, Any], skip: Any = ()) -> list[tuple[str, int | None]]:
+    read = submitted("A climbing class", reading)
+    return [(q.topic, q.assumed_index) for q in composer_reading(read, skip)[1]]
 
 
 @pytest.mark.parametrize(
-    ("reading", "gates", "expected"),
+    ("reading", "skip", "expected"),
     [
-        # nothing stated: the length and the effort are asked, the brief's defaults assumed
+        # the model's questions are kept, in its order
         (
-            {"questions": [{"path": "length_min"}, {"path": "intensity"}]},
-            None,
-            [("length_min", "how_long", 45), ("intensity", "how_hard", "moderate")],
+            {"questions": [ask("music") | {"no_music_index": 2}, ask("length", assumed=2)]},
+            (),
+            [("music", 0), ("length", 2)],
         ),
-        # the plan's longest class is what the brief takes, so it is what is assumed
-        ({"questions": [{"path": "length_min"}]}, GATES, [("length_min", "how_long", 30)]),
-        # an explicit value is never asked about
+        # a music question that marks no "No music" is dropped (Amendment 37 decision 6)
+        (
+            {"questions": [ask("music"), ask("length", assumed=2)]},
+            (),
+            [("length", 2)],
+        ),
+        # one per topic, except "other"
+        (
+            {"questions": [ask("length"), ask("length", "Again?"), ask("other"), ask("other")]},
+            (),
+            [("length", 0), ("other", 0), ("other", 0)],
+        ),
+        # an out-of-range assumed answer drops the question
+        (
+            {"questions": [ask("length", assumed=3), ask("intensity", assumed=2)]},
+            (),
+            [("intensity", 2)],
+        ),
+        # a field the request states is never asked about; an inferred one may be
         (
             {
                 "length_min": stated(45),
-                "questions": [{"path": "length_min"}, {"path": "intensity"}],
+                "intensity": stated("hard", "inferred"),
+                "questions": [ask("length"), ask("intensity"), ask("structure")],
             },
-            None,
-            [("intensity", "how_hard", "moderate")],
+            (),
+            [("intensity", 0), ("structure", 0)],
         ),
-        ({"intensity": stated("hard"), "questions": [{"path": "intensity"}]}, None, []),
-        # an inferred value may be asked about: the brief's value is the assumed one
+        # a topic the instructor settled in the form is never asked
         (
-            {"length_min": stated(30, "inferred"), "questions": [{"path": "length_min"}]},
-            None,
-            [("length_min", "how_long", 30)],
+            {"questions": [ask("music"), ask("sport"), ask("other")]},
+            {"music", "sport"},
+            [("other", 0)],
         ),
-        # one question per path
-        (
-            {"questions": [{"path": "intensity"}, {"path": "intensity"}]},
-            None,
-            [("intensity", "how_hard", "moderate")],
-        ),
-        ({}, None, []),
+        # the cap
+        ({"questions": [ask("other", f"Q{i}?") for i in range(12)]}, (), [("other", 0)] * 12),
+        ({}, (), []),
     ],
 )
-def test_questions_are_asked_only_of_open_shape_fields_with_the_briefs_value(
-    reading: dict[str, Any], gates: PlanGates | None, expected: list[tuple[str, str, Any]]
+def test_the_models_questions_are_kept_one_per_topic_in_range_and_never_of_a_stated_field(
+    reading: dict[str, Any], skip: Any, expected: list[tuple[str, int]]
 ) -> None:
-    read = submitted("A climbing class", reading)
-    resolved = resolve(read, "A climbing class", Offer(gates=gates, spotify=True, pick_ready=True))
-    _, questions = composer_reading(read, resolved.brief)
-    assert [(q.path, q.question, q.assumed) for q in questions] == expected
-    for q in questions:  # the brief uses the assumed value; nothing waits for an answer
-        assert getattr(resolved.brief, q.path) == q.assumed
-        assert q.path not in resolved.brief.explicit
+    assert kept(reading, skip) == expected
 
 
-def test_a_question_names_a_closed_path_only_and_at_most_two() -> None:
-    for bad in ({"path": "climbs"}, {"path": "length_min", "question": "How long?"}):
+def required_music(**over: Any) -> dict[str, Any]:
+    question = ask("music", options=["Pop hits", "Playlists", "No music"]) | {"no_music_index": 2}
+    del question["assumed_index"]
+    return question | over
+
+
+def test_a_music_question_with_no_hint_is_required_and_marks_its_no_music_option() -> None:
+    read = submitted("A climbing class", {"questions": [required_music()]})
+    only = composer_reading(read)[1][0]
+    assert only.assumed_index is None  # nothing is assumed: the instructor answers it
+    assert only.no_music_index == 2
+    assert only.options[only.no_music_index] == "No music"
+
+
+def test_only_a_music_question_may_go_without_an_assumed_answer() -> None:
+    other = ask("length")
+    del other["assumed_index"]
+    assert kept({"questions": [other, ask("intensity")]}) == [("intensity", 0)]
+
+
+def test_the_no_music_marker_follows_its_option_through_cleaning_and_is_for_music_only() -> None:
+    read = submitted(
+        "A climbing class",
+        {
+            "questions": [
+                required_music(options=["Rock", "rock", "No music"], no_music_index=2),
+                ask("length") | {"no_music_index": 1},  # not a music question: no marker
+            ]
+        },
+    )
+    music, length = composer_reading(read)[1]
+    assert music.options == ["Rock", "No music"]
+    assert music.no_music_index == 1  # the duplicate "rock" left, the marker followed its option
+    assert length.no_music_index is None
+    out_of_range = submitted("A class", {"questions": [required_music(no_music_index=9)]})
+    assert composer_reading(out_of_range)[1] == []  # offers no "No music": dropped, never mended
+
+
+def test_the_question_schema_is_closed_and_capped() -> None:
+    bad: list[dict[str, Any]] = [
+        ask("climbs"),  # not a topic
+        ask("length", options=["Only one"]),  # fewer than two options
+        ask("length", options=[str(i) for i in range(6)]),  # more than five
+        ask("length", text="x" * 161),
+        ask("length", options=["x" * 61, "y"]),
+        ask("length", assumed=-1),
+        ask("length") | {"path": "length_min"},  # an unknown key
+    ]
+    for question in bad:
         with pytest.raises(ValidationError):
-            InterpretedRequest.model_validate({"questions": [bad]})
+            InterpretedRequest.model_validate({"questions": [question]})
     with pytest.raises(ValidationError):
-        InterpretedRequest.model_validate({"questions": [{"path": "length_min"}] * 3})
+        InterpretedRequest.model_validate({"questions": [ask("other")] * 13})
+
+
+def test_question_text_is_cleaned_and_duplicate_options_are_merged() -> None:
+    read = submitted(
+        "A climbing class",
+        {
+            "questions": [
+                ask(
+                    "other",
+                    "  How hard?\n see https://evil.example/x ",
+                    ["Easy", "easy", " Hard ", "Hard", "Medium"],
+                    assumed=4,
+                ),
+                ask("length", "   ", ["a", "b"]),  # nothing left once cleaned: dropped
+            ]
+        },
+    )
+    questions = composer_reading(read)[1]
+    assert len(questions) == 1
+    only = questions[0]
+    assert only.options == ["Easy", "Hard", "Medium"]
+    assert only.assumed_index is not None
+    assert only.options[only.assumed_index] == "Medium"  # the assumed answer follows its option
+    assert only.text is not None  # the model's question: never a closed one
+    assert "\n" not in only.text
+    assert only.text == only.text.strip()  # a link stays text: the page renders it as plain text
+
+
+def test_a_stored_question_of_the_old_shape_is_dropped_on_reading() -> None:
+    base = {"job_id": uuid4(), "brief": {"length_min": 45}, "music": None, "items": []}
+    old = {"path": "length_min", "question": "how_long", "assumed": 45}
+    row = StoredInterpretation.model_validate(base | {"questions": [old, ask("length")]})
+    assert [q.topic for q in row.questions] == ["length"]
 
 
 # --- how it is stored --------------------------------------------------------------------------
@@ -280,16 +376,21 @@ def test_a_reading_without_pins_or_questions_is_stored_exactly_as_before() -> No
     assert set(dumped) == {"v", "job_id", "brief", "music", "items", "refusal"}
     read = submitted(
         REQUEST,
-        {"pinned_songs": [pin("Africa", "Toto")], "questions": [{"path": "intensity"}]},
+        {"pinned_songs": [pin("Africa", "Toto")], "questions": [ask("intensity")]},
     )
-    pins, questions = composer_reading(read, resolve(read, REQUEST, Offer()).brief)
+    pins, questions = composer_reading(read)
     full = StoredInterpretation.model_validate(
         base | {"pinned_songs": pins, "questions": questions}
     )
     stored = json.loads(full.dumped())
     assert stored["pinned_songs"] == [{"title": "Africa", "artist": "Toto"}]
     assert stored["questions"] == [
-        {"path": "intensity", "question": "how_hard", "assumed": "moderate"}
+        {
+            "topic": "intensity",
+            "text": "Which?",
+            "options": ["One", "Two", "Three"],
+            "assumed_index": 0,
+        }
     ]
     assert StoredInterpretation.model_validate(stored) == full  # it reads back
 
@@ -303,7 +404,7 @@ def test_a_change_of_songs_never_stores_the_composers_part() -> None:
         REQUEST,
         {
             "pinned_songs": [pin("Africa")],
-            "questions": [{"path": "intensity"}],
+            "questions": [ask("intensity")],
             "name": "Africa at the end",
         },
     )

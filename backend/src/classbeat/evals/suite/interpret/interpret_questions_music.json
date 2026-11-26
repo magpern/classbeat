@@ -1,0 +1,12 @@
+{
+ "kind": "interpret",
+ "name": "interpret_questions_music",
+ "about": "A request that gives no hint of the music asks about it with no assumed answer and a marked No music option (#1536).",
+ "request": "A 60 min class that starts off slow and builds up the momentum. A hilly section, that turns into a tough intervall section, thinking 5-7 short heavy bursts, back on flats, bulding up for a new hilly section, finishing of with a few bursts of power.",
+ "expect": {
+  "asks": [
+   "music"
+  ],
+  "music_required": true
+ }
+}

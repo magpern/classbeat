@@ -915,6 +915,7 @@ export const en = {
   'start.music.autoHint': 'Decided from what you wrote.',
   'start.music.noMatch': 'Nothing matches.',
   'start.music.pick': 'classbeat picks songs (Spotify)',
+  'start.music.pickHint': 'Say a style, an era or an artist in your request, or we ask.',
   'start.music.src.playlist': 'Spotify playlist · in MOWL',
   'start.music.src.mix': 'Swedebeat mix',
   'start.spotify.needed': 'A class with music needs Spotify: classbeat finds the songs there and saves the playlist there. {link} first.',
@@ -987,8 +988,10 @@ export const en = {
   'interp.pinned.byArtist': '{title} by {artist}',
   'interp.pinned.at': 'Where: {at}',
   'interp.questions': 'Questions',
-  'interp.question.how_long': 'How long should the class be? For now: {minutes} minutes.',
-  'interp.question.how_hard': 'How hard should it be? For now: {effort}.',
+  'interp.question.assumed': 'For now: {answer}',
+  'interp.question.whichMusic': 'What music do you want? Name a style, an era or an artist.',
+  'interp.question.whichMusic.myPlaylists': 'Use one of my playlists',
+  'interp.question.whichMusic.noMusic': 'No music',
   'interp.line': '{what}: {value}',
   'interp.line.notAsked': '{what}. {why}',
   'interp.path.sport': 'Sport',
@@ -1068,6 +1071,8 @@ export const en = {
     'A design of this class is still running. Wait for it to finish, then try again.',
   'ws.refused.not_ready':
     'Your request is still being read. Wait a moment, then try again.',
+  'ws.refused.music_unanswered':
+    'Tell us what music you want, or choose No music, and no songs are picked until you do.',
   'ws.refused.class_designed':
     'This class has already been designed. Open your classes to see it.',
   'ws.interpretAgain': 'Interpret again',

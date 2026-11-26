@@ -9,25 +9,7 @@ characters, and is refused (422) when even the largest brief it could make
 class: ``class_id`` is refused, and a missing title is taken from the request's first words
 (``interpret_policy.title_for``; a model never sees a title).
 
-**Admit** (``POST /api/jobs``, in the create transaction, under the owner lock, after the generic
-checks: the MOWL connection is the user's current one, the per-user limit), reading only, in this
-order: the plan's gates and the route key (``with_plan``: the request has no brief to check yet),
-``not_connected`` for a Spotify connection id that is not the user's current one, then the period's
-cost cap (``quota.check_cost``, 409 ``quota`` ``cost``). It then resolves, as server fields, what
-the interpreter may be offered (and refuses ``needs_spotify``, or ``song_picking_unavailable`` when
-song picking is off for the user, before any model call and with no credit, a request that has no
-Spotify connection and can only end without music: roadmap Amendment 25,
-``interpret_music_policy.without_spotify_is_refused``; never with the composer available, whose
-sketch needs no Spotify, ADR 0038 amendment of 2026-11-24): ``sports`` (running only when the
-running gate admits the user, ``sport.admit_running``), ``pick_ready`` (a Spotify connection is
-named and song picking admits the user), ``song_picking`` (song picking admits the user),
-``swedebeat_mixes`` (the Swedebeat flag is on and the user uses Swedebeat) and ``composer``
-(``design.composer``; ADR 0038 section 2). Without the composer a request with ``music_sources``
-is refused ``feature_off``, and the reading is as before: only a job admitted with ``composer``
-stores pinned songs, questions and a cycling class's music decision (``music_decision``). The
-request is then stored as the class's first message (seq 1, role ``user``). The kind takes **no
-class credit** (``consumes_credit=False``): the class credit is the design job's, taken by the
-hand-off. It counts toward the per-user limit and its model cost toward the cost cap.
+**Admit**: see ``classbeat.design.interpret_admit`` (the input and ``admit``).
 
 **Worker**: the ``design`` stage group's model first (an unusable route fails ``model_config``
 before any call), then the ``interpret`` stage: the user's music names (``interpret_music``), the
@@ -41,164 +23,38 @@ calls ``POST /api/classes/{id}/design-from-interpretation`` (``classbeat.classes
 A failed interpret stores nothing and uses no credit.
 """
 
-from typing import Annotated, ClassVar, Final, Literal, Self
-from uuid import UUID
+from typing import Final
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from classbeat import quota
 from classbeat.agent import run_stage
-from classbeat.agent.brief import Sport
 from classbeat.agent.interpret import InterpretContext, InterpretResult, interpret_stage
 from classbeat.agent.interpret_input import MusicName
 from classbeat.agent.records import JobStageHost
-from classbeat.context import UserContext
 from classbeat.design import (
-    chat,
     class_name,
-    composer,
     interpret_composer_policy,
     interpret_policy,
     interpretation_row,
-    mixadmit,
     music_decision,
-    revision,
-    sport,
+    music_hint_policy,
+    reading_question_policy,
 )
+from classbeat.design.interpret_admit import (
+    InterpretRequestInput as InterpretRequestInput,  # re-exported: the input models live there
+)
+from classbeat.design.interpret_admit import (
+    MusicOverride as MusicOverride,
+)
+from classbeat.design.interpret_admit import (
+    PickChoice as PickChoice,
+)
+from classbeat.design.interpret_admit import admit
 from classbeat.design.interpret_music import music_options
-from classbeat.design.interpret_music_policy import no_music_reason, without_spotify_is_refused
-from classbeat.design.kind import (
-    NoMusicChoice,
-    SpotifyMusicChoice,
-    SwedebeatMusicChoice,
-    current_runtime,
-    group_model,
-)
-from classbeat.design.kind_music import song_picking
-from classbeat.design.music_sources import MusicSources, check_sources
-from classbeat.design.revise import Request
+from classbeat.design.kind import current_runtime, group_model
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
-from classbeat.jobs.inputs import ModelJobInput, Title, jsonb_size
-from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.quota.route import with_plan, with_plan_run
 
 KIND: Final = "interpret_request"
 STAGES: Final = ("interpret",)
-
-
-class PickChoice(BaseModel):
-    """A song pick (``design_with_songs``), chosen by the user."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    source: Literal["pick"]
-
-
-MusicOverride = Annotated[
-    SpotifyMusicChoice | SwedebeatMusicChoice | NoMusicChoice | PickChoice,
-    Field(discriminator="source"),
-]
-
-
-class InterpretRequestInput(ModelJobInput):
-    CONNECTIONS: ClassVar[tuple[str, ...]] = ("mowl",)
-
-    request: Request
-    music_override: MusicOverride | None = None
-    music_sources: MusicSources | None = None
-    sport_override: Sport | None = None
-    mowl_connection_id: UUID
-    spotify_connection_id: UUID | None = None
-    title: Title | None = None
-    # Server fields, set only by ``admit``.
-    sports: list[Sport] | None = Field(default=None, max_length=2)
-    pick_ready: bool | None = None
-    song_picking: bool | None = None  # song picking admits the user (None: queued before it)
-    swedebeat_mixes: bool | None = None
-    composer: bool | None = None  # the composer flow was on at admit (None: before #1185)
-
-    @model_validator(mode="after")
-    def _one_class(self) -> Self:
-        """Always a new class (overrides ``JobInput``'s rule of the same name)."""
-        if self.class_id is not None:
-            raise ValueError("an interpretation starts a new class")
-        if self.title is None:
-            self.title = interpret_policy.title_for(self.request)
-        return self
-
-    @model_validator(mode="after")
-    def _fits(self) -> Self:
-        worst = interpret_policy.worst_case_brief(self.request)
-        if jsonb_size(worst.stored()) > revision.MAX_BRIEF_BYTES:
-            raise ValueError("the request is too long")
-        if isinstance(self.music_override, PickChoice) and self.spotify_connection_id is None:
-            raise ValueError("a song pick needs the Spotify connection")
-        override = None if self.music_override is None else self.music_override.source
-        check_sources(self.music_sources, override, self.spotify_connection_id)
-        return self
-
-
-_JOB_CLASS = text("SELECT class_id FROM jobs WHERE id = :job_id AND owner_id = :owner_id")
-
-
-async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitted | Refused:
-    if not isinstance(parsed, InterpretRequestInput):
-        return Refused("invalid_input")
-    spotify = parsed.spotify_connection_id
-    if spotify is not None and ctx.connection("spotify") != spotify:
-        return Refused("not_connected")
-    composing = await composer.composer_available(db, ctx)
-    if parsed.music_sources is not None and not composing:
-        return Refused("feature_off")
-    await quota.check_cost(db, ctx)  # QuotaRefused ``cost``: 409 ``quota`` (ADR 0011 section 4)
-    running = await sport.admit_running(db, ctx) is None
-    sports = ["cycling", "running"] if running else ["cycling"]
-    picking = await song_picking(db, ctx)
-    pick_ready = spotify is not None and picking
-    mixes = await mixadmit.flag_on(db, mixadmit.current().enabled) and await _uses_swedebeat(
-        db, ctx
-    )
-    override = parsed.music_override
-    if spotify is None and without_spotify_is_refused(
-        music_source=None if override is None else override.source,
-        sport_override=parsed.sport_override,
-        running_offered=running,
-        mixes=mixes,
-        composer=composing,
-    ):  # Amendment 25: no model call and no credit; with song picking off, nothing to connect
-        return Refused(no_music_reason(picking))
-    request = parsed.request
-
-    async def after_insert(db: AsyncSession, job_id: UUID) -> None:
-        class_id = (
-            await db.execute(_JOB_CLASS, {"job_id": job_id, "owner_id": ctx.user_id})
-        ).scalar_one()
-        await chat.insert_message(
-            db,
-            owner_id=ctx.user_id,
-            class_id=class_id,
-            job_id=job_id,
-            role="user",
-            body=request,
-            base_revision_id=None,
-        )
-
-    fields = {
-        "sports": sports,
-        "pick_ready": pick_ready,
-        "song_picking": picking,
-        "swedebeat_mixes": mixes,
-        "composer": composing,
-    }
-    return Admitted(fields, after_insert)
-
-
-async def _uses_swedebeat(db: AsyncSession, ctx: UserContext) -> bool:
-    from classbeat.connections.preferences import uses_swedebeat_in
-
-    return await uses_swedebeat_in(db, ctx.user_id)
 
 
 async def run(job_run: JobRun) -> Complete:
@@ -245,16 +101,28 @@ async def run(job_run: JobRun) -> Complete:
         sport_override=given.sport_override,
         music_override=override,
     )
-    pins, questions = (
-        interpret_composer_policy.composer_reading(outcome.output.request, resolved.brief)
-        if given.composer
-        else ([], [])
+    read = outcome.output.request
+    pins = interpret_composer_policy.pinned(read) if given.composer else []
+    source = None if given.music_override is None else given.music_override.source
+    chose = source is not None and source != music_hint_policy.PICK  # a pick is no choice (#1536)
+    hintless = music_hint_policy.hintless(
+        resolved.music,
+        resolved.items,
+        resolved.brief.music_taste,
+        pinned=len(pins),
+        override=source,
+        sources=given.music_sources,
     )
+    skip = reading_question_policy.chosen_topics(
+        music=chose or bool(given.music_sources), sport=given.sport_override is not None
+    )
+    questions = reading_question_policy.questions(read, skip, hintless=hintless)  # both flows
     decision = music_decision.initial(
-        outcome.output.request,
+        read,
         composer=bool(given.composer) and resolved.brief.sport == "cycling",
         attached=bool(given.music_sources),
-        chose=given.music_override is not None,
+        chose=chose,
+        hintless=hintless,
     )
     from_request = interpret_policy.title_for(given.request)
     stored = interpretation_row.StoredInterpretation(
@@ -267,11 +135,13 @@ async def run(job_run: JobRun) -> Complete:
         music_decision=decision,
     )
 
-    name = outcome.output.request.name if given.title == from_request else None
+    name = read.name if given.title == from_request else None
+    reread = given.reread_of is not None  # #1536: the class keeps its title and its first message
 
     async def store(fs: FencedSession) -> None:
-        await interpretation_row.store(fs, stored)
-        await class_name.adopt(fs, name, from_request)  # #1233: never a title the user chose
+        await interpretation_row.store(fs, stored, reread=reread)
+        if not reread:
+            await class_name.adopt(fs, name, from_request)  # #1233: never a title the user chose
 
     return Complete(store)
 
@@ -292,6 +162,8 @@ INTERPRET_REQUEST: Final = KINDS.register(
                 "pick_ready",
                 "song_picking",
                 "swedebeat_mixes",
+                "reread_of",
+                "answers",
                 "composer",
             }
         ),

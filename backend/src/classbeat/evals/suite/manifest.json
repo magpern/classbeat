@@ -1,6 +1,6 @@
 {
- "suite_version": 33,
- "digest": "d9bcc86fcf944947d854b50ca0eba4ed0255ebb87225bafe42abcea9510a008b",
+ "suite_version": 34,
+ "digest": "a098be48336a9495b760e3ebf123e31b80581c8dc13aec9f2fef68af88b9cc21",
  "rules": {
   "repeat": 3,
   "pass_share": 0.9,
@@ -101,7 +101,8 @@
     "interpret_revise_remove_games", "interpret_revise_songs_length",
     "interpret_swedish_hits_eras", "interpret_era_split",
     "interpret_pinned_songs", "interpret_pinned_swedish", "interpret_attached_music",
-    "interpret_questions", "interpret_class_name",
+    "interpret_questions", "interpret_questions_music", "interpret_questions_none_needed",
+    "interpret_questions_structure", "interpret_questions_complete", "interpret_class_name",
     "interpret_ride_shape", "interpret_ride_range_only", "interpret_ride_shape_swedish",
     "interpret_ride_no_parts", "interpret_revise_shape"
    ]

@@ -40,7 +40,9 @@ and turn into a bare 404.
    - `J`'s credit is not `committed`.
    Anything else keeps the class: another kind or ending (`expired` needs a song list), a second design
    attempt, a design made from the class form, a retry, an uncertain write (ADR 0005 section 7 keeps
-   blocking). `tests/test_jobs_discard_schema.py` fails when a table that names a class or a job is in
+   blocking). *(Roadmap Amendment 37, #1536: a class that was read again has more than one interpret job,
+   so its failed first design keeps the class: `discard_policy.py` discards a design only when the
+   reading was the class's one other job.)* `tests/test_jobs_discard_schema.py` fails when a table that names a class or a job is in
    neither list, so a new table is decided in its own PR.
 2. **Where (`classbeat.jobs.discard.discard_first_creation`).** In the transaction that ends the job,
    while that job row is locked: the worker's fenced terminal transition (`transitions._terminal`, so

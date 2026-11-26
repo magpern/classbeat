@@ -13,8 +13,9 @@ On the sanitised ``InterpretedRequest`` (what the stage hands back), never on mo
   language and hits, where the case says;
 - ``pinned`` (#1185): the named songs, in order, with the expected title and, where the case
   says, artist and place (case aside);
-- ``questions`` (#1185): every path the case ``asks`` is asked, and no question is asked of a
-  field the reading states explicitly;
+- ``questions`` (#1185, #1536): every topic the case ``asks`` is asked, none it ``not_asks`` (and
+  none at all with ``no_questions``), and no question is asked of a field the reading states
+  explicitly;
 - ``name`` (#1233, #1237): a case that expects the class ``named`` got a short name, and any name
   that came back is one ``class_title_policy.proposed_name`` keeps as it is (clean, at most 60
   characters, no link); ``InterpretedRequest.sanitised`` drops one that is not, so this is the
@@ -33,6 +34,7 @@ from classbeat.agent.interpret_input import clean_request
 from classbeat.agent.interpreted import InterpretedRequest
 from classbeat.agent.ride_shape import SectionFields
 from classbeat.class_title_policy import proposed_name
+from classbeat.design.reading_question_policy import TOPIC_PATHS
 from classbeat.evals.checks import Check
 from classbeat.evals.interpret_cases import InterpretCase, PinExpect, TasteExpect
 
@@ -69,17 +71,22 @@ def check_interpretation(case: InterpretCase, got: InterpretedRequest) -> list[C
         checks.append(_taste(expect.taste, got))
     if expect.pinned is not None:
         checks.append(_pinned(expect.pinned, got))
-    asked = [q.path for q in got.questions]
-    stated = [p for p, r in read.items() if r.origin == "explicit" and p in asked]
-    missing = [p for p in expect.asks if p not in asked]
+    asked = [q.topic for q in got.questions]
+    stated = [
+        t for t in asked if TOPIC_PATHS.get(t) in read and read[TOPIC_PATHS[t]].origin == "explicit"
+    ]
+    missing = [t for t in expect.asks if t not in asked]
+    unwanted = [t for t in asked if t in expect.not_asks or expect.no_questions]
     checks.append(
         Check(
             "questions",
-            not missing and not stated,
+            not missing and not stated and not unwanted,
             f"not asked: {', '.join(missing) or '-'}; asked of a stated field: "
-            f"{', '.join(stated) or '-'}",
+            f"{', '.join(stated) or '-'}; asked but not wanted: {', '.join(unwanted) or '-'}",
         )
     )
+    if expect.music_required:
+        checks.append(_music_required(got))
     if expect.named or got.name is not None:
         kept = got.name is not None and proposed_name(got.name) == got.name
         checks.append(Check("name", kept, "a short name that survives the cleaning: given or not"))
@@ -156,3 +163,17 @@ def _covers(eras: list[list[int]], span: list[int]) -> bool:
 
 def _set_of(absent: list[str], read: Collection[str]) -> str:
     return "set: " + (", ".join(sorted(set(absent) & set(read))) or "-")
+
+
+def _music_required(got: InterpretedRequest) -> Check:
+    """The music question has no assumed answer and marks one of its options as "No music"
+    (#1536): songs are never picked at random."""
+    asked = next((q for q in got.questions if q.topic == "music"), None)
+    ok = asked is not None and asked.assumed_index is None and asked.no_music_index is not None
+    return Check(
+        "music_required",
+        ok,
+        "the music question is required with a marked No music option"
+        if ok
+        else "the music question has an assumed answer or no marked No music option",
+    )

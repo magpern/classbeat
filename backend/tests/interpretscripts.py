@@ -45,10 +45,28 @@ def submission(case: InterpretCase) -> dict[str, Any]:
             for p in e.pinned
         ]
     if e.asks:
-        out["questions"] = [{"path": p} for p in e.asks]
+        out["questions"] = [_question(topic, e.music_required) for topic in e.asks]
     if e.named:  # a short name of the ride (#1233), in quotes as a model may write it
         out["name"] = '"Hills and a tempo ride"'
     return out
+
+
+def _question(topic: str, required: bool) -> dict[str, Any]:
+    """A good model's question: a required music question (no assumed answer, a marked No music
+    option) when the case says so (#1536)."""
+    if topic == "music" and required:
+        return {
+            "topic": topic,
+            "text": "What music do you want?",
+            "options": ["Pop hits", "Use one of my playlists", "No music"],
+            "no_music_index": 2,
+        }
+    return {
+        "topic": topic,
+        "text": f"About the {topic}?",
+        "options": ["Your pick", "Something else"],
+        "assumed_index": 0,
+    }
 
 
 def _taste(t: TasteExpect) -> dict[str, Any]:

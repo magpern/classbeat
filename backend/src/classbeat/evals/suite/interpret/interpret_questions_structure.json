@@ -1,0 +1,11 @@
+{
+ "kind": "interpret",
+ "name": "interpret_questions_structure",
+ "about": "A request whose structure does not fit its length asks about the structure (#1536).",
+ "request": "6 climbs in 20 minutes",
+ "expect": {
+  "asks": [
+   "structure"
+  ]
+ }
+}

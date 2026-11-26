@@ -1941,6 +1941,7 @@ const da: Catalogue = {
   'start.music.autoHint': 'Afgøres ud fra det, du skrev.',
   'start.music.noMatch': 'Intet matcher.',
   'start.music.pick': 'classbeat vælger sange (Spotify)',
+  'start.music.pickHint': 'Angiv en stil, en periode eller en kunstner i din anmodning, ellers spørger vi.',
   'start.music.src.playlist': 'Spotify-playliste · i MOWL',
   'start.music.src.mix': 'Swedebeat-mix',
   'start.spotify.needed': 'Et hold med musik kræver Spotify: classbeat finder sangene dér og gemmer playlisten dér. {link} først.',
@@ -2014,8 +2015,10 @@ const da: Catalogue = {
   'interp.pinned.byArtist': '{title} med {artist}',
   'interp.pinned.at': 'Hvor: {at}',
   'interp.questions': 'Spørgsmål',
-  'interp.question.how_long': 'Hvor lang skal timen være? Indtil videre: {minutes} minutter.',
-  'interp.question.how_hard': 'Hvor hård skal den være? Indtil videre: {effort}.',
+  'interp.question.assumed': 'Indtil videre: {answer}',
+  'interp.question.whichMusic': 'Hvilken musik vil du have? Angiv en stil, en periode eller en kunstner.',
+  'interp.question.whichMusic.myPlaylists': 'Brug en af mine playlister',
+  'interp.question.whichMusic.noMusic': 'Ingen musik',
   'interp.line': '{what}: {value}',
   'interp.line.notAsked': '{what}. {why}',
   'interp.path.sport': 'Sport',
@@ -2096,6 +2099,8 @@ const da: Catalogue = {
     'Et design af dette hold kører stadig. Vent til det er færdigt, og prøv igen.',
   'ws.refused.not_ready':
     'Din anmodning bliver stadig læst. Vent et øjeblik, og prøv igen.',
+  'ws.refused.music_unanswered':
+    'Fortæl os, hvilken musik du vil have, eller vælg Ingen musik. Der vælges ingen sange, før du har svaret.',
   'ws.refused.class_designed':
     'Dette hold er allerede designet. Åbn dine hold for at se det.',
   'ws.interpretAgain': 'Fortolk igen',

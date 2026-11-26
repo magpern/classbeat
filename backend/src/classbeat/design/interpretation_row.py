@@ -9,9 +9,10 @@
   a song pick, ``None`` for a running class with no MOWL playlist): what the hand-off enqueues,
   unchanged;
 - ``items``: the interpretation items (``agent.interpretation_record``, bounded there);
-- ``pinned_songs`` and ``questions`` (ADR 0038 section 3, #1185): the composer's part of the
-  reading (``interpret_composer_policy``), only for a class started with ``composer_flow`` on.
-  They are left out of the stored value when empty, so every other row is as before;
+- ``pinned_songs`` (ADR 0038 section 3, #1185): the composer's part of the reading
+  (``interpret_composer_policy``), only for a class started with ``composer_flow`` on; and
+  ``questions`` (#1536, ``reading_question_policy``), for every reading. They are left out of the
+  stored value when empty, so every other row is as before;
 - ``refusal``: the hand-off's stored refusal (a reason code and whole numbers or short codes), so
   every caller after it, a second tab or a reopened one, gets the same answer;
 - ``fill`` (ADR 0038 section 5, #1188): the song fill of the composer's current sketch,
@@ -45,8 +46,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.agent.interpretation_record import InterpretationList
-from classbeat.design.interpret_composer_policy import PinnedList, QuestionList
+from classbeat.design.interpret_composer_policy import PinnedList
 from classbeat.design.music_decision import MusicDecision
+from classbeat.design.reading_question_policy import QuestionList
 from classbeat.jobs import FencedSession, JobFailure
 from classbeat.jobs.inputs import jsonb_size
 
@@ -111,6 +113,13 @@ _STORE = text(
     "AND c.id = j.class_id AND c.interpretation IS NULL AND c.current_revision_id IS NULL "
     "RETURNING c.id"
 )
+# A re-read (#1536): the reading of a class that has one and no revision, from the job's own class.
+_REPLACE = text(
+    "UPDATE classes c SET interpretation = CAST(:v AS jsonb), updated_at = now() FROM jobs j "
+    "WHERE j.id = :job_id AND j.owner_id = :owner_id AND c.owner_id = j.owner_id "
+    "AND c.id = j.class_id AND c.interpretation IS NOT NULL AND c.current_revision_id IS NULL "
+    "RETURNING c.id"
+)
 _READ = text("SELECT interpretation FROM classes WHERE owner_id = :owner_id AND id = :class_id")
 _LOCK = text(
     "SELECT interpretation FROM classes WHERE owner_id = :owner_id AND id = :class_id FOR UPDATE"
@@ -121,15 +130,16 @@ _WRITE = text(
 )
 
 
-async def store(fs: FencedSession, stored: StoredInterpretation) -> None:
-    """In the interpret job's final fenced transaction. Anything else fails the job ``internal``
-    (rolled back with the completion)."""
+async def store(fs: FencedSession, stored: StoredInterpretation, *, reread: bool = False) -> None:
+    """In the interpret job's final fenced transaction; a ``reread`` replaces the class's reading
+    (so also the hand-off's refusal, route and fill, which belonged to the old one). Anything
+    else fails the job ``internal`` (rolled back with the completion)."""
     try:
         value = stored.dumped()
     except ValueError:
         raise JobFailure("invalid_output") from None
     params = {"v": value, "job_id": fs.lease.job_id, "owner_id": fs.lease.owner_id}
-    if (await fs.db.execute(_STORE, params)).first() is None:
+    if (await fs.db.execute(_REPLACE if reread else _STORE, params)).first() is None:
         raise JobFailure("internal")
 
 

@@ -190,9 +190,11 @@ async def design_from_interpretation(
     ledger: CreditLedger,
     limit: JobLimitPolicy,
     enqueue: JobEnqueue,
+    interpret_job_id: UUID | None = None,
 ) -> Handoff:
     """The module's hand-off. ``not_found`` for no such class of the user's, ``not_ready`` while
-    the class has no interpretation (the interpret job is queued, running or failed)."""
+    the class has no interpretation (the interpret job is queued, running or failed) and, with
+    ``interpret_job_id`` (the reading the instructor confirmed), when another one is stored."""
     require_context(ctx)
     owner = {"owner_id": ctx.user_id, "class_id": class_id}
     async with user_session(factory, ctx) as db:
@@ -200,6 +202,8 @@ async def design_from_interpretation(
         if row is None:
             found = (await db.execute(_EXISTS, owner)).first()
             return Handoff(reason="not_ready" if found is not None else "not_found")
+        if interpret_job_id is not None and row.job_id != interpret_job_id:
+            return Handoff(reason="not_ready")
         params = {**owner, "job_id": row.job_id, "kind": INTERPRET_KIND}
         job_input = (await db.execute(_INTERPRET_JOB, params)).scalar_one_or_none()
         picking = await flags.song_picking_admits(db, ctx, songs_config.current().enabled)

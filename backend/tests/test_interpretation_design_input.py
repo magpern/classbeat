@@ -20,6 +20,8 @@ SPOTIFY = uuid.uuid4()
 PLAYLIST = {"source": "mowl_spotify_playlist", "spotify_playlist_id": "OwnPlaylist00000000001"}
 CYCLING = {"length_min": 30, "intensity": "moderate"}
 RUNNING = {"sport": "running", "length_min": 15, "intensity": "moderate"}
+TASTE = {"eras": [], "genres": [], "hits": True, "language": None}
+HITS = {**CYCLING, "music_taste": TASTE}
 
 
 def planned(
@@ -47,11 +49,43 @@ def test_a_cycling_class_on_the_users_playlist_is_the_pick_pipeline_with_that_so
 
 
 def test_a_song_pick_names_no_source() -> None:
-    kind, made = planned({"source": "pick"}, CYCLING, spotify=True)
+    """With a hint of what to play (a taste, #1536: no song is picked at random)."""
+    kind, made = planned({"source": "pick"}, HITS, spotify=True)
     assert kind is DESIGN_WITH_SONGS
     assert isinstance(made, DesignWithSongsInput)
     assert made.source is None
-    assert planned({"source": "pick"}, CYCLING, spotify=False) == "not_connected"
+    assert planned({"source": "pick"}, HITS, spotify=False) == "not_connected"
+
+
+@pytest.mark.parametrize("spotify", [True, False])
+def test_a_song_pick_with_no_hint_is_refused_music_unanswered(spotify: bool) -> None:
+    assert planned({"source": "pick"}, CYCLING, spotify=spotify) == "music_unanswered"
+
+
+@pytest.mark.parametrize(
+    ("override", "sources", "expected"),
+    [
+        ({"source": "pick"}, None, "music_unanswered"),  # "Pick songs for me" is no hint
+        (None, [{"kind": "spotify_playlist", "id": "0123456789abcdefABCDEF"}], "designed"),
+        (None, None, "music_unanswered"),
+    ],
+    ids=["form pick", "music_sources", "nothing"],
+)
+def test_what_the_form_gave_is_a_hint_unless_it_is_a_pick(
+    override: dict[str, str] | None, sources: Any, expected: str
+) -> None:
+    """A class read with the composer handed off on the older route (Spotify connected): the
+    route that starts the pick now."""
+    row = composer_row({"state": "decided", "choice": "request"}, {"source": "pick"})
+    given = composer_given(spotify=True)
+    if override is not None:
+        given["music_override"] = override
+    if sources is not None:
+        given["music_sources"] = sources
+    got = design_input(row, given, CLASS, song_picking=True, composer=False)
+    assert (got if isinstance(got, str) else "designed") == expected
+    if expected == "designed":
+        assert got[0] is DESIGN_WITH_SONGS  # pyright: ignore[reportIndexIssue]
 
 
 def test_without_spotify_or_song_picking_a_running_class_or_a_mix_stays_design_draft() -> None:
