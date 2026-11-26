@@ -25,7 +25,20 @@ COMPOSED: dict[str, Any] = {
     "climbs": {"value": 1, "origin": "inferred"},
     "sprints": {"value": 2, "origin": "inferred"},
     "pinned_songs": [{"song": "one climb", "at": "two sprints", "origin": "explicit"}],
-    "questions": [{"path": "length_min"}, {"path": "intensity"}],
+    "questions": [
+        {
+            "topic": "length",
+            "text": "How long?",
+            "options": ["30 minutes", "45 minutes"],
+            "assumed_index": 1,
+        },
+        {
+            "topic": "other",
+            "text": "Games on the bike?",
+            "options": ["No games", "Add one game"],
+            "assumed_index": 0,
+        },
+    ],
 }
 
 
@@ -136,14 +149,14 @@ async def test_with_the_flag_on_pins_and_questions_are_stored_and_read_back(
     assert (given["composer"], given["music_sources"]) == (True, SOURCES)
     stored = ienv.interpretation(class_id)
     assert stored["pinned_songs"] == [{"title": "one climb", "at": "two sprints"}]
-    assert stored["questions"] == [
-        {"path": "length_min", "question": "how_long", "assumed": 45},
-        {"path": "intensity", "question": "how_hard", "assumed": "moderate"},
+    assert [(q["topic"], q["text"], q["assumed_index"]) for q in stored["questions"]] == [
+        ("length", "How long?", 1),
+        ("other", "Games on the bike?", 0),
     ]
     assert (stored["brief"]["length_min"], stored["music"]) == (45, {"source": "pick"})
     view = (await ienv.renv.browser.get(f"/api/classes/{class_id}/interpretation")).json()
     assert [(p["title"], p["at"]) for p in view["pinned_songs"]] == [("one climb", "two sprints")]
-    assert [q["path"] for q in view["questions"]] == ["length_min", "intensity"]
+    assert [q["topic"] for q in view["questions"]] == ["length", "other"]
     assert REQUEST.find("one climb") >= 0  # the pin is the instructor's own words
 
 

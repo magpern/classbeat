@@ -5,11 +5,13 @@ One tool, ``submit_brief``, final. Its input is the strict ``InterpretedRequest`
 short enums, a list index and a placement that is a position or a relation to the n-th kind of
 interval), so the schema is the first line of defence and a bad submission is a correction round
 like any other stage. The handler then ``sanitised``: a quote that is not a verbatim substring of
-the request is dropped and so is a music index outside the numbered list. Nothing the model writes
-as text is put into a later prompt. Two things survive as display text: the quotes, as a
-convenience for the page and only if the instructor wrote them, and a new class's short ``name``
-(#1233), cleaned by ``class_title_policy.proposed_name``, which becomes the class's title only while
-that is still the request's first words (``design.class_name``).
+the request is dropped and so is a music index outside the numbered list. Model text survives
+as display text only, cleaned: the quotes, as a convenience for the page and only if the
+instructor wrote them; a new class's short ``name`` (#1233), cleaned by
+``class_title_policy.proposed_name``, which becomes the class's title only while that is still the
+request's first words (``design.class_name``); and the questions (#1536, ``interpreted_composer``),
+which the instructor answers on a re-read: only then are a question's text and the chosen option,
+cleaned and capped, put into the next request (``design.interpret_reread_policy``).
 
 The stage reads nothing (no tool of kind ``read``) and writes nothing. It reports what the
 instructor asked for even where it exceeds the plan's limits: the policy applies the limits and
@@ -97,9 +99,18 @@ the request writes them (leave the artist out if it is not given); at: the short
 the request that say where the song goes ("warm-up", "the last climb", "climb 3"), copied \
 letter for letter, at most 40 characters, or leave it out; origin "explicit".
 
-questions: for a new class only (no "current"), at most 2 entries, each a path, length_min or \
-intensity, that the request does not state but that shapes the class; ask about the length first. \
-Never for a field the request states. The app assumes a value and does not wait for an answer.
+questions: for a new class only (no "current"). Check the request as a whole and ask about every \
+thing it leaves unstated or unclear whose default would change the class: the music, the length, \
+the intensity, the shape of the ride, the sport, a contradiction between two parts of the request, \
+or anything else that matters. Ask nothing about what the request states, and nothing trivial. \
+At most 12 questions, one per topic except "other". Each has: topic (music, length, intensity, \
+structure, sport or other); text, one short question in the language of the request, plain text \
+with no markup or link, at most 160 characters; options, 2 to 5 short answers in the same \
+language, each at most 60 characters; assumed_index, the 0-based index of the option the app \
+assumes if the instructor does not answer. The app assumes it and does not wait for an answer. \
+Music rule: when the request mentions no music at all (no playlist, mix, style, era, artist or \
+song), always ask about music, with options such as "Pick songs for me" (assumed) and "Use one of \
+my playlists"; add the option "No music" only when the message says "no_music_offered": true.
 
 A message with "current" holds a change to an existing class whose values are "current". Then \
 report only the fields the request changes, each with the value it should have after the change \
@@ -144,6 +155,8 @@ class InterpretContext:
     current: Mapping[str, Any] | None = None
     # The composer's attached Spotify playlists (ADR 0038 section 3): only how many, never an id.
     attached: int = 0
+    # "No music" may be offered as an answer to the music question (soundless is on, #1536).
+    soundless: bool = False
 
     def first_message(self) -> str:
         return interpret_input.first_message(
@@ -154,6 +167,7 @@ class InterpretContext:
             music=self.music,
             current=self.current,
             attached=self.attached,
+            soundless=self.soundless,
         )
 
 

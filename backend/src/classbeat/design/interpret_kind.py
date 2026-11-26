@@ -73,6 +73,7 @@ async def run(job_run: JobRun) -> Complete:
         games_allowed=True if gates is None else gates.games,
         music=tuple(MusicName(o.kind, o.name) for o in options),
         attached=len(given.music_sources or ()) if given.composer else 0,
+        soundless=bool(given.soundless),
     )
     outcome = await run_stage(
         JobStageHost(job_run),
@@ -99,8 +100,12 @@ async def run(job_run: JobRun) -> Complete:
         sport_override=given.sport_override,
         music_override=override,
     )
+    skip = interpret_composer_policy.chosen_topics(
+        music=given.music_override is not None or bool(given.music_sources),
+        sport=given.sport_override is not None,
+    )
     pins, questions = (
-        interpret_composer_policy.composer_reading(outcome.output.request, resolved.brief)
+        interpret_composer_policy.composer_reading(outcome.output.request, skip)
         if given.composer
         else ([], [])
     )
@@ -146,6 +151,7 @@ INTERPRET_REQUEST: Final = KINDS.register(
                 "pick_ready",
                 "song_picking",
                 "swedebeat_mixes",
+                "soundless",
                 "composer",
             }
         ),

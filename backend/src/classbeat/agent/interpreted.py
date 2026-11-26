@@ -21,8 +21,9 @@ itself; ``shape`` (#1485, ``interpreted_shape``) is the ordered sections of the 
 request describes it in parts, each with its origin and quote.
 
 ``pinned_songs`` and ``questions`` (ADR 0038 section 3, #1185) are the composer's:
-``classbeat.agent.interpreted_composer``. ``name`` (#1233) is a new class's short title, the one
-model text kept: display text only, cleaned by ``class_title_policy.proposed_name`` (``sanitised``).
+``classbeat.agent.interpreted_composer``. ``name`` (#1233) is a new class's short title, and a
+question's text and options (#1536) are model text too: display text only, cleaned in
+``sanitised`` (``class_title_policy.proposed_name``; ``InterpretedQuestion.sanitised``).
 """
 
 from typing import Any, Final, Literal, NamedTuple, Self
@@ -205,6 +206,7 @@ class InterpretedRequest(BaseModel):
         if self.music_taste is not None:
             update["music_taste"] = self.music_taste.sanitised(request)
         update["pinned_songs"] = sanitised_pins(self.pinned_songs, request)
+        update["questions"] = [q for q in (q.sanitised() for q in self.questions) if q is not None]
         update["name"] = proposed_name(self.name)
         return self.model_copy(update=update)
 

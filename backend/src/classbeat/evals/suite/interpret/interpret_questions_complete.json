@@ -1,0 +1,9 @@
+{
+ "kind": "interpret",
+ "name": "interpret_questions_complete",
+ "about": "A fully specified request asks nothing (#1536).",
+ "request": "A 45 minute ride to 90s hits, hard, with three seated climbs and two sprints, no games",
+ "expect": {
+  "no_questions": true
+ }
+}

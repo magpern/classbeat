@@ -30,6 +30,7 @@ def context_for(case: InterpretCase) -> InterpretContext:
         music=tuple(m.named() for m in case.music),
         current=None if case.current is None else current_values(case.current),
         attached=case.attached,
+        soundless=case.soundless,
     )
 
 

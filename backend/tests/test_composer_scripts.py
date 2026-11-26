@@ -36,7 +36,7 @@ async def test_the_composer_scripts_read_sketch_and_change(skenv: SketchEnv) -> 
     assert stored["pinned_songs"] == [
         {"title": "Signal Harbor 18", "artist": "The Invented Band", "at": "the climb"}
     ]
-    assert stored["questions"] == [{"path": "length_min", "question": "how_long", "assumed": 30}]
+    assert [(q["topic"], q["assumed_index"]) for q in stored["questions"]] == [("length", 0)]
 
     handed = await ienv.handoff(class_id)
     assert handed.status_code == 201, handed.text

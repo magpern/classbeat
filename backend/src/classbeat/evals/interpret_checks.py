@@ -13,8 +13,9 @@ On the sanitised ``InterpretedRequest`` (what the stage hands back), never on mo
   language and hits, where the case says;
 - ``pinned`` (#1185): the named songs, in order, with the expected title and, where the case
   says, artist and place (case aside);
-- ``questions`` (#1185): every path the case ``asks`` is asked, and no question is asked of a
-  field the reading states explicitly;
+- ``questions`` (#1185, #1536): every topic the case ``asks`` is asked, none it ``not_asks`` (and
+  none at all with ``no_questions``), and no question is asked of a field the reading states
+  explicitly;
 - ``name`` (#1233, #1237): a case that expects the class ``named`` got a short name, and any name
   that came back is one ``class_title_policy.proposed_name`` keeps as it is (clean, at most 60
   characters, no link); ``InterpretedRequest.sanitised`` drops one that is not, so this is the
@@ -33,6 +34,7 @@ from classbeat.agent.interpret_input import clean_request
 from classbeat.agent.interpreted import InterpretedRequest
 from classbeat.agent.ride_shape import SectionFields
 from classbeat.class_title_policy import proposed_name
+from classbeat.design.interpret_composer_policy import TOPIC_PATHS
 from classbeat.evals.checks import Check
 from classbeat.evals.interpret_cases import InterpretCase, PinExpect, TasteExpect
 
@@ -69,15 +71,18 @@ def check_interpretation(case: InterpretCase, got: InterpretedRequest) -> list[C
         checks.append(_taste(expect.taste, got))
     if expect.pinned is not None:
         checks.append(_pinned(expect.pinned, got))
-    asked = [q.path for q in got.questions]
-    stated = [p for p, r in read.items() if r.origin == "explicit" and p in asked]
-    missing = [p for p in expect.asks if p not in asked]
+    asked = [q.topic for q in got.questions]
+    stated = [
+        t for t in asked if TOPIC_PATHS.get(t) in read and read[TOPIC_PATHS[t]].origin == "explicit"
+    ]
+    missing = [t for t in expect.asks if t not in asked]
+    unwanted = [t for t in asked if t in expect.not_asks or expect.no_questions]
     checks.append(
         Check(
             "questions",
-            not missing and not stated,
+            not missing and not stated and not unwanted,
             f"not asked: {', '.join(missing) or '-'}; asked of a stated field: "
-            f"{', '.join(stated) or '-'}",
+            f"{', '.join(stated) or '-'}; asked but not wanted: {', '.join(unwanted) or '-'}",
         )
     )
     if expect.named or got.name is not None:

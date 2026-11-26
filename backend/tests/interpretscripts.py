@@ -45,7 +45,15 @@ def submission(case: InterpretCase) -> dict[str, Any]:
             for p in e.pinned
         ]
     if e.asks:
-        out["questions"] = [{"path": p} for p in e.asks]
+        out["questions"] = [
+            {
+                "topic": topic,
+                "text": f"About the {topic}?",
+                "options": ["Your pick", "Something else"],
+                "assumed_index": 0,
+            }
+            for topic in e.asks
+        ]
     if e.named:  # a short name of the ride (#1233), in quotes as a model may write it
         out["name"] = '"Hills and a tempo ride"'
     return out

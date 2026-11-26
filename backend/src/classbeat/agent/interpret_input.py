@@ -90,6 +90,7 @@ def first_message(
     music: Sequence[MusicName],
     current: Mapping[str, Any] | None = None,
     attached: int = 0,
+    soundless: bool = False,
 ) -> str:
     body: dict[str, Any] = {
         "request": clean_request(request),
@@ -102,4 +103,6 @@ def first_message(
         body["current"] = {k: current[k] for k in CURRENT_KEYS if k in current}
     if attached > 0:
         body["attached_playlists"] = attached
+    if soundless:
+        body["no_music_offered"] = True
     return json.dumps(body, separators=(",", ":"), ensure_ascii=False)

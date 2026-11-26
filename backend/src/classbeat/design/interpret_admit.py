@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from classbeat import quota
 from classbeat.agent.brief import Sport
 from classbeat.context import UserContext
-from classbeat.design import chat, composer, interpret_policy, mixadmit, revision, sport
+from classbeat.design import chat, composer, interpret_policy, mixadmit, music_kind, revision, sport
 from classbeat.design.interpret_music_policy import no_music_reason, without_spotify_is_refused
 from classbeat.design.kind import NoMusicChoice, SpotifyMusicChoice, SwedebeatMusicChoice
 from classbeat.design.kind_music import song_picking
@@ -72,6 +72,7 @@ class InterpretRequestInput(ModelJobInput):
     song_picking: bool | None = None  # song picking admits the user (None: queued before it)
     swedebeat_mixes: bool | None = None
     composer: bool | None = None  # the composer flow was on at admit (None: before #1185)
+    soundless: bool | None = None  # soundless classes are on: "No music" may be offered (#1536)
 
     @model_validator(mode="after")
     def _one_class(self) -> Self:
@@ -145,6 +146,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         "song_picking": picking,
         "swedebeat_mixes": mixes,
         "composer": composing,
+        "soundless": await music_kind.soundless_on(db),
     }
     return Admitted(fields, after_insert)
 

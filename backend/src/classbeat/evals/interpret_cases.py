@@ -11,7 +11,8 @@ asked". A revise case (#904) also holds ``current``: the class's brief, of which
 is told the closed values (``interpret_input.current_values``), and expects only what the request
 changes. A composer case (ADR 0038 section 3, #1185) may say how many playlists are
 ``attached`` and expect the ``pinned`` songs (title, artist and place, case aside, in order) and the
-questions it ``asks`` (paths that must be among them). The ride's ``shape`` (#1485) is judged
+questions it ``asks`` (topics that must be among them; ``not_asks`` and ``no_questions`` the
+reverse, #1536). The ride's ``shape`` (#1485) is judged
 section by section, in order: a field the case gives must match, one it leaves out is not judged.
 A new-class case may expect the class to be ``named`` (#1233): a short name that survives
 ``class_title_policy.proposed_name``. Pure: no I/O.
@@ -24,8 +25,9 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 from classbeat.agent.brief import Brief, BriefGame, Sport
 from classbeat.agent.interpret_input import MusicName
 from classbeat.agent.interpreted import MAX_NAMES, SCALARS, StatedOrigin
-from classbeat.agent.interpreted_composer import MAX_PINNED, MAX_QUESTIONS, QuestionPath
+from classbeat.agent.interpreted_composer import MAX_PINNED, MAX_QUESTIONS, QuestionTopic
 from classbeat.agent.ride_shape import MAX_SECTIONS, SectionFields
+from classbeat.design.interpret_composer_policy import TOPIC_PATHS
 
 MAX_REQUEST: Final = 2000
 
@@ -86,9 +88,15 @@ class InterpretExpect(BaseModel):
     taste: TasteExpect | None = None  # ``None``: the music taste is not judged (#1140)
     forbidden_text: list[str] = Field(default_factory=lambda: list[str]())  # case-insensitive
     pinned: list[PinExpect] | None = Field(default=None, max_length=MAX_PINNED)  # #1185
-    asks: list[QuestionPath] = Field(
-        default_factory=lambda: list[QuestionPath](), max_length=MAX_QUESTIONS
+    # The topics that must be among the questions, the ones that must not, and "no questions at all"
+    # (#1536): a topic is judged by what the model asked, never by its wording.
+    asks: list[QuestionTopic] = Field(
+        default_factory=lambda: list[QuestionTopic](), max_length=MAX_QUESTIONS
     )
+    not_asks: list[QuestionTopic] = Field(
+        default_factory=lambda: list[QuestionTopic](), max_length=MAX_QUESTIONS
+    )
+    no_questions: bool = False
     named: bool = False  # a new class gets a short name that survives the cleaning (#1233)
     # The ride's sections in order (#1485); ``None``: not judged, ``[]``: the reading has none.
     shape: list[SectionFields] | None = Field(default=None, max_length=MAX_SECTIONS)
@@ -107,8 +115,11 @@ class InterpretExpect(BaseModel):
             raise ValueError(
                 "expect names the scalar fields of a request only; games have their own"
             )
-        if set(self.asks) & {p for p, o in self.origins.items() if o == "explicit"}:
+        stated = {p for p, o in self.origins.items() if o == "explicit"}
+        if {TOPIC_PATHS[t] for t in self.asks if t in TOPIC_PATHS} & stated:
             raise ValueError("a question is never asked of a stated field")
+        if set(self.asks) & set(self.not_asks) or (self.no_questions and self.asks):
+            raise ValueError("a topic is expected asked or not asked, not both")
         if set(self.values) & set(self.absent):
             raise ValueError("a field is expected set or absent, not both")
         if not set(self.origins) <= set(self.values):
@@ -131,6 +142,7 @@ class InterpretCase(BaseModel):
     )
     current: Brief | None = None  # a revise: the class as it stands
     attached: int = Field(default=0, ge=0, le=5)  # the composer's attached playlists (#1185)
+    soundless: bool = False  # "No music" is offered as a music answer (#1536)
     expect: InterpretExpect
 
     @model_validator(mode="after")

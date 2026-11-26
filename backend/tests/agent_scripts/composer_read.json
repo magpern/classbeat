@@ -12,7 +12,7 @@
       "pinned_songs": [
        {"song": "Signal Harbor 18", "artist": "The Invented Band", "at": "the climb", "origin": "explicit"}
       ],
-      "questions": [{"path": "length_min"}]
+      "questions": [{"topic": "length", "text": "How long should the class be?", "options": ["30 minutes", "45 minutes", "60 minutes"], "assumed_index": 0}]
      },
      "expect": {"accepted": true}
     }

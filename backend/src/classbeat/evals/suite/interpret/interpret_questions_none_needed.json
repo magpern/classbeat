@@ -1,0 +1,13 @@
+{
+ "kind": "interpret",
+ "name": "interpret_questions_none_needed",
+ "about": "A request that states music, length and intensity asks about none of them (#1536).",
+ "request": "90s hits, 45 min, hard",
+ "expect": {
+  "not_asks": [
+   "music",
+   "length",
+   "intensity"
+  ]
+ }
+}

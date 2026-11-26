@@ -16,11 +16,15 @@ Fields of the ``submit_brief`` tool's input (``InterpretedRequest.pinned_songs``
   dropped; an artist or a place it does not hold is left out; a song named twice (same title and
   artist, case aside) is kept once, in order (``sanitised_pins``). A pinned song is a proposal: the
   song fill verifies it by search before it is used (ADR 0038 section 5).
-- **A question** names a field whose value the request leaves open and whose default changes the
-  class's shape: ``{path}``, ``length_min`` or ``intensity``. The model writes no question text
-  and no assumed value: the page phrases the question from its closed path, and the assumed value
-  is the one the brief takes (the policy's). So nothing a model writes as text is stored here but
-  the instructor's own words.
+- **A question** is something the request leaves unstated or unclear whose default changes the
+  class (roadmap Amendment 37, owner 2026-11-26: Claude decides what to ask):
+  ``{topic, text, options, assumed_index}``. ``topic`` is a closed hint (``music``, ``length``,
+  ``intensity``, ``structure``, ``sport``, ``other``); ``text`` and the 2 to 5 ``options`` are
+  short model text in the request's language, cleaned and length-capped
+  (``InterpretedQuestion.sanitised``) and shown as plain text only; ``assumed_index`` points at
+  the option the model assumed. The brief does not take the model's assumption: it uses the
+  policy's own defaults, and nothing waits for an answer (ADR 0029 section 4 rule 4, as amended).
+  At most ``MAX_QUESTIONS`` (12, a technical guard of the schema, not a product limit).
 """
 
 from typing import Annotated, Final, Literal
@@ -31,13 +35,24 @@ from classbeat.agent.interpretation_record import MAX_QUOTE, keep_quote
 from classbeat.agent.schemas import STRICT, clean_text
 
 MAX_PINNED: Final = 10
-MAX_QUESTIONS: Final = 2
+MAX_QUESTIONS: Final = 12
+MIN_OPTIONS: Final = 2
+MAX_OPTIONS: Final = 5
+QUESTION_CHARS: Final = 160
+OPTION_CHARS: Final = 60
 TITLE_CHARS: Final = 100
 ARTIST_CHARS: Final = 100
 AT_CHARS: Final = 40
 MIN_LETTERS: Final = 2  # a pin's title, artist or place: never a lone letter ("a")
-QuestionPath = Literal["length_min", "intensity"]
-QUESTION_PATHS: Final[tuple[QuestionPath, ...]] = ("length_min", "intensity")
+QuestionTopic = Literal["music", "length", "intensity", "structure", "sport", "other"]
+QUESTION_TOPICS: Final[tuple[QuestionTopic, ...]] = (
+    "music",
+    "length",
+    "intensity",
+    "structure",
+    "sport",
+    "other",
+)
 
 
 class InterpretedPin(BaseModel):
@@ -68,11 +83,45 @@ class InterpretedPin(BaseModel):
 
 
 class InterpretedQuestion(BaseModel):
-    """A field the request leaves open whose default shapes the class."""
+    """Something the request leaves open whose default changes the class (see the module)."""
 
     model_config = STRICT
 
-    path: QuestionPath
+    topic: QuestionTopic
+    text: Annotated[str, Field(min_length=1, max_length=QUESTION_CHARS)]
+    options: Annotated[
+        list[Annotated[str, Field(min_length=1, max_length=OPTION_CHARS)]],
+        Field(min_length=MIN_OPTIONS, max_length=MAX_OPTIONS),
+    ]
+    assumed_index: Annotated[int, Field(ge=0)]  # range-checked by the policy, never a correction
+
+    def sanitised(self) -> "InterpretedQuestion | None":
+        """The question with its text and options cleaned (``clean_text``), an option said twice
+        (case aside) kept once and ``assumed_index`` following its option; ``None`` when nothing
+        usable is left: no text, fewer than ``MIN_OPTIONS`` options, or an assumed index that
+        points at no option."""
+        text = clean_text(self.text)
+        if not text or self.assumed_index >= len(self.options):
+            return None
+        options: list[str] = []
+        assumed = -1
+        for index, option in enumerate(self.options):
+            kept = clean_text(option)
+            known = [o.casefold() for o in options]
+            if not kept:
+                if index == self.assumed_index:
+                    return None
+                continue
+            if kept.casefold() in known:
+                if index == self.assumed_index:
+                    assumed = known.index(kept.casefold())
+                continue
+            if index == self.assumed_index:
+                assumed = len(options)
+            options.append(kept)
+        if len(options) < MIN_OPTIONS or assumed < 0:
+            return None
+        return self.model_copy(update={"text": text, "options": options, "assumed_index": assumed})
 
 
 def from_request(words: str | None, request: str, limit: int) -> str | None:

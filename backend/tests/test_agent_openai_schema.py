@@ -47,7 +47,20 @@ SAMPLES: dict[str, list[dict[str, Any]]] = {
                     "quote": "Mamma Mia",
                 },
             ],
-            "questions": [{"path": "length_min"}, {"path": "intensity"}],
+            "questions": [
+                {
+                    "topic": "length",
+                    "text": "How long?",
+                    "options": ["30 minutes", "45 minutes"],
+                    "assumed_index": 1,
+                },
+                {
+                    "topic": "other",
+                    "text": "Seated or standing?",
+                    "options": ["Seated", "Standing"],
+                    "assumed_index": 0,
+                },
+            ],
         },
         {"name": "Three hills and a flat tempo"},  # a new class's short name (#1233)
         {
