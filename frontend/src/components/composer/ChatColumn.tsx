@@ -4,6 +4,7 @@ import type { InterpretationItem } from '../../api/interpretationItems'
 import type { PendingMessage } from '../../api/pendingMessages'
 import { pendingReasonText } from '../../api/pendingReasons'
 import type { ReadingExtras } from '../../api/readingExtras'
+import type { Confirmation } from '../../hooks/useHandoff'
 import { useT } from '../../i18n/I18n'
 import { recallRequest } from '../../lib/startRequest'
 import { Chip } from '../ui/chip'
@@ -54,6 +55,7 @@ export function ChatColumn({
   numbers,
   items,
   extras,
+  confirm = null,
   music = null,
   stored,
   send,
@@ -67,6 +69,8 @@ export function ChatColumn({
   numbers: ReadonlyMap<string, number>
   items: readonly InterpretationItem[] | null
   extras: ReadingExtras
+  /** The reading waits for the instructor: its questions are answerable and nothing is designed yet (#1538). */
+  confirm?: Confirmation | null
   /** The music question or the way on to the song search (`MusicSetup`), shown under the reading. */
   music?: React.ReactNode
   /** The stored messages: the one that waits, and the newest if it was refused. */
@@ -86,7 +90,7 @@ export function ChatColumn({
           </li>
         ) : null}
         <li className="m-0 flex flex-col">
-          <ReadingCard items={items} extras={extras} onAnswer={send.run} disabled={send.busy || blocked !== null} />
+          <ReadingCard items={items} extras={extras} onAnswer={send.run} disabled={send.busy || blocked !== null} confirm={confirm} />
         </li>
         {music !== null ? <li className="m-0 flex flex-col">{music}</li> : null}
         {messages.map((m) => {

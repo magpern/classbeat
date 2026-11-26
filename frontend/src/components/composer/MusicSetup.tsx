@@ -23,6 +23,7 @@ export function MusicSetup({
   decision,
   setup,
   words,
+  pinned,
   reload,
 }: {
   classId: string
@@ -31,6 +32,8 @@ export function MusicSetup({
   setup: Setup
   /** The request's words, for "Continue without music". */
   words: string | null
+  /** How many songs the instructor named: the only hint an undecided class can have, so "Choose it for me" needs one. */
+  pinned: number
   reload: () => void
 }) {
   const t = useT()
@@ -48,6 +51,7 @@ export function MusicSetup({
         offered={setup.offered}
         connected={setup.songs.kind !== 'needs_spotify'}
         soundlessEnabled={setup.soundlessEnabled}
+        canPick={pinned > 0}
         canStartWithout={words !== null && mowl !== null}
         onAnswered={reload}
         onLater={() => {

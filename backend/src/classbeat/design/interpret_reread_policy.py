@@ -9,21 +9,31 @@ and the chosen option are put into it, never an index or markup: the interpreter
 the instructor's words, as it read the first request. The closed ``which_music`` question
 (``reading_question_policy.WHICH_MUSIC``) is put in the app's own words.
 
-``chose_no_music`` reports an answer that picked the marked "No music" option (the route then sets
-``music_override`` ``none``; a typed "no music" is never read as one, #1137).
+``wants_no_music`` reports "No music" (the route then sets ``music_override`` ``none``): an answer
+that picked the marked "No music" option (``chose_no_music``), or the body's closed ``no_music:
+true`` (#1538: the confirm screen offers "No music" for a reading that asked no music question).
+Both are closed fields: a typed "no music" is never read as one (#1137).
 
-Codes: ``invalid_answer`` (an index no question or option has, a question answered twice, or no
-answer and no note) and ``too_large`` (the new request is over ``MAX_REQUEST`` characters).
+``music_sources`` (#1538: the confirm screen's playlist picker) are the playlists the instructor
+picked, at most ``MAX_SOURCES``, each once, in the shape ``music_sources`` have everywhere; the
+re-read adds them to the request's attached playlists (``browser_fields``). The closed
+"Use one of my playlists" answer needs them, and they exclude "No music".
+
+Codes: ``invalid_answer`` (an index no question or option has, a question answered twice, "Use
+one of my playlists" with no playlist, playlists with "No music", or nothing answered, no note, no
+playlist and no "No music") and ``too_large`` (the new request is over ``MAX_REQUEST``
+characters).
 """
 
 from collections.abc import Sequence
-from typing import Annotated, Final, Self
+from typing import Annotated, Any, Final, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 from classbeat.agent.interpreted_composer import MAX_OPTIONS, MAX_QUESTIONS
 from classbeat.agent.schemas import clean_text
+from classbeat.design.music_sources import MusicSources
 from classbeat.design.reading_question_policy import Question
 from classbeat.design.revise_input import MAX_REQUEST
 
@@ -57,12 +67,27 @@ class RereadIn(BaseModel):
         default_factory=lambda: []
     )
     note: Annotated[str, Field(min_length=1, max_length=NOTE_CHARS)] | None = None
+    # Closed fields (#1538): "No music" for a reading with no music question to mark it, and the
+    # playlists of the picker. Never read from the words; the server checks both.
+    no_music: StrictBool | None = None  # only ever true (``_closed``)
+    music_sources: MusicSources | None = None
+
+    @model_validator(mode="after")
+    def _closed(self) -> Self:
+        if self.no_music is False:
+            raise ValueError("no_music is true or absent")
+        if self.no_music is not None and self.music_sources is not None:
+            raise ValueError("no music cannot be combined with playlists")
+        return self
 
 
 def sentences(questions: Sequence[Question], body: RereadIn) -> str | None:
     """The answers (and the note) as plain sentences, or ``None`` for ``invalid_answer``."""
     parts: list[str] = []
     seen: set[int] = set()
+    if body.music_sources is not None and chose_no_music(questions, body):
+        return None  # "No music" and playlists contradict each other
+    asked_playlists = False
     for given in body.answers:
         if given.question_index in seen or given.question_index >= len(questions):
             return None
@@ -72,11 +97,19 @@ def sentences(questions: Sequence[Question], body: RereadIn) -> str | None:
             if given.option_index >= len(asked.options):
                 return None
             said = _option_words(asked, given.option_index)
+            if asked.code is not None and asked.options[given.option_index] == _MY_PLAYLISTS:
+                asked_playlists = True
         else:
             said = clean_text(given.text or "")
         if not said:
             return None
         parts.append(f"{_question_words(asked)} Answer: {said}")
+    if asked_playlists and body.music_sources is None:
+        return None  # the closed "Use one of my playlists" names none without them
+    if wants_no_music(questions, body) and not chose_no_music(questions, body):
+        parts.append(_NO_MUSIC_SENTENCE)
+    if body.music_sources is not None and not asked_playlists:
+        parts.append(_PLAYLISTS_SENTENCE)
     note = clean_text(body.note or "")
     if note:
         parts.append(f"Also: {note}")
@@ -86,6 +119,10 @@ def sentences(questions: Sequence[Question], body: RereadIn) -> str | None:
 # The closed question's words for the interpreter (``WHICH_MUSIC``): the app's, never the model's.
 _CLOSED_TEXT: Final = {"which_music": "What music should the class have?"}
 _CLOSED_OPTIONS: Final = {"my_playlists": "Use one of my playlists", "no_music": "No music"}
+_MY_PLAYLISTS: Final = "my_playlists"
+# Sentences of the closed fields, in the app's own words (the page's catalogue has its own).
+_NO_MUSIC_SENTENCE: Final = "No music for this class."
+_PLAYLISTS_SENTENCE: Final = "Use the playlists I picked."
 
 
 def _question_words(asked: Question) -> str:
@@ -109,6 +146,32 @@ def chose_no_music(questions: Sequence[Question], body: RereadIn) -> bool:
         if asked.topic == "music" and asked.no_music_index == given.option_index:
             return True
     return False
+
+
+def wants_no_music(questions: Sequence[Question], body: RereadIn) -> bool:
+    """ "No music": the closed ``no_music`` field, or the marked option of a ``music`` question."""
+    return body.no_music is True or chose_no_music(questions, body)
+
+
+def browser_fields(kept: dict[str, Any], body: RereadIn, *, no_music: bool) -> dict[str, Any]:
+    """The re-read's browser fields (``kept``: those of the reading's own job): "No music" is the
+    override ``none`` with no attached playlists; picked playlists are added to the attached ones
+    (each once; over ``MAX_SOURCES`` the input is refused ``invalid_input``) and replace a form
+    "No music", which they contradict."""
+    out = dict(kept)
+    if no_music:
+        out.pop("music_sources", None)
+        out["music_override"] = {"source": "none"}
+        return out
+    if body.music_sources is None:
+        return out
+    if (out.get("music_override") or {}).get("source") == "none":
+        out.pop("music_override")
+    have: list[dict[str, Any]] = list(out.get("music_sources") or [])
+    seen = {s["id"] for s in have}
+    picked = [s.model_dump(mode="json") for s in body.music_sources if s.id not in seen]
+    out["music_sources"] = have + picked
+    return out
 
 
 def combined(request: str, addition: str) -> str | None:

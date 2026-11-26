@@ -147,7 +147,7 @@ export function ClassBody({
         onTab={setTab}
         chat={
           <>
-            <RequestBlock request={request} items={items} extras={handoff.extras} />
+            <RequestBlock request={request} items={items} extras={handoff.extras} confirm={handoff.confirmation} />
             <ChatPanel
               summary={summary}
               revisions={revisions}

@@ -25,6 +25,8 @@ interface Setup {
   spotify?: boolean
   consent?: boolean
   soundless?: boolean
+  /** The reading has a hint of what to play (a song the instructor named): only then "Choose it for me" is offered. */
+  pinned?: boolean
   /** The answer is refused with this reason (409). */
   refuse?: string
   /** The consent card's Spotify status (the second read) is held back until the test lets it go. */
@@ -61,7 +63,12 @@ function setup(over: Setup = {}) {
     [`GET ${CLASS_PATH}/revisions`]: { revisions: [summaryBody(REV1, 1, { origin: 'sketch' })] },
     [`GET ${CLASS_PATH}/messages`]: { messages: [message(1, 'user', 'Forty-five minutes, three climbs', { job_id: JOB_ID, base_revision_id: null })] },
     [`GET ${CLASS_PATH}/revisions/${REV1}`]: revisionBody(REV1, 1, CONTENT, { origin: 'sketch', provenance: { origin: 'sketch' } }),
-    [`GET ${CLASS_PATH}/interpretation`]: { interpret_job_id: JOB_ID, items: [], questions: [] },
+    [`GET ${CLASS_PATH}/interpretation`]: {
+      interpret_job_id: JOB_ID,
+      items: [],
+      questions: [],
+      pinned_songs: over.pinned === true ? [{ title: 'Africa', artist: 'Toto' }] : [],
+    },
     [`GET ${CLASS_PATH}/pending-messages`]: { messages: [] },
     [`PUT ${MUSIC}`]: (body) => {
       if (over.refuse !== undefined) return reason(409, over.refuse)
@@ -98,7 +105,7 @@ describe('the music question', () => {
     renderAt(PAGE)
     const question = await card()
     expect(question).toHaveTextContent(
-      'Would you like music for this class? I can choose it for you, you can describe the sound you want or share playlists for inspiration, or we can continue without music.',
+      'What music would you like for this class? Name a style, describe the sound you want or share playlists for inspiration, or we can continue without music.',
     )
     await settle()
     expect(fills(api)).toHaveLength(0)
@@ -116,8 +123,43 @@ describe('the music question', () => {
     expect(puts(api)).toHaveLength(0)
   })
 
-  it('"Choose it for me" stores a pick, then the search starts once Spotify and the consent are there', async () => {
+  it('offers no "Choose it for me" without a hint of what to play: styles, a typed style, playlists and no music', async () => {
+    setup()
+    renderAt(PAGE)
+    const question = await card()
+    expect(within(question).queryByRole('button', { name: 'Choose it for me' })).toBeNull()
+    for (const name of ['Describe the sound', 'Share playlists', 'Continue without music']) {
+      expect(within(question).getByRole('button', { name })).toBeInTheDocument()
+    }
+  })
+
+  it('sends the chosen styles and the typed style as the described sound', async () => {
     const api = setup()
+    renderAt(PAGE)
+    await answer('Describe the sound')
+    fireEvent.click(await screen.findByRole('button', { name: '80s' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Rock' }))
+    expect(screen.getByLabelText('The sound you want')).toHaveValue('80s, Rock')
+    fireEvent.change(screen.getByLabelText('The sound you want'), { target: { value: '80s, Rock, no vocals' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Use this' }))
+    await waitFor(() => {
+      expect(puts(api)).toHaveLength(1)
+    })
+    expect(puts(api)[0]!.body).toEqual({ choice: 'describe', note: '80s, Rock, no vocals' })
+  })
+
+  it('says why when the server refuses a pick with no hint (the same words as the hand-off)', async () => {
+    const api = setup({ pinned: true, refuse: 'music_unanswered' })
+    renderAt(PAGE)
+    await answer('Choose it for me')
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Tell us what music you want, or choose No music, and no songs are picked until you do.',
+    )
+    expect(puts(api)).toHaveLength(1)
+  })
+
+  it('"Choose it for me" stores a pick, then the search starts once Spotify and the consent are there', async () => {
+    const api = setup({ pinned: true })
     renderAt(PAGE)
     await answer('Choose it for me')
     await waitFor(() => {
@@ -209,7 +251,7 @@ describe('the music question', () => {
   })
 
   it('keeps the options without Spotify, with a link to connect it, and stores the answer either way', async () => {
-    const api = setup({ spotify: false })
+    const api = setup({ spotify: false, pinned: true })
     renderAt(PAGE)
     const question = await card()
     expect(within(question).getByRole('link', { name: 'Connect Spotify' })).toHaveAttribute('href', '/en/account/spotify')
@@ -224,7 +266,7 @@ describe('the music question', () => {
   })
 
   it('says why when the answer is refused because the songs are already being chosen', async () => {
-    const api = setup({ refuse: 'music_fixed' })
+    const api = setup({ refuse: 'music_fixed', pinned: true })
     renderAt(PAGE)
     await answer('Choose it for me')
     expect(await screen.findByRole('alert')).toHaveTextContent('The songs are already being chosen, so the music can no longer be changed here.')

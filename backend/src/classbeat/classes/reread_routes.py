@@ -1,10 +1,13 @@
 """``POST /api/classes/{id}/reread`` (#1536; ``classbeat.classes.reread``).
 
-Body ``{interpret_job_id, answers: [{question_index, option_index | text}], note?}``: 201 with the
+Body ``{interpret_job_id, answers: [{question_index, option_index | text}], note?, no_music?,
+music_sources?}`` (``no_music``: only ``true``, never with ``music_sources``; ``music_sources``: up
+to five Spotify playlists, #1538): 201 with the
 new interpret job ``{job_id, kind, state}``, 200 with the same job for a repeated or concurrent
 call; 422
 ``invalid_input`` for a body that is not that and 422 ``invalid_answer`` or ``too_large`` for
-answers that name no question or option or a request over its limit; 409 ``{reason}`` (``not_ready``
+answers that name no question or option (or "Use one of my playlists" with no ``music_sources``)
+or a request over its limit; 409 ``{reason}`` (``not_ready``
 while the reading is not stored or ``interpret_job_id`` names another one, ``chat_full``,
 ``class_designed`` once the class has a revision or a design job, ``class_busy`` while a job of
 the class is open, ``not_connected``,

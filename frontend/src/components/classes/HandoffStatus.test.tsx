@@ -18,6 +18,7 @@ function show(refusal: string, language: 'en' | 'sv' | 'da' = 'en', retry = vi.f
     refusal,
     held: null,
     designWithinPlan: vi.fn(),
+    confirmation: null,
     retry,
   }
   return render(

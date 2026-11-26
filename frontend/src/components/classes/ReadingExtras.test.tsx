@@ -29,8 +29,8 @@ describe('the composer part of the reading (ADR 0038 section 3)', () => {
         { title: 'Mamma Mia', artist: null, at: null },
       ],
       questions: [
-        { topic: 'length', text: 'How long should the class be?', options: ['30 minutes', '45 minutes'], assumedIndex: 1 },
-        { topic: 'music', text: 'What about the music?', options: ['Pick songs for me', 'Use one of my playlists', 'No music'], assumedIndex: 0 },
+        { topic: 'length', text: 'How long should the class be?', options: ['30 minutes', '45 minutes'], assumedIndex: 1, noMusicIndex: null },
+        { topic: 'music', text: 'What about the music?', options: ['Pick songs for me', 'Use one of my playlists', 'No music'], assumedIndex: 0, noMusicIndex: 2 },
       ],
     })
     expect(decodeReadingExtras({ items: [] })).toEqual(NO_EXTRAS)
@@ -58,7 +58,7 @@ describe('the composer part of the reading (ADR 0038 section 3)', () => {
       ],
     }
     const { questions } = decodeReadingExtras(body)
-    expect(questions).toEqual([{ topic: 'music', text: 'What music do you want?', options: ['Pop hits', 'No music'], assumedIndex: null }])
+    expect(questions).toEqual([{ topic: 'music', text: 'What music do you want?', options: ['Pop hits', 'No music'], assumedIndex: null, noMusicIndex: 1 }])
     render(
       <I18nProvider initial="en">
         <RequestBlock request={null} items={[]} extras={decodeReadingExtras(body)} />
@@ -81,7 +81,7 @@ describe('the composer part of the reading (ADR 0038 section 3)', () => {
       ],
     }
     const { questions } = decodeReadingExtras(body)
-    expect(questions).toEqual([{ topic: 'music', code: 'which_music', text: '', options: ['my_playlists', 'no_music'], assumedIndex: null }])
+    expect(questions).toEqual([{ topic: 'music', code: 'which_music', text: '', options: ['my_playlists', 'no_music'], assumedIndex: null, noMusicIndex: 1 }])
     render(
       <I18nProvider initial="en">
         <RequestBlock request={null} items={[]} extras={decodeReadingExtras(body)} />
@@ -117,7 +117,7 @@ describe('the composer part of the reading (ADR 0038 section 3)', () => {
         { ...music, text: 'Marked?', no_music_index: 2 },
       ],
     }
-    expect(decodeReadingExtras(body).questions).toEqual([{ topic: 'music', text: 'Marked?', options: ['Pop', 'Rock', 'No music'], assumedIndex: null }])
+    expect(decodeReadingExtras(body).questions).toEqual([{ topic: 'music', text: 'Marked?', options: ['Pop', 'Rock', 'No music'], assumedIndex: null, noMusicIndex: 2 }])
   })
 
   it('shows nothing new for a class without them', () => {

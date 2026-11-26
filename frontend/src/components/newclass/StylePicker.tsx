@@ -24,8 +24,8 @@ function words(style: string): string[] {
     .filter((w) => w !== '')
 }
 
-/** Style chips for era and genre, over the free-text "Style" field they fill in. */
-export function StylePicker({ value, onChange }: { value: string; onChange: (style: string) => void }) {
+/** The style chips alone (era and genre), over a comma-separated `value` that something else may also edit. */
+export function StyleChips({ value, onChange, max = MAX_STYLE }: { value: string; onChange: (style: string) => void; max?: number }) {
   const t = useT()
   const chosen = words(value).map((w) => w.toLowerCase())
   const toggle = (chip: string) => {
@@ -36,24 +36,32 @@ export function StylePicker({ value, onChange }: { value: string; onChange: (sty
     onChange(next.join(', '))
   }
   return (
+    <div role="group" aria-label={t('newclass.style.suggestions')} className="flex flex-wrap gap-2">
+      {STYLES.map(({ value: chip, labelKey }) => {
+        const on = chosen.includes(chip.toLowerCase())
+        return (
+          <ChipButton
+            key={chip}
+            pressed={on}
+            disabled={!on && [...words(value), chip].join(', ').length > max}
+            onClick={() => {
+              toggle(chip)
+            }}
+          >
+            {t(labelKey)}
+          </ChipButton>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Style chips for era and genre, over the free-text "Style" field they fill in. */
+export function StylePicker({ value, onChange }: { value: string; onChange: (style: string) => void }) {
+  const t = useT()
+  return (
     <div className="flex flex-col gap-3">
-      <div role="group" aria-label={t('newclass.style.suggestions')} className="flex flex-wrap gap-2">
-        {STYLES.map(({ value: chip, labelKey }) => {
-          const on = chosen.includes(chip.toLowerCase())
-          return (
-            <ChipButton
-              key={chip}
-              pressed={on}
-              disabled={!on && [...words(value), chip].join(', ').length > MAX_STYLE}
-              onClick={() => {
-                toggle(chip)
-              }}
-            >
-              {t(labelKey)}
-            </ChipButton>
-          )
-        })}
-      </div>
+      <StyleChips value={value} onChange={onChange} />
       <TextInput
         label={t('newclass.style.label')}
         value={value}

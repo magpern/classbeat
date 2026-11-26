@@ -6,6 +6,8 @@ import { fakePlaylists } from './song-helpers'
 import {
   FINISH,
   MIDDLE,
+  answerMusic,
+  holdFill,
   REQUEST,
   SEVEN,
   SEVEN_AND_THREE,
@@ -25,8 +27,9 @@ import {
 // run through the real pipeline by `backend/tests/test_composer_release_scripts.py`.
 //
 // The worker reads its script link anew for every job, so a script is switched only while no job is
-// about to start: the sketch's hand-off is held until the link is switched (`holdHandoff`), and the song
-// search waits for the music answer, which this spec gives last.
+// about to start: the sketch's hand-off waits for "Design this class" (`holdHandoff`), and the song
+// search is held (`holdFill`) until this spec has edited the sketch. The reading has no hint of what to
+// play, so it asks first (`answerMusic`: a typed style, #1538); that answer decides the music.
 
 composerStack()
 
@@ -41,7 +44,8 @@ test('"Make it seven bursts": seven efforts in section 3 and the same finish in 
 
   // 1. The request: read as six parts in order, the middle efforts as 5 to 7.
   useModelScript('composer_release_read')
-  const held = await holdHandoff(page)
+  const held = holdHandoff(page)
+  const fill = await holdFill(page)
   await page.goto('/classes/new')
   await page.getByLabel('Describe your class').fill(REQUEST)
   await page.getByRole('button', { name: /^Start/ }).click()
@@ -56,10 +60,12 @@ test('"Make it seven bursts": seven efforts in section 3 and the same finish in 
   await expect(parts.nth(3)).toContainText('4. Flat road')
   await expect(parts.nth(4)).toContainText('5. Climb, building up')
   await expect(parts.nth(5)).toContainText('6. 2 to 4 efforts')
+  await answerMusic(page) // no hint of what to play: the reading asks, and the answer is read in
+  await expect(parts).toHaveCount(6)
 
   // The sketch: six efforts in section 3 (inside 5 to 7) and three in the finish.
   useModelScript('composer_release_sketch')
-  held.release()
+  await held.release()
   await expect(page.getByText('Rough: songs not in yet').first()).toBeVisible(LONG)
   await settled(page, id, 1)
   expect(effortsOf(await currentDraft(page, id))).toEqual([6, 3])
@@ -82,9 +88,10 @@ test('"Make it seven bursts": seven efforts in section 3 and the same finish in 
   expect(saveState().writes).toBe(0)
   expect(spotifyWrites()).toEqual([])
 
-  // The music: classbeat chooses. The songs come in, designed on the same shape.
+  // The music was answered with the style: the songs come in, designed on the same shape.
   useModelScript('composer_release_fill')
-  await page.getByRole('button', { name: 'Choose it for me' }).click()
+  fill.open()
+  await page.reload()
   await expect(page.getByText('Ready to approve').first()).toBeVisible(LONG)
   const preview = await previewDraft(page, id)
   expect(preview.songs).toHaveLength(15)

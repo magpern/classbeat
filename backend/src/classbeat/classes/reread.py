@@ -11,10 +11,17 @@ questions into one more ``interpret_request`` job on the **same** class, before 
 - the body names the reading the answers belong to (``interpret_job_id``): another one stored since
   is ``not_ready``, before any index is read (a stale tab's answers are never applied to another
   reading's questions);
-- an answer that picks the question's marked "No music" option (``no_music_index``) makes the new
-  job's ``music_override`` ``none`` (the marker is the stored question's own, never the option's
-  words and never a field of the body; a typed "no music" is not read, #1137). A soundless design
-  the switch does not admit is refused at the hand-off, before any job or credit;
+- "No music" makes the new job's ``music_override`` ``none``: an answer that picks the question's
+  marked "No music" option (``no_music_index``: the stored question's own marker, never the
+  option's words), or the body's closed ``no_music: true`` (#1538: a reading with no music question
+  has no option to mark). A typed "no music" is not read (#1137). A soundless design the switch
+  does not admit is refused at the hand-off, before any job or credit;
+- ``music_sources`` (#1538: the confirm screen's playlist picker) are checked as the request's own
+  are (``MusicSources``: Spotify ids, at most five, each once; the Spotify connection must be the
+  user's current one, attached playlists need the composer, "No music" excludes them: the jobs
+  API's ``invalid_input``, ``not_connected`` and ``feature_off``) and added to the ones the
+  reading's job attached. Whether the user's own Spotify token can read each is the song search's
+  check (``source_unreadable``), as for the request's own;
 - the answers are checked against the stored questions and made into sentences
   (``design.interpret_reread_policy``: ``invalid_answer``); the new request is the request of the
   reading's own interpret job plus those sentences (``too_large`` over the request's limit), and
@@ -105,7 +112,7 @@ async def reread(
     said = interpret_reread_policy.sentences(row.questions, body)
     if said is None:
         return Handoff(reason="invalid_answer")
-    no_music = interpret_reread_policy.chose_no_music(row.questions, body)
+    no_music = interpret_reread_policy.wants_no_music(row.questions, body)
     try:
         given = InterpretRequestInput.model_validate(earlier)
         request = interpret_reread_policy.combined(given.request, said)
@@ -113,17 +120,23 @@ async def reread(
             return Handoff(reason="too_large")
         keep: set[str] = {f for f in BROWSER_FIELDS if f != "title"}
         kept = given.model_dump(mode="json", include=keep, exclude_none=True)
-        spotify = ctx.connection("spotify") if given.spotify_connection_id else None
-        if spotify is None and isinstance(given.music_override, PickChoice):
+        # Picked playlists are read with the user's Spotify, so they need its connection too.
+        spotify = (
+            ctx.connection("spotify")
+            if given.spotify_connection_id or body.music_sources is not None
+            else None
+        )
+        if spotify is None and body.music_sources is not None:
+            return Handoff(reason="not_connected")
+        if spotify is None and isinstance(given.music_override, PickChoice) and not no_music:
             return Handoff(reason="not_connected")  # a song pick needs Spotify
         parsed = InterpretRequestInput.model_validate(
             {
-                **kept,
+                **interpret_reread_policy.browser_fields(kept, body, no_music=no_music),
                 "request": request,
                 "class_id": str(class_id),
                 "reread_of": str(row.job_id),
                 "answers": said,
-                **({"music_override": {"source": "none"}} if no_music else {}),
                 "mowl_connection_id": str(mowl),
                 **({"spotify_connection_id": str(spotify)} if spotify else {}),
             }

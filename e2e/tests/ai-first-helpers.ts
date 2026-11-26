@@ -25,25 +25,22 @@ export async function instructorWithMowl(page: Page, tag: string): Promise<void>
 }
 
 export interface Held {
-  release: () => void
+  /** Agrees to the reading: clicks "Design this class". */
+  release: () => Promise<void>
 }
 
 /**
- * Holds the browser's `design-from-interpretation` call until `release()`. The worker reads the
- * model script anew for every run, so a spec points the script at the design between the reading
- * and the hand-off: the reading is shown first (the hand-off asks only after it), and the call
- * waits here while the spec switches the script.
+ * The page waits for the instructor after "How we read your request" (#1538): nothing is designed or
+ * fetched until "Design this class" is clicked. `release()` clicks it, so a spec reads as before: it
+ * points the model script at the design between the reading and the hand-off, then releases. A reading
+ * with a question to answer first is answered by the spec itself.
  */
-export async function holdHandoff(page: Page): Promise<Held> {
-  let open: () => void = () => undefined
-  const gate = new Promise<void>((resolve) => {
-    open = resolve
-  })
-  await page.route('**/api/classes/*/design-from-interpretation', async (route) => {
-    await gate
-    await route.continue()
-  })
-  return { release: open }
+export function holdHandoff(page: Page): Held {
+  return {
+    release: async () => {
+      await page.getByRole('button', { name: 'Design this class' }).click()
+    },
+  }
 }
 
 /** On the start screen, say the request in the box (the music stays "classbeat chooses"). */
@@ -70,7 +67,7 @@ export async function designFromWords(
   options: { music?: string; afterReading?: () => Promise<void> | void; withinPlan?: boolean } = {},
 ): Promise<string> {
   useModelScript(scripts.reading)
-  const held = await holdHandoff(page)
+  const held = holdHandoff(page)
   await say(page, request)
   if (options.music !== undefined) await pickMusic(page, options.music)
   await page.getByRole('button', { name: 'Design my class' }).click()
@@ -78,7 +75,7 @@ export async function designFromWords(
   await expect(page.getByTestId('interpretation')).toBeVisible(LONG)
   await options.afterReading?.()
   useModelScript(scripts.design)
-  held.release()
+  await held.release()
   // A request over the plan waits for a choice before the design job starts (M7a-4).
   if (options.withinPlan === true) await page.getByRole('button', { name: 'Design within my plan' }).click()
   return page.url()

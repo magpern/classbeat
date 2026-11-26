@@ -19,12 +19,17 @@ const NO_VERSION = { current_revision_id: null, current_revision_number: null, r
 const INTERPRETATION = `GET ${CLASS_PATH}/interpretation`
 const DESIGN = `POST ${CLASS_PATH}/design-from-interpretation`
 
+/** The reading is confirmed (nothing is designed before); the plan choice comes after. */
+async function agree() {
+  fireEvent.click(await screen.findByRole('button', { name: 'Design this class' }))
+}
+
 function handoffRoutes(items: unknown[], extra: Record<string, unknown> = {}) {
   return {
     ...SESSION_ROUTES,
     ...classRoutes({ cls: NO_VERSION, revisions: [] }),
     'GET /api/account/plan': FREE_PLAN,
-    [INTERPRETATION]: { refusal: null, design_job: null, items },
+    [INTERPRETATION]: { interpret_job_id: 'd1111111-1111-4111-8111-111111111111', refusal: null, design_job: null, items },
     [DESIGN]: { job_id: 'b1111111-1111-4111-8111-111111111111' },
     ...extra,
   }
@@ -44,6 +49,18 @@ afterEach(() => {
 })
 
 describe('an over-plan request waits for a choice before the design job', () => {
+  it('asks to confirm the reading first: the plan choice comes only after it', async () => {
+    const api = fakeApi(handoffRoutes([notAsked('length_min', 'over_plan_length', 60)]))
+    renderAt(PAGE)
+    await screen.findByRole('button', { name: 'Design this class' })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(screen.queryByTestId('plan-choice')).toBeNull()
+    expect(api.to('POST', `${CLASS_PATH}/design-from-interpretation`)).toHaveLength(0)
+    fireEvent.click(screen.getByRole('button', { name: 'Design this class' }))
+    expect(await screen.findByTestId('plan-choice')).toBeInTheDocument()
+    expect(api.to('POST', `${CLASS_PATH}/design-from-interpretation`)).toHaveLength(0) // the credit waits for the choice too
+  })
+
   it.each([
     ['over_plan_length', notAsked('length_min', 'over_plan_length', 60), /longer than your plan allows, which is 30 minutes/, 'Individual'],
     ['plan_no_games', notAsked('games.0', 'plan_no_games', { type: 'racetrack' }), /does not include games/, 'Individual'],
@@ -51,6 +68,7 @@ describe('an over-plan request waits for a choice before the design job', () => 
   ])('%s: explains it, offers the two ways and sends nothing', async (_code, item, reasonText, plan) => {
     const api = fakeApi(handoffRoutes([item]))
     renderAt(PAGE)
+    await agree()
     const choice = await screen.findByTestId('plan-choice')
     expect(within(choice).getByText(reasonText)).toBeInTheDocument()
     expect(within(choice).getByText(`${plan} allows all of it.`)).toBeInTheDocument()
@@ -65,6 +83,7 @@ describe('an over-plan request waits for a choice before the design job', () => 
   it('names Professional when only it allows the length', async () => {
     fakeApi(handoffRoutes([notAsked('length_min', 'over_plan_length', 120)]))
     renderAt(PAGE)
+    await agree()
     const choice = await screen.findByTestId('plan-choice')
     expect(within(choice).getByText('Professional allows all of it.')).toBeInTheDocument()
   })
@@ -72,6 +91,7 @@ describe('an over-plan request waits for a choice before the design job', () => 
   it('sends the hand-off once, and only after "Design within my plan"', async () => {
     const api = fakeApi(handoffRoutes([notAsked('length_min', 'over_plan_length', 60)]))
     renderAt(PAGE)
+    await agree()
     fireEvent.click(await screen.findByRole('button', { name: 'Design within my plan' }))
     await waitFor(() => {
       expect(api.to('POST', `${CLASS_PATH}/design-from-interpretation`)).toHaveLength(1)
@@ -82,6 +102,7 @@ describe('an over-plan request waits for a choice before the design job', () => 
   it('"See plans" starts nothing and leaves the choice open', async () => {
     const api = fakeApi(handoffRoutes([notAsked('ftp_test', 'plan_no_ftp_tests', 20)]))
     renderAt(PAGE)
+    await agree()
     fireEvent.click(await screen.findByRole('link', { name: 'See Individual' }))
     await waitFor(() => {
       expect(window.location.pathname).toBe('/en/account')
@@ -92,6 +113,7 @@ describe('an over-plan request waits for a choice before the design job', () => 
   it('does not hold a request with no plan reason: races and other limits go straight to the design', async () => {
     const api = fakeApi(handoffRoutes([notAsked('races', 'plan_no_races', 2), notAsked('sport', 'sport_not_offered', 'running')]))
     renderAt(PAGE)
+    await agree()
     await waitFor(() => {
       expect(api.to('POST', `${CLASS_PATH}/design-from-interpretation`)).toHaveLength(1)
     })
@@ -101,6 +123,7 @@ describe('an over-plan request waits for a choice before the design job', () => 
   it('does not hold a request that was kept within the plan (an "As you asked" item with the same path)', async () => {
     const api = fakeApi(handoffRoutes([{ path: 'length_min', origin: 'explicit', reason_code: null, value: 30, quote: null }]))
     renderAt(PAGE)
+    await agree()
     await waitFor(() => {
       expect(api.to('POST', `${CLASS_PATH}/design-from-interpretation`)).toHaveLength(1)
     })

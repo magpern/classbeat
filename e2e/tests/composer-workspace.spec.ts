@@ -149,7 +149,7 @@ test('describe with a playlist and a pinned song, shape it, swap a song, approve
   // Describe: the text and the attached playlist. The reading comes first; its hand-off (the sketch)
   // waits until the script is switched.
   useModelScript('composer_read')
-  const held = await holdHandoff(page)
+  const held = holdHandoff(page)
   const fill = await holdFill(page)
   await page.goto('/classes/new')
   await page.getByLabel('Describe your class').fill(READ)
@@ -166,7 +166,7 @@ test('describe with a playlist and a pinned song, shape it, swap a song, approve
   const reading = page.getByTestId('reading-card')
   await expect(reading.getByText(PINNED).first()).toBeVisible(LONG)
   useModelScript('composer_sketch')
-  held.release()
+  await held.release()
   await expect(page.getByText('Rough: songs not in yet').first()).toBeVisible(LONG)
   await settled(page, id, 1)
 

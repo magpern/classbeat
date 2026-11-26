@@ -79,7 +79,7 @@ export const workspaceEn = {
   'cw.more.delete': 'Delete class',
   'cw.more.close': 'Close',
   'cw.music.title': 'Music for this class',
-  'cw.music.question': 'Would you like music for this class? I can choose it for you, you can describe the sound you want or share playlists for inspiration, or we can continue without music.',
+  'cw.music.question': 'What music would you like for this class? Name a style, describe the sound you want or share playlists for inspiration, or we can continue without music.',
   'cw.music.answers': 'Music answers',
   'cw.music.pick': 'Choose it for me',
   'cw.music.describe': 'Describe the sound',

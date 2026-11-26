@@ -182,10 +182,14 @@ def test_the_closed_question_is_stored_and_read_back() -> None:
 def test_answers_to_the_closed_question_are_the_apps_words() -> None:
     reading = uuid4()
 
-    def body(answer: dict[str, Any]) -> RereadIn:
+    def body(answer: dict[str, Any], **more: Any) -> RereadIn:
         return RereadIn.model_validate_json(
             json.dumps(
-                {"interpret_job_id": str(reading), "answers": [{"question_index": 0} | answer]}
+                {
+                    "interpret_job_id": str(reading),
+                    "answers": [{"question_index": 0} | answer],
+                    **more,
+                }
             )
         )
 
@@ -193,7 +197,12 @@ def test_answers_to_the_closed_question_are_the_apps_words() -> None:
     typed = body({"text": "80s rock"})
     assert sentences(asked, typed) == "What music should the class have? Answer: 80s rock"
     assert not chose_no_music(asked, typed)
-    playlists = body({"option_index": 0})
+    # "Use one of my playlists" names none by itself (it would loop back to the same question):
+    # it is an answer only with the playlists the picker sent (#1538)
+    assert sentences(asked, body({"option_index": 0})) is None
+    playlists = body(
+        {"option_index": 0}, music_sources=[{"kind": "spotify_playlist", "id": "a" * 22}]
+    )
     assert sentences(asked, playlists) == (
         "What music should the class have? Answer: Use one of my playlists"
     )

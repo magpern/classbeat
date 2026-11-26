@@ -79,7 +79,7 @@ export const workspaceSv: Catalogue = {
   'cw.more.delete': 'Radera pass',
   'cw.more.close': 'Stäng',
   'cw.music.title': 'Musik till passet',
-  'cw.music.question': 'Vill du ha musik till det här passet? Jag kan välja den åt dig, du kan beskriva ljudet du vill ha eller dela spellistor som inspiration, eller så fortsätter vi utan musik.',
+  'cw.music.question': 'Vilken musik vill du ha till det här passet? Ange en stil, beskriv ljudet du vill ha eller dela spellistor som inspiration, eller så fortsätter vi utan musik.',
   'cw.music.answers': 'Svar om musiken',
   'cw.music.pick': 'Välj åt mig',
   'cw.music.describe': 'Beskriv ljudet',

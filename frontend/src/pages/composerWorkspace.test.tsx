@@ -733,3 +733,85 @@ describe('which class page renders, and what it waits for', () => {
     })
   })
 })
+
+// #1538: nothing is designed after "How classbeat read it" until the instructor confirms; the
+// questions are answered there, and an answer that changes the reading reads the request again.
+describe('the composer reading waits for the instructor (#1538)', () => {
+  const NO_SKETCH = { current_revision_id: null, current_revision_number: null, revision_count: 0 }
+  const DESIGN = `${CLASS_PATH}/design-from-interpretation`
+  const REREAD = `${CLASS_PATH}/reread`
+  const LENGTH = { topic: 'length', text: 'How long should the class be?', options: ['30 minutes', '45 minutes', '60 minutes'], assumed_index: 1 }
+  const MUSIC = { topic: 'music', text: 'What music do you want?', options: ['80s hits', 'Rock', 'No music'], no_music_index: 2 }
+
+  function reading(...questions: object[]) {
+    return {
+      [`GET ${CLASS_PATH}/revisions`]: { revisions: [] },
+      [`GET ${CLASS_PATH}/interpretation`]: { interpret_job_id: JOB_ID, items: [], questions, refusal: null, design_job: null },
+      [`POST ${DESIGN}`]: { job_id: PHASE2_JOB },
+      [`POST ${REREAD}`]: { job_id: MSG_ID },
+    }
+  }
+
+  it('sends nothing before the confirmation, then one hand-off naming the reading it showed', async () => {
+    const { api } = setup({ cls: NO_SKETCH, extraRoutes: reading(LENGTH) })
+    renderAt(PAGE)
+    const card = await screen.findByTestId('reading-card')
+    const group = within(card).getByRole('group', { name: 'How long should the class be?' })
+    expect(within(group).getByRole('radio', { name: /45 minutes/ })).toBeChecked() // the assumed answer, pre-selected
+    expect(within(card).queryByRole('button', { name: /Keep:/ })).toBeNull() // the chat quick answers come after the sketch
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(api.to('POST', DESIGN)).toHaveLength(0)
+    expect(api.to('POST', REREAD)).toHaveLength(0)
+    await userEvent.click(within(card).getByRole('button', { name: 'Design this class' }))
+    await waitFor(() => {
+      expect(api.to('POST', DESIGN)).toHaveLength(1)
+    })
+    expect(api.to('POST', DESIGN)[0]!.body).toEqual({ interpret_job_id: JOB_ID })
+    expect(api.to('POST', REREAD)).toHaveLength(0)
+  })
+
+  it('reads the request again for a changed answer and sends no hand-off', async () => {
+    const { api } = setup({
+      cls: NO_SKETCH,
+      extraRoutes: { ...reading(LENGTH), [`GET /api/jobs/${MSG_ID}`]: json(jobBody('running', { id: MSG_ID, kind: 'interpret_request' })) },
+    })
+    renderAt(PAGE)
+    const card = await screen.findByTestId('reading-card')
+    await userEvent.click(within(card).getByRole('radio', { name: /60 minutes/ }))
+    await userEvent.click(within(card).getByRole('button', { name: 'Update the reading' }))
+    await waitFor(() => {
+      expect(api.to('POST', REREAD)).toHaveLength(1)
+    })
+    expect(api.to('POST', REREAD)[0]!.body).toEqual({ interpret_job_id: JOB_ID, answers: [{ question_index: 0, option_index: 2 }] })
+    expect(api.to('POST', DESIGN)).toHaveLength(0)
+    expect(await screen.findByText('Reading your request.')).toBeInTheDocument()
+  })
+
+  it('keeps "Design this class" off for a music question with no hint, with nothing pre-selected, until it is answered', async () => {
+    const { api } = setup({ cls: NO_SKETCH, extraRoutes: reading(MUSIC) })
+    renderAt(PAGE)
+    const card = await screen.findByTestId('reading-card')
+    const group = within(card).getByRole('group', { name: 'What music do you want?' })
+    expect(within(group).getAllByRole('radio').some((r) => (r as HTMLInputElement).checked)).toBe(false)
+    expect(within(card).getByRole('button', { name: 'Design this class' })).toBeDisabled()
+    await userEvent.click(within(group).getByRole('radio', { name: 'No music' }))
+    expect(within(card).getByRole('button', { name: 'Design this class' })).toBeDisabled() // the answer is read first
+    await userEvent.click(within(card).getByRole('button', { name: 'Update the reading' }))
+    await waitFor(() => {
+      expect(api.to('POST', REREAD)).toHaveLength(1)
+    })
+    expect(api.to('POST', DESIGN)).toHaveLength(0)
+  })
+
+  it('offers "No music" on a reading with no music question and sends it as the closed field', async () => {
+    const { api } = setup({ cls: NO_SKETCH, extraRoutes: reading() })
+    renderAt(PAGE)
+    const card = await screen.findByTestId('reading-card')
+    await userEvent.click(within(card).getByRole('checkbox', { name: 'No music' }))
+    await userEvent.click(within(card).getByRole('button', { name: 'Update the reading' }))
+    await waitFor(() => {
+      expect(api.to('POST', REREAD)).toHaveLength(1)
+    })
+    expect(api.to('POST', REREAD)[0]!.body).toEqual({ interpret_job_id: JOB_ID, answers: [], no_music: true })
+  })
+})

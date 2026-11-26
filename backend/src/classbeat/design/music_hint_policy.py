@@ -11,7 +11,8 @@ With none (``hintless``), the reading always has a music question with no assume
 (``reading_question_policy``), the composer's reading leaves its music undecided
 (``music_decision.initial``), and the hand-off refuses ``music_unanswered`` before any job or credit
 when it would start a song pick now (``classes.interpretation_design``). A composer reading
-reaches its sketch with the music left open; ``PUT /music`` enforces the rule there (#1538). An
+reaches its sketch with the music left open; ``PUT /music`` enforces the rule there
+(``pick_allowed``, #1538: "choose it for me" is refused ``music_unanswered`` without a hint). An
 answer to the question (a typed style, a chosen style, a playlist, "No music") makes a new
 reading that has one.
 """
@@ -43,6 +44,23 @@ def has_hint(
     if any(i.path in _TASTE_PATHS or i.path.startswith(_TASTE_PREFIXES) for i in items):
         return True
     return pinned > 0 or (override is not None and override != PICK) or bool(sources)
+
+
+def pick_allowed(
+    music: dict[str, str] | None,
+    items: Iterable[InterpretationItem],
+    taste: MusicTaste | None,
+    *,
+    pinned: int,
+    override: str | None,
+    sources: Any,
+) -> bool:
+    """Whether ``PUT /music`` may store ``choice: "pick"`` ("choose it for me") for a reading:
+    only with a hint (``has_hint``), or when the reading's music already names a source of its own
+    (a playlist or a mix: the reading's music is then that source, never a pick). A reading with
+    no music source at all (``music is None``) has none of those, so it needs a hint too."""
+    named = music is not None and music.get("source") not in (None, PICK)
+    return named or has_hint(items, taste, pinned=pinned, override=override, sources=sources)
 
 
 def hintless(

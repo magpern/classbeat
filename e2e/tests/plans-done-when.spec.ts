@@ -209,17 +209,17 @@ test('1. Free is told why before any job, and offered Individual', async () => {
   // In words: a request with a game stops at "Part of your request is over your plan", names the
   // reason, offers Individual, and the design job has not started.
   useModelScript('ai_first_read_pull')
-  const held = await holdHandoff(free.page) // the hand-off waits for the choice, so nothing designs
+  const held = holdHandoff(free.page) // nothing designs before the confirmation, nor before the choice
   await say(free.page, 'A 30 minute ride with two climbs and a Power Pull after climb 2.')
   await pickMusic(free.page, PLAYLISTS.draft.name)
   await free.page.getByRole('button', { name: 'Design my class' }).click()
+  await held.release() // "Design this class": the plan choice comes after the confirmation
   const choice = free.page.getByTestId('plan-choice')
   await expect(choice).toBeVisible(LONG)
   await expect(choice).toContainText('Part of your request is over your plan.')
   await expect(choice).toContainText('Your plan does not include games.')
   await expect(choice).toContainText('Individual allows all of it.')
   expect(await heldOf(free.page)).toBe(0)
-  held.release()
   await choice.getByRole('link', { name: 'See Individual' }).click()
   await expect(free.page).toHaveURL(/\/account#plan$/)
   expect(sql(`SELECT count(*) FROM jobs WHERE owner_id = '${free.id}' AND kind = 'design_draft'`)).toBe('0')

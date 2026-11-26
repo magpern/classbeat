@@ -1,0 +1,77 @@
+{
+ "model": "fake-model",
+ "turns": [
+  {
+   "calls": [
+    {
+     "name": "submit_brief",
+     "input": {
+      "length_min": {
+       "value": 60,
+       "origin": "explicit",
+       "quote": "60 min"
+      },
+      "shape": [
+       {
+        "kind": "warmup",
+        "trend": "rising",
+        "effort": "easy",
+        "origin": "explicit",
+        "quote": "starts off slow and builds up the momentum"
+       },
+       {
+        "kind": "climb",
+        "origin": "explicit",
+        "quote": "A hilly section"
+       },
+       {
+        "kind": "efforts",
+        "effort": "hard",
+        "length": "short",
+        "load": "heavy",
+        "count": {
+         "min": 5,
+         "max": 7
+        },
+        "origin": "explicit",
+        "quote": "5-7 short heavy bursts"
+       },
+       {
+        "kind": "flat",
+        "origin": "explicit",
+        "quote": "back on flats"
+       },
+       {
+        "kind": "climb",
+        "trend": "rising",
+        "origin": "explicit",
+        "quote": "bulding up for a new hilly section"
+       },
+       {
+        "kind": "efforts",
+        "count": {
+         "min": 2,
+         "max": 4
+        },
+        "origin": "explicit",
+        "quote": "a few bursts of power"
+       }
+      ],
+      "music_taste": {
+       "genres": [
+        {
+         "value": "rock",
+         "origin": "explicit",
+         "quote": "rock"
+        }
+       ]
+      }
+     },
+     "expect": {
+      "accepted": true
+     }
+    }
+   ]
+  }
+ ]
+}

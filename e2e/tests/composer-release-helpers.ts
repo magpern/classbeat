@@ -165,3 +165,40 @@ export async function instructorWithoutSpotify(page: Page, tag: string): Promise
   if (id === undefined || !/^[0-9a-f-]{36}$/.test(id)) throw new Error('no signed-in user id')
   sql(`INSERT INTO entitlements (owner_id, plan_id, source) VALUES ('${id}', 'instructor', 'grant')`)
 }
+
+/** Answers the web driver's fill `class_busy` until `open()`, so the shape can be changed first. */
+export async function holdFill(page: Page): Promise<{ open: () => void }> {
+  let closed = true
+  await page.route('**/api/classes/*/fill-songs', async (route) => {
+    if (!closed) {
+      await route.continue()
+      return
+    }
+    await route.fulfill({
+      status: 409,
+      contentType: 'application/json',
+      body: JSON.stringify({ detail: { reason: 'class_busy' } }),
+    })
+  })
+  return {
+    open: () => {
+      closed = false
+    },
+  }
+}
+
+/**
+ * The confirm step of a reading with no hint of what to play (#1538): the reading asks what music the
+ * class should have and "Design this class" stays off until it is answered. The instructor types a style,
+ * the request is read again (with the styled script, which finds that taste) and the new reading asks
+ * nothing. Returns with the reading ready to be designed.
+ */
+export async function answerMusic(page: Page): Promise<void> {
+  const reading = page.getByTestId('reading-card')
+  await expect(reading.getByRole('button', { name: 'Design this class' })).toBeDisabled({ timeout: 90_000 })
+  await reading.getByLabel('Or type your own answer').fill('rock')
+  useModelScript('composer_release_read_styled')
+  await reading.getByRole('button', { name: 'Update the reading' }).click()
+  await expect(reading.getByLabel('Or type your own answer')).toHaveCount(0, { timeout: 90_000 })
+  await expect(reading.getByRole('button', { name: 'Design this class' })).toBeEnabled()
+}
