@@ -48,7 +48,7 @@ describe('the Designing page of a song pick', () => {
     expect(steps.map((s) => s.textContent)).toEqual([
       'Finding songs that fit (done)',
       'Saving your working playlist',
-      'MOWL is listening to the music',
+      'Loading the songs into MOWL',
       'Choosing the best songs for each part',
     ])
     expect(steps[1]).toHaveAttribute('aria-current', 'step')

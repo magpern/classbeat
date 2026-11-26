@@ -53,7 +53,7 @@ describe('the Designing page', () => {
   it.each([
     ['pool_search', 'Finding songs that fit', 1],
     ['pool_write', 'Saving your working playlist', 2],
-    ['pool_analyse', 'MOWL is listening to the music', 3],
+    ['pool_analyse', 'Loading the songs into MOWL', 3],
     ['choose', 'Choosing the best songs for each part', 4],
   ])('words the phase-1 stage %s and counts the step', async (stage, label, step) => {
     fakeApi({
