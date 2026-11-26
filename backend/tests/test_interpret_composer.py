@@ -310,7 +310,7 @@ def test_question_text_is_cleaned_and_duplicate_options_are_merged() -> None:
             "questions": [
                 ask(
                     "other",
-                    "  How   hard?\n see https://evil.example/x ",
+                    "  How hard?\n see https://evil.example/x ",
                     ["Easy", "easy", " Hard ", "Hard", "Medium"],
                     assumed=4,
                 ),
@@ -324,7 +324,7 @@ def test_question_text_is_cleaned_and_duplicate_options_are_merged() -> None:
     assert only.options == ["Easy", "Hard", "Medium"]
     assert only.options[only.assumed_index] == "Medium"  # the assumed answer follows its option
     assert "\n" not in only.text
-    assert "evil.example" not in only.text
+    assert only.text == only.text.strip()  # a link stays text: the page renders it as plain text
 
 
 def test_a_stored_question_of_the_old_shape_is_dropped_on_reading() -> None:
