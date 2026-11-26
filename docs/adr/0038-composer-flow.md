@@ -58,7 +58,10 @@ The songs start by themselves when the sketch is ready. The user can keep shapin
 
 *(Roadmap Amendment 37, 2026-11-26, #1536: the flow gains a step before the sketch. The reading shows its
 questions with the assumed answers, and the instructor may answer them; the answers re-read the request
-(`POST /api/classes/{id}/reread`) before any design. The hand-off and the sketch use the latest reading.)*
+(`POST /api/classes/{id}/reread`) before any design, with no class credit. Nothing is designed or
+fetched until the instructor confirms the reading (the owner's rules of 2026-11-26; the confirm screen,
+with the assumed answers pre-selected and one click to accept them all, is #1538). The hand-off and the
+sketch use the confirmed reading, which the hand-off may name (`interpret_job_id`).)*
 
 ### 2. The flag
 
@@ -96,7 +99,12 @@ questions with the assumed answers, and the instructor may answer them; the answ
   hand-off and the sketch start from the reading the instructor confirmed. A re-read is a request of the
   chat and counts toward `chat_max_requests` (refused `chat_full` at the cap). A question may carry no
   assumed answer: a `music` question with no hint of the music, which the instructor must answer (a pick
-  with no hint is refused `music_unanswered`, amendment 37 decision 7).)*
+  with no hint is refused `music_unanswered` on the route that starts the pick now, amendment 37
+  decision 7; a composer reading reaches its sketch with its music undecided, and a form "pick" is no
+  hint and leaves it undecided). With no music question from the model for such a pick, the backend
+  adds the closed question `{topic: "music", code: "which_music", options: ["my_playlists",
+  "no_music"], no_music_index: 1}`, with no model text, which the page phrases from its own catalogue.
+  Every reading stores its questions, in the classic flow too; the pinned songs stay the composer's.)*
   - They are asked only for a brief field with no explicit value whose default changes the class's shape:
     length and intensity. The brief has no warm-up field yet, so a question about the warm-up needs a later
     brief change (a design decision of its own); the reading never asks one.

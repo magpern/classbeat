@@ -244,8 +244,14 @@ The fields are:
    *(Roadmap Amendment 37, 2026-11-26, #1536: when the request names no music, the reading asks about
    it as one of its questions; with no hint of the music the question has no assumed answer, its options
    are styles, "Use one of my playlists" and always "No music" (the stored `no_music_index` marks it;
-   decisions 6 and 7), and a pick with no hint is refused `music_unanswered` at the hand-off. The order
-   above does not change, and free-text "no music" is still not read as soundless.)*
+   decisions 6 and 7), and a pick with no hint is refused `music_unanswered` at the hand-off, on the
+   route that starts the song pick now, after `needs_spotify` (a composer reading reaches its sketch
+   with the music undecided). A hint is a taste item, a pinned song, attached playlists, or a source
+   chosen in the form (`music_override`) other than a pick: "Pick songs for me" is no hint and does not
+   drop the music question, so songs are never picked at random unless the instructor chooses "No
+   music" (the owner's rules of 2026-11-26). With no music question from the model, the backend adds
+   the closed `which_music` question. The order above does not change, and free-text "no music" is
+   still not read as soundless.)*
 5. The allowed sports go to the interpreter.
 
 **`Brief`** (moved into `agent/brief.py`)

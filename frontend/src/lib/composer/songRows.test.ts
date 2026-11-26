@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { DraftSegment } from '../../api/draftTypes'
 import type { Song } from '../../api/songs'
+import { t } from '../../i18n/t'
 import { quickAnswers } from './quickAnswers'
 import { songRows } from './songRows'
 
@@ -41,7 +42,7 @@ describe('the segment rows', () => {
 describe('the quick answers', () => {
   it('offers every option other than the assumed one', () => {
     const question = { topic: 'length' as const, text: 'How long?', options: ['30 minutes', '45 minutes', '60 minutes'], assumedIndex: 1 }
-    expect(quickAnswers(question)).toEqual([
+    expect(quickAnswers(question, t)).toEqual([
       { index: 0, label: '30 minutes' },
       { index: 2, label: '60 minutes' },
     ])
@@ -49,6 +50,14 @@ describe('the quick answers', () => {
 
   it('offers every option of a required question, which assumes none', () => {
     const question = { topic: 'music' as const, text: 'Music?', options: ['Pop hits', 'No music'], assumedIndex: null }
-    expect(quickAnswers(question).map((a) => a.label)).toEqual(['Pop hits', 'No music'])
+    expect(quickAnswers(question, t).map((a) => a.label)).toEqual(['Pop hits', 'No music'])
+  })
+
+  it('labels the closed which_music question from the catalogue, never with its codes', () => {
+    const question = { topic: 'music' as const, code: 'which_music' as const, text: '', options: ['my_playlists', 'no_music'], assumedIndex: null }
+    expect(quickAnswers(question, t)).toEqual([
+      { index: 0, label: 'Use one of my playlists' },
+      { index: 1, label: 'No music' },
+    ])
   })
 })

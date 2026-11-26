@@ -391,6 +391,26 @@ describe('the composer workspace page', () => {
     expect(api.to('POST', PENDING)[0]!.body).toMatchObject({ body: 'How long should the class be? Answer: 60 minutes' })
   })
 
+  it('phrases the closed which_music question and its answer from the catalogue (#1536)', async () => {
+    const user = userEvent.setup()
+    const interpretation = {
+      interpret_job_id: JOB_ID,
+      items: [],
+      questions: [{ topic: 'music', code: 'which_music', options: ['my_playlists', 'no_music'], no_music_index: 1 }],
+    }
+    const { api } = setup({ cls: { fill_songs: FILL }, extraRoutes: { [`GET ${CLASS_PATH}/interpretation`]: interpretation } })
+    renderAt(PAGE)
+    expect(await screen.findByText('What music do you want? Name a style, an era or an artist.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Keep/ })).toBeNull() // required: nothing is assumed
+    await user.click(screen.getByRole('button', { name: 'Use one of my playlists' }))
+    await waitFor(() => {
+      expect(api.to('POST', PENDING)).toHaveLength(1)
+    })
+    expect(api.to('POST', PENDING)[0]!.body).toMatchObject({
+      body: 'What music do you want? Name a style, an era or an artist. Answer: Use one of my playlists',
+    })
+  })
+
   it('keeps a question open when its answer could not be stored', async () => {
     const user = userEvent.setup()
     const { api } = setup({ cls: { fill_songs: FILL }, extraRoutes: { [`POST ${PENDING}`]: () => reason(409, 'pending_full') } })

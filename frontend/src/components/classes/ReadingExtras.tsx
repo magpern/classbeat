@@ -1,10 +1,12 @@
 import type { ReadingExtras as Extras, ReadingQuestion } from '../../api/readingExtras'
 import { useT } from '../../i18n/I18n'
+import { optionLabel, questionText } from '../../lib/readingQuestionWords'
 
 function QuestionLine({ question }: { question: ReadingQuestion }) {
   const t = useT()
-  if (question.assumedIndex === null) return <>{question.text}</>
-  return <>{`${question.text} ${t('interp.question.assumed', { answer: question.options[question.assumedIndex] ?? '' })}`}</>
+  const text = questionText(question, t)
+  if (question.assumedIndex === null) return <>{text}</>
+  return <>{`${text} ${t('interp.question.assumed', { answer: optionLabel(question, question.assumedIndex, t) })}`}</>
 }
 
 /**
@@ -39,7 +41,7 @@ export function ReadingExtras({ extras }: { extras: Extras }) {
           <h4 className="m-0 text-sm font-semibold uppercase tracking-wide text-muted">{t('interp.questions')}</h4>
           <ul className="m-0 flex list-none flex-col gap-1 p-0">
             {questions.map((question) => (
-              <li key={`${question.topic}-${question.text}`} className="m-0">
+              <li key={`${question.topic}-${question.code ?? question.text}`} className="m-0">
                 <QuestionLine question={question} />
               </li>
             ))}

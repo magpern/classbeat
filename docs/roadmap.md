@@ -1,17 +1,30 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
-## Amendment 37 (2026-11-26, owner decisions 1 to 7: the reading asks what it assumed and can be read again; issue #1536)
+## Amendment 37 (2026-11-26, owner decisions 1 to 7 and the owner's rules of 2026-11-26: the reading asks what it assumed and can be read again; issue #1536)
 
 The owner tried the composer with the request of issue #1536 (a 60-minute class that builds up, with a
 hilly section, short heavy bursts and a finish, and no word about the music) and found that the reading
 answered silently with defaults, and that nothing could
-be said about the reading before a design started. Decisions:
+be said about the reading before a design started.
+
+**The owner's rules (2026-11-26), which bind every decision below:**
+
+- Nothing is designed or fetched after "How we read your request" until the instructor confirms.
+- Claude decides what to ask. Each question shows its assumed answer pre-selected, and one click
+  accepts them all. Answers re-read the request, with no class credit.
+- Songs are never picked without a hint (a style, era, artist, song or playlist) unless the instructor
+  chooses "No music".
+- "No music" is always offered. The soundless switch is retired later, in #1543, not here.
+
+Decisions:
 
 1. **The model chooses the questions.** The reading asks about everything the request leaves unstated
    and whose default would change the class, up to 12 questions, each `{topic, text, options 2 to 5,
    assumed_index}` (topics `music`, `length`, `intensity`, `structure`, `sport`, `other`). It replaces
    the closed pair of ADR 0038 section 3 (length and intensity, at most 2). One question per topic is
-   kept, except `other`. The text is cleaned, length-capped and shown as plain text.
+   kept, except `other`. The text is cleaned, length-capped and shown as plain text. Every reading
+   stores its questions, in the classic flow too (`design/reading_question_policy.py`); the pinned songs
+   stay the composer's.
 2. **Music is asked when it is not mentioned.** See decisions 6 and 7: the question is required (no
    assumed answer) when the request gives no hint, and always offers "No music". The music order
    (ADR 0029 section 4, rule 4) is unchanged, and free-text "no music" still does not make a class
@@ -26,27 +39,40 @@ be said about the reading before a design started. Decisions:
    (`interpret_job_id`): another one stored since is `not_ready`, before any index is read, and the
    hand-off may name it too. A re-read is the chat's next request, so it counts toward
    `chat_max_requests` and is refused `chat_full` at the cap (ADR 0038 note).
-5. **The hand-off waits for the instructor's confirmation.** The sketch and the design start from the
-   reading the instructor confirmed (the confirm and answer screen is #1538; this amendment covers the
-   backend and the eval).
+5. **The hand-off waits for the instructor's confirmation** (the owner's first rule). Nothing is
+   designed or fetched until the instructor confirms the reading: the sketch and the design start from
+   the reading the instructor confirmed, which the hand-off may name (`interpret_job_id`). The confirm
+   and answer screen, with the assumed answers pre-selected and one click to accept them all, is #1538;
+   this amendment covers the backend and the eval.
 
 6. **"No music" is always offered (owner, 2026-11-26: "There should be no such thing [as soundless off].
    Sound is always on, but user can opt out if he says no").** The music question always has a "No music"
    option, marked by the closed field `no_music_index` of the stored question (never by the option's
    words). A re-read that answers with the marked option sets the new job's `music_override` `none`; the
    browser cannot set the override through the body, and a typed "no music" is still not read (#1137).
-   The soundless switch is not read for the offer. Until a separate issue retires
+   The soundless switch is not read for the offer. Until #1543 retires
    `CLASSBEAT_SOUNDLESS_ENABLED`, a soundless design is still admitted by the switch, so with it off a
    "No music" reading ends in a closed refusal at the hand-off (`feature_off`), before any job or credit.
+   The marker is dropped when it is the question's assumed answer: "No music" is the instructor's
+   choice, never an assumption.
 7. **A song pick needs a hint (owner, 2026-11-26: "music should never be totally random. Some hint from
    user is needed, unless user says no").** A pick is made only with a hint: a taste item (`music_era.*`,
-   `music_language`, `music_genre.*`, `music_hits`), a pinned song, an override the instructor chose, or
-   attached playlists (`music_sources`). With none, the reading's music question has no assumed answer
-   (`assumed_index` absent: the instructor must answer, with a style, one of the playlists, or "No
-   music"), and `design-from-interpretation` refuses a pick with no hint `music_unanswered`, before any
-   job or credit (`design/music_hint_policy.py`). The composer's `PUT /api/classes/{id}/music` (a
-   decision made after the sketch, Amendment 36) is not changed here: its `pick` choice can still pick
-   with no hint, left to #1538.
+   `music_language`, `music_genre.*`, `music_hits`), a pinned song, a source the instructor chose in the
+   form other than a pick (a playlist, a mix or "No music"), or attached playlists (`music_sources`).
+   "Pick songs for me" in the form (`music_override` `pick`) is no hint and no choice: it does not drop
+   the reading's music question, and a composer reading of it leaves its music undecided. A playlist or
+   mix the request names that matches none of the instructor's is no hint either.
+   - With no hint, the reading always has a music question with no assumed answer (`assumed_index`
+     absent: the instructor must answer, with a style, one of the playlists, or "No music"). The
+     model's music question is kept, with its assumed answer removed, even when its topic was settled
+     or "stated"; with none from the model, the backend adds the closed question `which_music` (a
+     `code`, no model text, the closed options `my_playlists` and `no_music`, the latter marked), which
+     the page phrases in its own language.
+   - `design-from-interpretation` refuses a pick with no hint `music_unanswered`, before any job or
+     credit (`design/music_hint_policy.py`), only on the route that starts the song pick now, after
+     `needs_spotify`. A composer reading reaches its sketch with the music undecided (the sketch picks
+     no songs, Amendment 36); the composer's `PUT /api/classes/{id}/music` (a decision made after the
+     sketch) is not changed here: its `pick` choice can still pick with no hint, left to #1538.
 
 The designs are the notes in ADR 0029 section 4 (rule 4) and section 5 and in ADR 0038 sections 1 and 3.
 Eval suite 34 (ADR 0012) adds the cases for the questions.

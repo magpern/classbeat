@@ -45,7 +45,7 @@ export function musicRows(t: TFunction, offer: MusicOffer): MusicRow[] {
     }
   }
   if (offer.songs.kind === 'ready') {
-    rows.push({ key: 'pick', title: t('start.music.pick'), source: t('music.pickHint'), override: { source: 'pick' } })
+    rows.push({ key: 'pick', title: t('start.music.pick'), source: t('start.music.pickHint'), override: { source: 'pick' } })
   }
   if (offer.soundlessEnabled) {
     rows.push({ key: 'none', title: t('music.none'), source: t('music.noneHint'), override: { source: 'none' } })

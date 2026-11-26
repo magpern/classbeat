@@ -631,6 +631,29 @@ async def test_a_composer_pick_with_no_hint_is_undecided_and_reaches_its_sketch(
 
 
 @pytest.mark.usefixtures("picking")
+async def test_a_form_pick_with_another_hint_is_still_no_choice_of_music(
+    ienv: InterpretEnv,
+) -> None:
+    """A pinned song is a hint, so the pick may go ahead, but "Pick songs for me" still chose no
+    music: the model's music question stays, with its assumed answer, and the composer's music is
+    undecided. Not hint-less, so only ``interpret_kind``'s ``chose`` and ``skip`` decide this."""
+    reading = {
+        "pinned_songs": [{"song": "one climb", "at": "two sprints", "origin": "explicit"}],
+        "questions": [MUSIC_Q[0] | {"assumed_index": 0}],
+    }
+    class_id = await pick_class(ienv, reading, composing=True, music_override={"source": "pick"})
+    stored = ienv.interpretation(class_id)
+    assert [p["title"] for p in stored["pinned_songs"]] == ["one climb"]
+    assert stored["music_decision"]["state"] == "undecided"
+    [music] = music_questions(ienv, class_id)
+    assert (music.get("code"), music["text"], music.get("assumed_index")) == (
+        None,
+        "What about the music?",
+        0,
+    )
+
+
+@pytest.mark.usefixtures("picking")
 async def test_a_composer_reading_handed_off_on_the_classic_route_needs_its_hint(
     ienv: InterpretEnv,
 ) -> None:

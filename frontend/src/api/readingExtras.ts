@@ -1,10 +1,11 @@
 import { isObject } from './decode'
 
-// The composer's part of a reading (ADR 0038 section 3; backend
-// `design/interpret_composer_policy.py`): the songs the instructor named and the follow-up
-// questions. A pin's title, artist and place are substrings of the instructor's own request, so
-// they are shown as plain text; a question's text and options are the model's words, cleaned and capped by the backend
-// and shown as plain text. Empty for every class that was not started with the composer flow.
+// The extras of a reading: the songs the instructor named (ADR 0038 section 3, a composer class
+// only; backend `design/interpret_composer_policy.py`) and the reading's questions (#1536, every
+// reading; backend `design/reading_question_policy.py`). A pin's title, artist and place are
+// substrings of the instructor's own request, so they are shown as plain text; a question's text
+// and options are the model's words, cleaned and capped by the backend and shown as plain text,
+// or a closed `code` the page phrases in its own words.
 
 export interface PinnedSong {
   title: string
@@ -15,9 +16,20 @@ export interface PinnedSong {
 
 export type QuestionTopic = 'music' | 'length' | 'intensity' | 'structure' | 'sport' | 'other'
 
-/** A question the model chose (backend `Question`): its text and options are plain text. */
+/** The closed questions the backend adds in no model's words (`reading_question_policy.WHICH_MUSIC`). */
+export type QuestionCode = 'which_music'
+
+/** The closed options of `which_music`, in the backend's order; the page phrases them. */
+export const WHICH_MUSIC_OPTIONS: readonly string[] = ['my_playlists', 'no_music']
+
+/**
+ * A question of the reading (backend `Question`). The model's question has its text and options
+ * as plain text. A closed one has a `code`, an empty `text` and its options as codes: the page
+ * phrases it from the catalogue (`lib/readingQuestionWords.ts`), never from the model.
+ */
 export interface ReadingQuestion {
   topic: QuestionTopic
+  code?: QuestionCode
   text: string
   options: string[]
   /** The option the app assumes; null for a required question (a music question with no hint of what to play: nothing is assumed). */
@@ -52,7 +64,20 @@ export function decodeReadingExtras(body: Record<string, unknown>): ReadingExtra
   const questions: ReadingQuestion[] = []
   for (const entry of Array.isArray(body.questions) ? (body.questions as unknown[]) : []) {
     if (!isObject(entry)) continue
-    const { topic, text, options, assumed_index: assumedIndex } = entry
+    const { topic, code, text, options, assumed_index: assumedIndex } = entry
+    if (code !== undefined && code !== null) {
+      // A closed question is exactly the backend's: anything else is left out, never shown.
+      const closed =
+        code === 'which_music' &&
+        topic === 'music' &&
+        (text === undefined || text === null) &&
+        (assumedIndex === undefined || assumedIndex === null) &&
+        Array.isArray(options) &&
+        options.length === WHICH_MUSIC_OPTIONS.length &&
+        options.every((o, n) => o === WHICH_MUSIC_OPTIONS[n])
+      if (closed) questions.push({ topic: 'music', code: 'which_music', text: '', options: [...WHICH_MUSIC_OPTIONS], assumedIndex: null })
+      continue
+    }
     if (typeof topic !== 'string' || !TOPICS.includes(topic)) continue
     if (typeof text !== 'string' || text === '') continue
     if (!Array.isArray(options) || options.length < MIN_OPTIONS || options.length > MAX_OPTIONS) continue

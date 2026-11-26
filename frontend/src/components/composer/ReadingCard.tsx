@@ -3,6 +3,7 @@ import type { InterpretationItem } from '../../api/interpretationItems'
 import type { ReadingExtras, ReadingQuestion } from '../../api/readingExtras'
 import { useT } from '../../i18n/I18n'
 import { quickAnswers } from '../../lib/composer/quickAnswers'
+import { optionLabel, questionText } from '../../lib/readingQuestionWords'
 import { ReadingExtras as PinnedAndQuestions } from '../classes/ReadingExtras'
 import { InterpretationNote } from '../classes/InterpretationNote'
 
@@ -19,8 +20,9 @@ function Question({
   const [kept, setKept] = useState(false)
   if (kept) return null
   // A required question (no assumed answer) has no "keep": it closes only when answered.
-  const assumed = question.assumedIndex === null ? null : (question.options[question.assumedIndex] ?? '')
-  const text = assumed === null ? question.text : `${question.text} ${t('interp.question.assumed', { answer: assumed })}`
+  const asked = questionText(question, t)
+  const assumed = question.assumedIndex === null ? null : optionLabel(question, question.assumedIndex, t)
+  const text = assumed === null ? asked : `${asked} ${t('interp.question.assumed', { answer: assumed })}`
   return (
     <li className="m-0 flex flex-col gap-2">
       <span>{text}</span>
@@ -36,14 +38,14 @@ function Question({
             {t('cw.answer.keep', { answer: assumed })}
           </button>
         ) : null}
-        {quickAnswers(question).map((answer) => (
+        {quickAnswers(question, t).map((answer) => (
           <button
             key={answer.index}
             type="button"
             disabled={disabled}
             onClick={() => {
               // The question closes only when the answer was stored; a refusal keeps it open.
-              void onAnswer(t('cw.answer.sentence', { text: question.text, answer: answer.label })).then((stored) => {
+              void onAnswer(t('cw.answer.sentence', { text: asked, answer: answer.label })).then((stored) => {
                 if (stored) setKept(true)
               })
             }}
@@ -90,7 +92,7 @@ export function ReadingCard({
       {extras.questions.length > 0 ? (
         <ul className="m-0 flex list-none flex-col gap-3 p-0">
           {extras.questions.map((question) => (
-            <Question key={`${question.topic}-${question.text}`} question={question} onAnswer={onAnswer} disabled={disabled} />
+            <Question key={`${question.topic}-${question.code ?? question.text}`} question={question} onAnswer={onAnswer} disabled={disabled} />
           ))}
         </ul>
       ) : null}

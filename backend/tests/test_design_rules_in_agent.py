@@ -60,8 +60,9 @@ PINNED = {
     # purpose: a new class's short name (suite version 28; #1237 unbounded it in the schema). #1485
     # changed interpret, design and soundless_design once more, on purpose (suite version 30): the
     # ride's shape in the interpret prompt, and the design prompts' sentence on what a brief holds.
-    # #1536 changed interpret once more, on purpose (suite version 34): the model-chosen questions.
-    "interpret": "e51082c20cef69f3a5bbe6b5fc7efd8a02daf11f78a953fd79622a4292138d61",
+    # #1536 changed interpret once more, on purpose (suite version 34): the model-chosen questions,
+    # and an unmatched playlist or mix name is no hint of the music.
+    "interpret": "473f91d79df745e14e688f5693ad467cbf9aad5be32eb1bb2880c43aa5d32b56",
 }
 PLANTED = "Zq9 planted brief text"
 PLANTED_STYLE = "Zq9 planted style"

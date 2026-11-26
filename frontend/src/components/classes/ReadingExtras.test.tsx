@@ -68,6 +68,42 @@ describe('the composer part of the reading (ADR 0038 section 3)', () => {
     expect(screen.queryByText(/For now/)).toBeNull()
   })
 
+  it('decodes the closed which_music question and phrases it from the catalogue, never from the body', () => {
+    const closed = { topic: 'music', code: 'which_music', options: ['my_playlists', 'no_music'], no_music_index: 1 }
+    const body = {
+      questions: [
+        closed,
+        { ...closed, code: 'other_code' }, // an unknown code
+        { ...closed, text: 'Model words?' }, // a closed question has no model text
+        { ...closed, assumed_index: 0 }, // nor an assumed answer
+        { ...closed, options: ['no_music', 'my_playlists'] }, // nor other options
+        { ...closed, topic: 'length' },
+      ],
+    }
+    const { questions } = decodeReadingExtras(body)
+    expect(questions).toEqual([{ topic: 'music', code: 'which_music', text: '', options: ['my_playlists', 'no_music'], assumedIndex: null }])
+    render(
+      <I18nProvider initial="en">
+        <RequestBlock request={null} items={[]} extras={decodeReadingExtras(body)} />
+      </I18nProvider>,
+    )
+    expect(screen.getByText('What music do you want? Name a style, an era or an artist.')).toBeTruthy()
+    expect(screen.queryByText(/my_playlists|which_music|For now/)).toBeNull()
+  })
+
+  it.each([
+    ['sv', 'Vilken musik vill du ha? Ange en stil, en epok eller en artist.'],
+    ['da', 'Hvilken musik vil du have? Angiv en stil, en periode eller en kunstner.'],
+  ] as const)('phrases the closed question in %s', async (language, sentence) => {
+    const body = { questions: [{ topic: 'music', code: 'which_music', options: ['my_playlists', 'no_music'] }] }
+    render(
+      <I18nProvider initial={language}>
+        <RequestBlock request={null} items={[]} extras={decodeReadingExtras(body)} />
+      </I18nProvider>,
+    )
+    expect(await screen.findByText(sentence)).toBeTruthy()
+  })
+
   it('shows nothing new for a class without them', () => {
     render(
       <I18nProvider initial="en">

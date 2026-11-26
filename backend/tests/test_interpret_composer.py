@@ -349,6 +349,7 @@ def test_question_text_is_cleaned_and_duplicate_options_are_merged() -> None:
     assert only.options == ["Easy", "Hard", "Medium"]
     assert only.assumed_index is not None
     assert only.options[only.assumed_index] == "Medium"  # the assumed answer follows its option
+    assert only.text is not None  # the model's question: never a closed one
     assert "\n" not in only.text
     assert only.text == only.text.strip()  # a link stays text: the page renders it as plain text
 
