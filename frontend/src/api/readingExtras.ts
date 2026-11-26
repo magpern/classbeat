@@ -3,8 +3,8 @@ import { isObject } from './decode'
 // The composer's part of a reading (ADR 0038 section 3; backend
 // `design/interpret_composer_policy.py`): the songs the instructor named and the follow-up
 // questions. A pin's title, artist and place are substrings of the instructor's own request, so
-// they are shown as plain text; a question is a closed path and code whose wording comes from the
-// catalogue. Empty for every class that was not started with the composer flow.
+// they are shown as plain text; a question's text and options are the model's words, cleaned and capped by the backend
+// and shown as plain text. Empty for every class that was not started with the composer flow.
 
 export interface PinnedSong {
   title: string
@@ -13,12 +13,19 @@ export interface PinnedSong {
   at: string | null
 }
 
-export type QuestionCode = 'how_long' | 'how_hard'
-export type Effort = 'easy' | 'moderate' | 'hard'
+export type QuestionTopic = 'music' | 'length' | 'intensity' | 'structure' | 'sport' | 'other'
 
-export type ReadingQuestion =
-  | { question: 'how_long'; assumed: number }
-  | { question: 'how_hard'; assumed: Effort }
+/** A question the model chose (backend `Question`): its text and options are plain text. */
+export interface ReadingQuestion {
+  topic: QuestionTopic
+  text: string
+  options: string[]
+  assumedIndex: number
+}
+
+const TOPICS: readonly string[] = ['music', 'length', 'intensity', 'structure', 'sport', 'other']
+const MIN_OPTIONS = 2
+const MAX_OPTIONS = 5
 
 export interface ReadingExtras {
   pinnedSongs: PinnedSong[]
@@ -26,8 +33,6 @@ export interface ReadingExtras {
 }
 
 export const NO_EXTRAS: ReadingExtras = { pinnedSongs: [], questions: [] }
-
-const EFFORTS: readonly string[] = ['easy', 'moderate', 'hard']
 
 function words(source: Record<string, unknown>, key: string): string | null {
   const value = source[key]
@@ -46,12 +51,13 @@ export function decodeReadingExtras(body: Record<string, unknown>): ReadingExtra
   const questions: ReadingQuestion[] = []
   for (const entry of Array.isArray(body.questions) ? (body.questions as unknown[]) : []) {
     if (!isObject(entry)) continue
-    const assumed = entry.assumed
-    if (entry.question === 'how_long' && typeof assumed === 'number' && Number.isInteger(assumed)) {
-      questions.push({ question: 'how_long', assumed })
-    } else if (entry.question === 'how_hard' && typeof assumed === 'string' && EFFORTS.includes(assumed)) {
-      questions.push({ question: 'how_hard', assumed: assumed as Effort })
-    }
+    const { topic, text, options, assumed_index: assumedIndex } = entry
+    if (typeof topic !== 'string' || !TOPICS.includes(topic)) continue
+    if (typeof text !== 'string' || text === '') continue
+    if (!Array.isArray(options) || options.length < MIN_OPTIONS || options.length > MAX_OPTIONS) continue
+    if (!options.every((o): o is string => typeof o === 'string' && o !== '')) continue
+    if (typeof assumedIndex !== 'number' || !Number.isInteger(assumedIndex) || assumedIndex < 0 || assumedIndex >= options.length) continue
+    questions.push({ topic: topic as QuestionTopic, text, options, assumedIndex })
   }
   return { pinnedSongs, questions }
 }

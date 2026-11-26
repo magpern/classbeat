@@ -3,10 +3,7 @@ import { useT } from '../../i18n/I18n'
 
 function QuestionLine({ question }: { question: ReadingQuestion }) {
   const t = useT()
-  if (question.question === 'how_long') {
-    return <>{t('interp.question.how_long', { minutes: question.assumed })}</>
-  }
-  return <>{t('interp.question.how_hard', { effort: t(`newclass.effort.${question.assumed}`) })}</>
+  return <>{`${question.text} ${t('interp.question.assumed', { answer: question.options[question.assumedIndex] ?? '' })}`}</>
 }
 
 /**
@@ -41,7 +38,7 @@ export function ReadingExtras({ extras }: { extras: Extras }) {
           <h4 className="m-0 text-sm font-semibold uppercase tracking-wide text-muted">{t('interp.questions')}</h4>
           <ul className="m-0 flex list-none flex-col gap-1 p-0">
             {questions.map((question) => (
-              <li key={question.question} className="m-0">
+              <li key={`${question.topic}-${question.text}`} className="m-0">
                 <QuestionLine question={question} />
               </li>
             ))}

@@ -39,16 +39,11 @@ describe('the segment rows', () => {
 })
 
 describe('the quick answers', () => {
-  it('offers lengths other than the assumed one', () => {
-    expect(quickAnswers({ question: 'how_long', assumed: 45 })).toEqual([
-      { kind: 'length', minutes: 30 },
-      { kind: 'length', minutes: 60 },
-    ])
-  })
-  it('offers efforts other than the assumed one', () => {
-    expect(quickAnswers({ question: 'how_hard', assumed: 'moderate' })).toEqual([
-      { kind: 'effort', effort: 'easy' },
-      { kind: 'effort', effort: 'hard' },
+  it('offers every option other than the assumed one', () => {
+    const question = { topic: 'length' as const, text: 'How long?', options: ['30 minutes', '45 minutes', '60 minutes'], assumedIndex: 1 }
+    expect(quickAnswers(question)).toEqual([
+      { index: 0, label: '30 minutes' },
+      { index: 2, label: '60 minutes' },
     ])
   })
 })

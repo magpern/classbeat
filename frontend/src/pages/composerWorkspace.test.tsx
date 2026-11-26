@@ -68,7 +68,7 @@ function setup(over: Setup = {}) {
     [`GET ${CLASS_PATH}/interpretation`]: {
       interpret_job_id: JOB_ID,
       items: [],
-      questions: [{ path: 'length_min', question: 'how_long', assumed: 45 }],
+      questions: [{ topic: 'length', text: 'How long should the class be?', options: ['30 minutes', '45 minutes', '60 minutes'], assumed_index: 1 }],
     },
     [`GET ${PENDING}`]: () => json({ messages }),
     [`POST ${PENDING}`]: (body) => {
@@ -383,12 +383,12 @@ describe('the composer workspace page', () => {
     const user = userEvent.setup()
     const { api } = setup({ cls: { fill_songs: FILL } })
     renderAt(PAGE)
-    expect(await screen.findByText(/How long should the class be\? For now: 45 minutes\./)).toBeInTheDocument()
+    expect(await screen.findByText(/How long should the class be\? For now: 45 minutes/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '60 minutes' }))
     await waitFor(() => {
       expect(api.to('POST', PENDING)).toHaveLength(1)
     })
-    expect(api.to('POST', PENDING)[0]!.body).toMatchObject({ body: 'Make the class 60 minutes long.' })
+    expect(api.to('POST', PENDING)[0]!.body).toMatchObject({ body: 'How long should the class be? Answer: 60 minutes' })
   })
 
   it('keeps a question open when its answer could not be stored', async () => {
@@ -400,7 +400,7 @@ describe('the composer workspace page', () => {
       expect(api.to('POST', PENDING)).toHaveLength(1)
     })
     expect(await screen.findByText('This class holds as many messages as it can. Design a new class to keep going.')).toBeInTheDocument()
-    expect(screen.getByText(/How long should the class be\? For now: 45 minutes\./)).toBeInTheDocument()
+    expect(screen.getByText(/How long should the class be\? For now: 45 minutes/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '60 minutes' })).toBeEnabled()
   })
 
@@ -410,7 +410,7 @@ describe('the composer workspace page', () => {
     renderAt(PAGE)
     await user.click(await screen.findByRole('button', { name: '60 minutes' }))
     await waitFor(() => {
-      expect(screen.queryByText(/How long should the class be\? For now: 45 minutes\./)).toBeNull()
+      expect(screen.queryByText(/How long should the class be\? For now: 45 minutes/)).toBeNull()
     })
   })
 

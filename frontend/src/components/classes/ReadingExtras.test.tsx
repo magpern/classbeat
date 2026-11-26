@@ -12,10 +12,12 @@ const BODY = {
     'not an object',
   ],
   questions: [
-    { path: 'length_min', question: 'how_long', assumed: 45 },
-    { path: 'intensity', question: 'how_hard', assumed: 'moderate' },
-    { path: 'intensity', question: 'how_hard', assumed: 'brutal' },
-    { path: 'length_min', question: 'How long?', assumed: 45 },
+    { topic: 'length', text: 'How long should the class be?', options: ['30 minutes', '45 minutes'], assumed_index: 1 },
+    { topic: 'music', text: 'What about the music?', options: ['Pick songs for me', 'Use one of my playlists', 'No music'], assumed_index: 0 },
+    { topic: 'length', text: 'One option only?', options: ['a'], assumed_index: 0 },
+    { topic: 'sport', text: 'Index out of range?', options: ['a', 'b'], assumed_index: 2 },
+    { topic: 'nonsense', text: 'Unknown topic?', options: ['a', 'b'], assumed_index: 0 },
+    { topic: 'other', text: 'Not strings?', options: ['a', 3], assumed_index: 0 },
   ],
 }
 
@@ -27,8 +29,8 @@ describe('the composer part of the reading (ADR 0038 section 3)', () => {
         { title: 'Mamma Mia', artist: null, at: null },
       ],
       questions: [
-        { question: 'how_long', assumed: 45 },
-        { question: 'how_hard', assumed: 'moderate' },
+        { topic: 'length', text: 'How long should the class be?', options: ['30 minutes', '45 minutes'], assumedIndex: 1 },
+        { topic: 'music', text: 'What about the music?', options: ['Pick songs for me', 'Use one of my playlists', 'No music'], assumedIndex: 0 },
       ],
     })
     expect(decodeReadingExtras({ items: [] })).toEqual(NO_EXTRAS)
@@ -44,8 +46,8 @@ describe('the composer part of the reading (ADR 0038 section 3)', () => {
     expect(screen.getByText('Africa by Toto')).toBeTruthy()
     expect(screen.getByText('Where: the last climb')).toBeTruthy()
     expect(screen.getByText('Mamma Mia')).toBeTruthy()
-    expect(screen.getByText('How long should the class be? For now: 45 minutes.')).toBeTruthy()
-    expect(screen.getByText('How hard should it be? For now: Moderate.')).toBeTruthy()
+    expect(screen.getByText('How long should the class be? For now: 45 minutes')).toBeTruthy()
+    expect(screen.getByText('What about the music? For now: Pick songs for me')).toBeTruthy()
   })
 
   it('shows nothing new for a class without them', () => {
