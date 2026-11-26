@@ -127,10 +127,12 @@ async def run(job_run: JobRun) -> Complete:
     )
 
     name = outcome.output.request.name if given.title == from_request else None
+    reread = given.reread_of is not None  # #1536: the class keeps its title and its first message
 
     async def store(fs: FencedSession) -> None:
-        await interpretation_row.store(fs, stored)
-        await class_name.adopt(fs, name, from_request)  # #1233: never a title the user chose
+        await interpretation_row.store(fs, stored, reread=reread)
+        if not reread:
+            await class_name.adopt(fs, name, from_request)  # #1233: never a title the user chose
 
     return Complete(store)
 
@@ -152,6 +154,8 @@ INTERPRET_REQUEST: Final = KINDS.register(
                 "song_picking",
                 "swedebeat_mixes",
                 "soundless",
+                "reread_of",
+                "answers",
                 "composer",
             }
         ),

@@ -111,6 +111,13 @@ _STORE = text(
     "AND c.id = j.class_id AND c.interpretation IS NULL AND c.current_revision_id IS NULL "
     "RETURNING c.id"
 )
+# A re-read (#1536): the reading of a class that has one and no revision, from the job's own class.
+_REPLACE = text(
+    "UPDATE classes c SET interpretation = CAST(:v AS jsonb), updated_at = now() FROM jobs j "
+    "WHERE j.id = :job_id AND j.owner_id = :owner_id AND c.owner_id = j.owner_id "
+    "AND c.id = j.class_id AND c.interpretation IS NOT NULL AND c.current_revision_id IS NULL "
+    "RETURNING c.id"
+)
 _READ = text("SELECT interpretation FROM classes WHERE owner_id = :owner_id AND id = :class_id")
 _LOCK = text(
     "SELECT interpretation FROM classes WHERE owner_id = :owner_id AND id = :class_id FOR UPDATE"
@@ -121,15 +128,16 @@ _WRITE = text(
 )
 
 
-async def store(fs: FencedSession, stored: StoredInterpretation) -> None:
-    """In the interpret job's final fenced transaction. Anything else fails the job ``internal``
-    (rolled back with the completion)."""
+async def store(fs: FencedSession, stored: StoredInterpretation, *, reread: bool = False) -> None:
+    """In the interpret job's final fenced transaction; a ``reread`` replaces the class's reading
+    (so also the hand-off's refusal, route and fill, which belonged to the old one). Anything
+    else fails the job ``internal`` (rolled back with the completion)."""
     try:
         value = stored.dumped()
     except ValueError:
         raise JobFailure("invalid_output") from None
     params = {"v": value, "job_id": fs.lease.job_id, "owner_id": fs.lease.owner_id}
-    if (await fs.db.execute(_STORE, params)).first() is None:
+    if (await fs.db.execute(_REPLACE if reread else _STORE, params)).first() is None:
         raise JobFailure("internal")
 
 

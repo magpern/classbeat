@@ -209,6 +209,7 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("GET", "/api/classes/{class_id}/interpretation"): "owned",
     ("POST", "/api/classes/{class_id}/design-from-interpretation"): "owned",
     ("POST", "/api/classes/{class_id}/interpret-again"): "owned",
+    ("POST", "/api/classes/{class_id}/reread"): "owned",
     ("GET", "/api/classes/{class_id}/pending-messages"): "owned",
     ("POST", "/api/classes/{class_id}/pending-messages"): "owned",
     ("POST", "/api/classes/{class_id}/pending-messages/{message_id}/submit"): "owned",
@@ -958,6 +959,13 @@ OWNED_ROUTES = [
     ),
     # #904: the planted class has no stored ``not_connected``, so the owner's call is 409.
     OwnedRoute("POST", "/api/classes/{class_id}/interpret-again", control=frozenset({409})),
+    # #1536: the planted class has no stored reading, so the owner's call is 409 ``not_ready``.
+    OwnedRoute(
+        "POST",
+        "/api/classes/{class_id}/reread",
+        lambda rows: {"answers": [{"question_index": 0, "text": "x"}]},
+        frozenset({409}),
+    ),
     # ADR 0007 amendment "beat-one corrections": the planted draft has no beat data, so the
     # owner's call is 409 ``no_beat_data``; a foreign class or revision is 404 like an unknown one.
     OwnedRoute("PUT", "/api/classes/{class_id}/beat-one/{song}", _beat_one, frozenset({409})),

@@ -32,7 +32,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from classbeat import quota
 from classbeat.agent.brief import Sport
 from classbeat.context import UserContext
-from classbeat.design import chat, composer, interpret_policy, mixadmit, music_kind, revision, sport
+from classbeat.design import (
+    chat,
+    composer,
+    interpret_policy,
+    interpretation_row,
+    mixadmit,
+    music_kind,
+    revision,
+    sport,
+)
 from classbeat.design.interpret_music_policy import no_music_reason, without_spotify_is_refused
 from classbeat.design.kind import NoMusicChoice, SpotifyMusicChoice, SwedebeatMusicChoice
 from classbeat.design.kind_music import song_picking
@@ -73,11 +82,21 @@ class InterpretRequestInput(ModelJobInput):
     swedebeat_mixes: bool | None = None
     composer: bool | None = None  # the composer flow was on at admit (None: before #1185)
     soundless: bool | None = None  # soundless classes are on: "No music" may be offered (#1536)
+    # A re-read of the class's own reading (#1536, ``classes.reread``): the interpret job whose
+    # reading the instructor answered, and the answers as plain sentences, which are the next chat
+    # message; ``request`` is the earlier request plus them. Set by the route, never a browser.
+    reread_of: UUID | None = None
+    answers: Request | None = None
 
     @model_validator(mode="after")
     def _one_class(self) -> Self:
-        """Always a new class (overrides ``JobInput``'s rule of the same name)."""
-        if self.class_id is not None:
+        """A new class (overrides ``JobInput``'s rule of the same name), or, for a re-read, the
+        reading's own class with its answers and no title."""
+        if self.reread_of is not None:
+            if self.class_id is None or self.title is not None or self.answers is None:
+                raise ValueError("a re-read names its class and its answers, and no title")
+            return self
+        if self.class_id is not None or self.answers is not None:
             raise ValueError("an interpretation starts a new class")
         if self.title is None:
             self.title = interpret_policy.title_for(self.request)
@@ -104,6 +123,8 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     spotify = parsed.spotify_connection_id
     if spotify is not None and ctx.connection("spotify") != spotify:
         return Refused("not_connected")
+    if parsed.reread_of is not None and (refused := await _reread_refusal(db, ctx, parsed)):
+        return refused
     composing = await composer.composer_available(db, ctx)
     if parsed.music_sources is not None and not composing:
         return Refused("feature_off")
@@ -136,7 +157,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
             class_id=class_id,
             job_id=job_id,
             role="user",
-            body=request,
+            body=parsed.answers if parsed.reread_of is not None and parsed.answers else request,
             base_revision_id=None,
         )
 
@@ -149,6 +170,33 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         "soundless": await music_kind.soundless_on(db),
     }
     return Admitted(fields, after_insert)
+
+
+_INTERPRET = "interpret_request"  # ``interpret_kind.KIND`` (which imports this module)
+_DESIGNED = text(
+    "SELECT 1 FROM classes WHERE owner_id = :owner_id AND id = :class_id "
+    "AND current_revision_id IS NOT NULL "
+    "UNION ALL SELECT 1 FROM jobs WHERE owner_id = :owner_id AND class_id = :class_id "
+    "AND kind <> :kind LIMIT 1"
+)
+
+
+async def _reread_refusal(
+    db: AsyncSession, ctx: UserContext, parsed: InterpretRequestInput
+) -> Refused | None:
+    """A re-read only of the reading the answers were derived from (``not_ready`` once another
+    one was stored), and only before any design: a revision or a job of another kind (a design
+    job, ``class_designed``). An open job of the class is refused ``class_busy`` by the create."""
+    class_id = parsed.class_id
+    if class_id is None:
+        return Refused("invalid_input")
+    row = await interpretation_row.read(db, ctx.user_id, class_id)
+    if row is None or row.job_id != parsed.reread_of:
+        return Refused("not_ready")
+    ids = {"owner_id": ctx.user_id, "class_id": class_id, "kind": _INTERPRET}
+    if (await db.execute(_DESIGNED, ids)).first() is not None:
+        return Refused("class_designed")
+    return None
 
 
 async def _uses_swedebeat(db: AsyncSession, ctx: UserContext) -> bool:

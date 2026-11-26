@@ -41,6 +41,7 @@ from classbeat.classes.history import router as history_router
 from classbeat.classes.interpretation_routes import router as interpretation_router
 from classbeat.classes.pending_routes import router as pending_router
 from classbeat.classes.preview_spotify_routes import router as preview_spotify_router
+from classbeat.classes.reread_routes import router as reread_router
 from classbeat.classes.routes import music_router as class_music_router
 from classbeat.classes.routes import router as classes_router
 from classbeat.classes.song_fill_routes import router as song_fill_router
@@ -270,6 +271,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(handoff_router)
     install_studio(app, settings)  # its stages and the audition (#1394)
     app.include_router(interpretation_router)
+    app.include_router(reread_router)
     app.include_router(pending_router)  # ADR 0038 section 8: pending chat messages
     app.include_router(beat_one_router)  # split out of the classes router
     app.include_router(song_fill_router)  # ADR 0038 section 5: songs into the sketch
