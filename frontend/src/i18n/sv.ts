@@ -292,7 +292,7 @@ const sv: Catalogue = {
   'sentence.job.pool_unusable':
     'Din arbetsspellista har ändrats i Spotify och kan inte användas. Ställ in den på nytt.',
   'sentence.job.pool_missing': 'Din arbetsspellista saknades i Spotify; försöker igen av sig själv.',
-  'sentence.job.pool_not_synced': 'MOWL har inte hunnit ikapp med arbetsspellistan; försök igen om en minut.',
+  'sentence.job.pool_not_synced': 'MOWL visade inte arbetsspellistans nya låtar i tid. Välj låtarna igen.',
   'sentence.job.playlist_mismatch':
     'Spotifys spellista stämde inte med de godkända låtarna. Lägg till den på din Spotify-profil och skapa den igen.',
   'sentence.job.pool_too_small':
@@ -1181,7 +1181,7 @@ const sv: Catalogue = {
   'songs.failure.pool_unusable.title': 'Din arbetsspellista ändrades',
   'songs.failure.pool_missing.title': 'Din arbetsspellista fanns inte längre i Spotify',
   'songs.failure.pool_missing.detail': 'Din arbetsspellista fanns inte längre i Spotify. Försök igen.',
-  'songs.failure.pool_not_synced.title': 'MOWL har inte hunnit ikapp ännu',
+  'songs.failure.pool_not_synced.title': 'MOWL hann inte ikapp i tid',
   'songs.failure.playlist_mismatch.title': 'Spotifys spellista stämde inte med de godkända låtarna',
   'songs.failure.playlist_mismatch.detail':
     'Inget utformades. Välj Lägg till i profil på spellistan i Spotify och skapa den sedan igen.',

@@ -3,10 +3,12 @@ the network.
 
 One world per test: the app with song picking on (``spot``), the in-process fake Spotify with an
 invented catalogue (``CATALOGUE``: 20 tracks of 240 s, ``alpha`` finds tracks 0 to 9 and ``beta``
-10 to 19), and ``FakeMowlPool``, a fake MOWL that wraps a Spotify playlist on attach and lists,
-for its MOWL playlist, **what the fake Spotify's playlist holds now** (so a pool write shows up in
-MOWL as MOWL is assumed to follow it), unless a test makes it ``stale`` (it keeps listing other
-ids). Both answer as the network handler of the worker's real allowlist opener.
+10 to 19), and ``FakeMowlPool``, a fake MOWL that wraps a Spotify playlist on attach. Like MOWL
+(#1535), each attach makes a **new** MOWL playlist holding a **snapshot** of the Spotify playlist's
+tracks at that moment, and it never follows later edits of the Spotify playlist; a test may make
+a Spotify playlist ``stale`` (MOWL keeps listing other ids for every wrapper of it), or set
+``snapshot = False`` (every wrapper lists what the Spotify playlist holds now). Both answer as the
+network handler of the worker's real allowlist opener.
 
 ``SongEnv`` makes users (a Spotify connection with the pool consent and a MOWL connection), their
 browsers (the jobs API with CSRF and an idempotency key), runs the worker side of a job with the
@@ -37,7 +39,7 @@ from agentfake import CONFIG, FactoryModels
 from authtools import ORIGIN
 from classbeat import connections, design, songs
 from classbeat.agent.providers.fake import FakeProvider, FakeScript
-from classbeat.design import music as design_music
+from classbeat.design import pool_sync
 from classbeat.design.kind import Runtime
 from classbeat.egress import WORKER_ALLOWLIST, build_allowlist_opener
 from classbeat.jobs import KindRegistry, queue
@@ -94,11 +96,14 @@ def catalogue(size: int = 20) -> dict[str, dict[str, Any]]:
 @dataclass(eq=False)
 class FakeMowlPool(FakeMowlAttach):
     """The attach of ``FakeMowlAttach`` plus the reads of ``library.spotify_analysis``, answered
-    from the fake Spotify's playlist the MOWL playlist wraps. ``stale``: per Spotify playlist id,
+    from the snapshot the attach took of the Spotify playlist the MOWL playlist wraps (or, with
+    ``snapshot = False``, from what that playlist holds now). ``stale``: per Spotify playlist id,
     the ids MOWL keeps listing instead; ``no_bpm``: track ids MOWL never has a BPM for."""
 
     spotify: FakeSpotify | None = None
     wraps: dict[int, str] = field(default_factory=lambda: dict[int, str]())
+    snapshot: bool = True
+    snapshots: dict[int, list[str]] = field(default_factory=lambda: dict[int, list[str]]())
     stale: dict[str, list[str]] = field(default_factory=lambda: dict[str, list[str]]())
     no_bpm: set[str] = field(default_factory=lambda: set[str]())
     reads: list[str] = field(default_factory=lambda: list[str]())
@@ -114,7 +119,10 @@ class FakeMowlPool(FakeMowlAttach):
                 token = str(req.get_header("Authorization") or "")
                 data = req.data if isinstance(req.data, bytes) else b"{}"
                 pid = ACCOUNT_BASE.get(token, 9000) + len(self.attaches)
-                self.wraps[pid] = json.loads(data)["SpotifyPlaylistID"]
+                wrapped = json.loads(data)["SpotifyPlaylistID"]
+                self.wraps[pid] = wrapped
+                assert self.spotify is not None
+                self.snapshots[pid] = list(self.spotify.playlist_track_ids(wrapped) or [])
             return answer
         if not url.startswith(_PREFIX):
             return super()._serve(req)
@@ -126,9 +134,12 @@ class FakeMowlPool(FakeMowlAttach):
             return self._answer(req, 401, {"Error": "unauthorized"})
         return self._read(req, path, token)
 
-    def _ids(self, spotify_playlist: str) -> list[str]:
+    def _ids(self, pid: int) -> list[str]:
+        spotify_playlist = self.wraps[pid]
         if spotify_playlist in self.stale:
             return list(self.stale[spotify_playlist])
+        if self.snapshot:
+            return list(self.snapshots[pid])
         assert self.spotify is not None
         return self.spotify.playlist_track_ids(spotify_playlist) or []
 
@@ -143,10 +154,10 @@ class FakeMowlPool(FakeMowlAttach):
         assert self.spotify is not None
         if path == "/v1/Spotify/Playlists" and req.get_method() == "POST":
             return self._ok(req, [])
-        if (m := _TRACKS.match(path)) and (wrapped := self._owned(token, int(m[1]))):
+        if (m := _TRACKS.match(path)) and self._owned(token, int(m[1])):
             tracks = [
                 {**e, "PlaylistID": int(m[1]), "Url": "x"}
-                for e in self.spotify.mowl_entries(self._ids(wrapped), self.no_bpm)
+                for e in self.spotify.mowl_entries(self._ids(int(m[1])), self.no_bpm)
             ]
             return self._ok(req, tracks)
         if (m := _AVAILABILITY.match(path)) and self._owned(token, int(m[1])):
@@ -177,7 +188,10 @@ class Network(urllib.request.BaseHandler):
         return answer if answer is not None else self.mowl.https_open(req)
 
 
-def pool_turns(*, searches: bool = True) -> list[dict[str, Any]]:
+def pool_turns(
+    *, searches: bool = True, pool: list[tuple[int, str]] | None = None
+) -> list[dict[str, Any]]:
+    picked = POOL_14 if pool is None else pool
     first = []
     if searches:
         first = [
@@ -188,8 +202,8 @@ def pool_turns(*, searches: bool = True) -> list[dict[str, Any]]:
         ]
     return [
         *first,
-        turn(call("check_pool", entries(*POOL_14), expect={"ok": True, "valid": True})),
-        turn(call("submit_pool", entries(*POOL_14), expect={"accepted": True})),
+        turn(call("check_pool", entries(*picked), expect={"ok": True, "valid": True})),
+        turn(call("submit_pool", entries(*picked), expect={"accepted": True})),
     ]
 
 
@@ -208,8 +222,8 @@ def choose_turns(listed: list[tuple[str, int, str]] | None = None) -> list[dict[
     ]
 
 
-def pick_script() -> dict[str, Any]:
-    return {"model": "fake-model", "turns": [*pool_turns(), *choose_turns()]}
+def pick_script(pool: list[tuple[int, str]] | None = None) -> dict[str, Any]:
+    return {"model": "fake-model", "turns": [*pool_turns(pool=pool), *choose_turns()]}
 
 
 # The chosen songs of ``pick_script``: pool indexes of LIST_8 are refs, so ids of these tracks.
@@ -461,7 +475,7 @@ async def songenv(
     )
     monkeypatch.setattr(library, "BPM_POLL_SEC", 0.01)
     monkeypatch.setattr(library, "BPM_WAIT_SEC", 0.2)
-    monkeypatch.setattr(design_music, "SYNC_POLL_SECONDS", 0.01)
+    monkeypatch.setattr(pool_sync, "SYNC_POLL_SECONDS", 0.01)
 
     async def no_wait(run: Any, _seconds: float) -> None:
         await run.checkpoint()  # spotdown's polls and pauses are charged but not waited

@@ -122,9 +122,9 @@ async def test_one_approve_gives_the_verified_public_playlist_and_the_first_desi
 def reorder_in_mowl(songenv: SongEnv, monkeypatch: pytest.MonkeyPatch, pool_id: str) -> None:
     listed = songenv.mowl._ids  # pyright: ignore[reportPrivateUsage]
 
-    def reordered(spotify_playlist: str) -> list[str]:
-        ids = listed(spotify_playlist)
-        return ids if spotify_playlist == pool_id else [ids[1], ids[0], *ids[2:]]
+    def reordered(pid: int) -> list[str]:
+        ids = listed(pid)  # the MOWL playlist's ids; it wraps the pool or the final playlist
+        return ids if songenv.mowl.wraps[pid] == pool_id else [ids[1], ids[0], *ids[2:]]
 
     monkeypatch.setattr(songenv.mowl, "_ids", reordered)
 

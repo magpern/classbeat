@@ -4,7 +4,8 @@ the chosen Spotify playlist, then its analysis with read-only calls. Runs before
 1. **The playlist.** The job's ``mowl_connection_id`` must be the context's MOWL connection
    (``not_connected`` otherwise, before any call). The stored ``mowl_playlist_links`` row, or the
    attach as the external operation ``mowl_attach_spotify_playlist``
-   (``classbeat.operations.attach_spotify_playlist``, which stores the link).
+   (``classbeat.operations.attach_spotify_playlist``, which stores the link). For a playlist the
+   caller just wrote, ``attached``: the wrapper of that write (``attach_written_playlist``, #1535).
 2. **The connection guard** (#117 item 1). The link was read without the connection's lock, so a
    reconnect in place as another MOWL account right after it would leave the job with the old
    account's playlist id. The connection is opened, then one fenced transaction share-locks it
@@ -13,6 +14,7 @@ the chosen Spotify playlist, then its analysis with read-only calls. Runs before
    belongs to the account whose credentials were opened; otherwise ``not_connected`` and no read
    is made. The version check matters on its own: after a reconnect in place the new account may
    have attached the same playlist again, so a link exists, but with its playlist id.
+   With ``attached`` the link must name exactly that wrapper (``not_connected`` otherwise).
    ``MusicStep.still_current`` repeats the check inside the transaction that stores the revision.
 3. **The analysis**: ``mowl.library.spotify_analysis`` (tracks, availability, one read of Spotify's
    sections per track), plus one read of MOWL's playlist list for the playlist's name, all through
@@ -20,13 +22,12 @@ the chosen Spotify playlist, then its analysis with read-only calls. Runs before
    the library reads the tracks again every ``BPM_POLL_SEC`` (3 s) for up to ``BPM_WAIT_SEC``
    (120 s).
 
-**The pool's sync wait** (``design_with_songs``, ADR 0008 section 2). For the song pool the caller
-passes ``expect``, the Spotify ids it just wrote, and ``sync_wait_seconds``: before the analysis
-the step reads MOWL's track list of the playlist (with a checkpoint before each read, every
-``SYNC_POLL_SECONDS``) until its Spotify ids are exactly ``expect`` (the same ids, each as often;
-MOWL's order is not relied on), for at most ``sync_wait_seconds``. Whether MOWL's wrapper follows
-later edits of a Spotify playlist is unverified, so a list that does not match in time ends the
-step ``pool_not_synced`` and nothing is analysed. The wait is added to the step's budget.
+**The pool's sync wait** (``design_with_songs``, ADR 0008 section 2; ``design.pool_sync``). For a
+playlist it just wrote the caller passes ``expect``, the Spotify ids written, and
+``sync_wait_seconds``: before the analysis MOWL must list exactly ``expect``, or the step ends
+``pool_not_synced`` and nothing is analysed. MOWL's wrapper is a snapshot taken at attach and
+never follows a later edit (#1535), so the caller attaches after every write. The wait is added
+to the step's budget.
 
 **Checkpoints and the budget.** Every library read is preceded by a checkpoint (ADR 0005 section 4).
 The library is synchronous and runs in a thread, so the checkpoint it calls checks the run's flags
@@ -78,10 +79,13 @@ from classbeat.agent.schemas import clean_text
 from classbeat.connections import Credentials, OpenConnection, call_opened, hold, open_connection
 from classbeat.crypto.keks import KeyRing
 from classbeat.design.mix_facts import MixFacts
+from classbeat.design.pool_sync import Halt, wait_synced
 from classbeat.jobs import FencedSession, JobFailure, JobRun, RunStopped
 from classbeat.jobs.fence import CALL_LEASE_MARGIN_SECONDS
 from classbeat.operations import attach_spotify_playlist
 from classbeat.operations.attach import SOURCE, check_source_id
+
+_Halt = Halt  # the library thread's stop (``design.pool_sync``)
 
 logger = logging.getLogger(__name__)
 
@@ -94,8 +98,6 @@ CHECKPOINT_TIMEOUT_SECONDS: Final = 30.0  # one fenced checkpoint from the libra
 # checkpoint.
 READ_MARGIN_SECONDS: Final = 30.0
 MAX_TITLE: Final = 200
-SYNC_POLL_SECONDS: Final = float(library.BPM_POLL_SEC)  # the pool's sync wait reads this often
-NOT_SYNCED: Final = "pool_not_synced"
 MAX_SYNC_WAIT_SECONDS: Final = (
     600.0  # the setting's bound (CLASSBEAT_SPOTIFY_POOL_SYNC_WAIT_SECONDS)
 )
@@ -108,15 +110,6 @@ _LINK_BY_ID = text(
     "SELECT playlist_id FROM mowl_playlist_links "
     "WHERE id = :id AND owner_id = :owner_id AND source = :source AND source_id = :source_id"
 )
-
-
-class _Halt(BaseException):
-    """A stop raised by the checkpoint inside the library's thread; ``cause`` is raised again
-    once out of the connection wrapper."""
-
-    def __init__(self, cause: Exception) -> None:
-        super().__init__("halted")
-        self.cause = cause
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,9 +242,14 @@ def _playlist_name(creds: Credentials, source_id: str) -> str | None:
 
 
 async def _held_link(
-    run: JobRun, opened: OpenConnection, source_id: str, budget: float = MUSIC_BUDGET_SECONDS
+    run: JobRun,
+    opened: OpenConnection,
+    source_id: str,
+    budget: float = MUSIC_BUDGET_SECONDS,
+    attached: int | None = None,
 ) -> tuple[UUID, int]:
-    """The link, read under the connection's share lock; the lease extended for the budget."""
+    """The link, read under the connection's share lock (naming ``attached`` when given); the
+    lease extended for the budget."""
     async with run.fenced() as fs:
         if not await hold(fs.db, run.ctx, opened):
             raise JobFailure("not_connected")
@@ -263,42 +261,10 @@ async def _held_link(
         ).first()
         if row is None:  # defence in depth: hold passes unless a path changed only the link
             raise JobFailure("not_connected")
+        if attached is not None and row.playlist_id != attached:  # another wrapper since
+            raise JobFailure("not_connected")
         await fs.extend_lease(budget + CALL_LEASE_MARGIN_SECONDS)
         return row.id, int(row.playlist_id)
-
-
-def _listed_ids(tracks: object) -> list[str] | None:
-    """The Spotify ids of MOWL's track list, sorted (None when it is not a list of tracks)."""
-    if not isinstance(tracks, list):
-        return None
-    ids: list[str] = []
-    for track in tracks:  # pyright: ignore[reportUnknownVariableType]
-        if not isinstance(track, dict):
-            return None
-        ids.append(str(track.get("SpotifyTrackID")))  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
-    return sorted(ids)
-
-
-def _wait_synced(
-    creds: Credentials,
-    playlist_id: int,
-    expect: Sequence[str],
-    wait_seconds: float,
-    check: Callable[[], None],
-    clock: Callable[[], float],
-) -> None:
-    """In the library's thread: until MOWL lists exactly ``expect``; ``pool_not_synced`` after
-    ``wait_seconds``. Every read is preceded by ``check``."""
-    wanted = sorted(expect)
-    deadline = clock() + wait_seconds
-    while True:
-        check()
-        if _listed_ids(mowl_api.playlist_tracks(creds, playlist_id)) == wanted:
-            return
-        left = deadline - clock()
-        if left <= 0:
-            raise _Halt(JobFailure(NOT_SYNCED))
-        time.sleep(min(SYNC_POLL_SECONDS, left))
 
 
 async def _analyse(
@@ -316,7 +282,8 @@ async def _analyse(
 
     def read(creds: Credentials) -> tuple[list[str], dict[str, Any] | None]:
         if expect is not None:
-            _wait_synced(creds, playlist_id, expect, sync_wait_seconds, check, clock)
+            job_id = str(run.lease.job_id)
+            wait_synced(creds, playlist_id, expect, sync_wait_seconds, check, clock, job_id)
         check()
         name = _playlist_name(creds, source_id)
         return library.spotify_analysis(creds, playlist_id, source_id, name, checkpoint=check)
@@ -345,21 +312,24 @@ async def load_music(
     clock: Callable[[], float] = time.monotonic,
     expect: Sequence[str] | None = None,
     sync_wait_seconds: float = 0.0,
+    attached: int | None = None,
 ) -> MusicStep:
     """The music step; raises ``JobFailure`` with the category, or ``RunStopped``. ``expect`` and
-    ``sync_wait_seconds``: the pool's sync wait (module docstring)."""
+    ``sync_wait_seconds``: the pool's sync wait; ``attached``: the wrapper of the caller's write
+    (module docstring)."""
     if expect is not None and not (0 <= sync_wait_seconds <= MAX_SYNC_WAIT_SECONDS):
         raise JobFailure("internal")
     source_id = check_source_id(source_id)
     if run.ctx.connection("mowl") != connection_id:
         raise JobFailure("not_connected")
-    await attach_spotify_playlist(run, keyring, source_id, connection_id=connection_id)
+    if attached is None:
+        await attach_spotify_playlist(run, keyring, source_id, connection_id=connection_id)
     await run.checkpoint()
     opened = await open_connection(run.factory, keyring, run.ctx, "mowl")
     if opened.id != connection_id:
         raise JobFailure("not_connected")
     budget = MUSIC_BUDGET_SECONDS + (sync_wait_seconds if expect is not None else 0.0)
-    link_id, playlist_id = await _held_link(run, opened, source_id, budget)
+    link_id, playlist_id = await _held_link(run, opened, source_id, budget, attached)
     unavailable, analysis = await _analyse(
         run, opened, playlist_id, source_id, clock, expect, sync_wait_seconds
     )

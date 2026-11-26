@@ -94,7 +94,7 @@ describe('a song job that failed', () => {
       account_changed: /not the one these songs were chosen for/,
       playlist_mismatch: /did not match the approved songs.*choose Add to profile on the playlist, then create it again\./s,
       pool_too_small: /try a wider style or era/,
-      pool_not_synced: /try again in a minute/,
+      pool_not_synced: /did not list the working playlist's new songs in time\. Pick the songs again/,
       consent_missing: /Allow the working playlist in your Spotify settings first/,
       pool_unusable: /cannot be used\. Set it up again/,
     }

@@ -4,7 +4,8 @@ The class is designed on the chosen songs **before** the approval, and the resul
 ``preview`` (``songs.preview_model``), never a draft revision:
 
 1. **The songs' music.** The chosen songs are written to the user's private working copy in play
-   order (``playlists.write_pool``, the pool's own consent, under a key of their own ids) and
+   order (``playlists.write_pool``, the pool's own consent, under a key of their own ids),
+   attached to MOWL again (a fresh wrapper of this write, ``attach_written_playlist``, #1535) and
    analysed by MOWL with the pool's sync wait (``design.music.load_music``): an analysis of
    exactly these songs in this order, like the final playlist's in phase 2; then every song on
    spotdown's sections from the list's record (``phase2_spotdown.listed_music``, stage D, #1386;
@@ -44,7 +45,7 @@ from classbeat.design.guidance import rule_set_for
 from classbeat.design.interpreted import shape_off_items
 from classbeat.design.music import MusicStep, load_music
 from classbeat.jobs import JobFailure, JobRun
-from classbeat.operations import attach_spotify_playlist
+from classbeat.operations.attach import attach_written_playlist
 from classbeat.plan_gates import PlanGates
 from classbeat.playlists import write_pool
 from classbeat.songs import song_list
@@ -95,7 +96,9 @@ async def songs_music(
     connection = run.ctx.connection("mowl")
     if connection is None or connection != mowl_connection_id:
         raise JobFailure("not_connected")
-    await attach_spotify_playlist(run, keyring, written.playlist_id, connection_id=connection)
+    wrapper = await attach_written_playlist(
+        run, keyring, written.playlist_id, written.key, connection_id=connection
+    )
     await run.stage("pool_analyse")
     step = await load_music(
         run,
@@ -104,6 +107,7 @@ async def songs_music(
         connection_id=connection,
         expect=track_ids,
         sync_wait_seconds=config.sync_wait_seconds,
+        attached=wrapper,
     )
     analysed = tuple(str(t["spotify_id"]) for t in step.data.analysis["map"]["tracks"])
     try:

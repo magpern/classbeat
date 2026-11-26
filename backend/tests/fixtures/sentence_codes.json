@@ -107,7 +107,7 @@
   {
     "code": "job.pool_not_synced",
     "params": {},
-    "english": "MOWL has not caught up with the working playlist; try again in a minute."
+    "english": "MOWL did not list the working playlist's new songs in time. Pick the songs again."
   },
   {
     "code": "job.playlist_mismatch",
