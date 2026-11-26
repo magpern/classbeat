@@ -21,6 +21,7 @@ request is then stored as the class's first message (seq 1, role ``user``). The 
 class credit** (``consumes_credit=False``): the class credit is the design job's, taken by the
 hand-off. It counts toward the per-user limit and its model cost toward the cost cap.
 """
+
 from typing import Annotated, ClassVar, Literal, Self
 from uuid import UUID
 
