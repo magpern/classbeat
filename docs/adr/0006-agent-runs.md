@@ -519,6 +519,19 @@ need no write" holds only for a playlist classbeat never writes. So:
    per pick; MOWL has no known delete (docs/status.md, "Waiting for the owner").
 5. The pool's sync wait stays as a guard (`design.pool_sync`); on a timeout it logs counts only
    (expected, listed, overlap; no ids).
+6. **An uncertain per-write attach is not the user's to resolve** (#1546, Architect decision).
+   `operations.user` hides a `mowl_attach_spotify_playlist` row whose key is the per-write form
+   `spotify:<22 id characters>:<16 hex>`, like the pool's create and replace rows: it is listed
+   nowhere and not found by id, so Check again and Do it anyway answer 404 `not_found`. Its
+   reconciler is always inconclusive, and no later job shares its key, so Do it anyway's
+   "the next job takes the failed row over" never happens and a forced success would only point
+   the link at an unverified wrapper; the user's next pick attaches under its own key. A plain
+   `spotify:<id>` attach (a final playlist, a first link) stays listed. The filter is a constant
+   SQL pattern; no user input is part of it.
+7. **A stale snapshot and the retry** (review of #1541, finding 3): a `pool_not_synced` retry of
+   the same job reuses the same replace key, so it reuses the same attach and its wrapper and
+   cannot help if MOWL took the snapshot before Spotify served the write; the user's next pick is
+   a new job and attaches fresh.
 
 ## M3a issue breakdown (ADR 0005 and this ADR)
 

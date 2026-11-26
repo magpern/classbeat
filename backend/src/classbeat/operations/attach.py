@@ -19,9 +19,11 @@ playlist, the one external-operation kind of M3a.
   ``music_unlinked`` instead of saving onto other tracks). Later jobs on a playlist classbeat
   does not write need no write.
 - **The reconciler** always returns inconclusive: MOWL has no read that maps a Spotify id to a
-  MOWL playlist. An uncertain attach waits for the user; at worst **Do it anyway** adds a second
-  wrapper to their own MOWL music. (#105 once noted that re-attaching returns the same
-  ``PlaylistID``; the pre-prod stack showed a new one with the current tracks, #1535.)
+  MOWL playlist. An uncertain ``spotify:<source_id>`` attach waits for the user; at worst **Do it
+  anyway** adds a second wrapper to their own MOWL music. A per-write one is never offered to the
+  user (``classbeat.operations.user``): the next write attaches under its own key. (#105 once
+  noted that re-attaching returns the same ``PlaylistID``; the pre-prod stack showed a new one
+  with the current tracks, #1535.)
 
 ``attach_spotify_playlist`` is what the ``design_draft`` pipeline (D1) calls for its music step:
 the stored link if there is one, else the attach.
