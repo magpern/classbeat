@@ -12,7 +12,7 @@ import httpx
 import pytest
 
 from classbeat import connections
-from classbeat.design import interpret_kind, music_kind
+from classbeat.design import interpret_admit, music_kind
 from classbeat.songs import config as songs_config
 from ctx import make_context
 from interprettools import READING, REQUEST
@@ -45,7 +45,7 @@ def picking(monkeypatch: pytest.MonkeyPatch) -> None:
     async def admits(*_args: Any) -> bool:
         return True
 
-    monkeypatch.setattr(interpret_kind, "song_picking", admits)
+    monkeypatch.setattr(interpret_admit, "song_picking", admits)
 
 
 async def put_music(skenv: SketchEnv, class_id: UUID, body: Any) -> httpx.Response:

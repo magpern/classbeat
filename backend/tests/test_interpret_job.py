@@ -9,7 +9,7 @@ from uuid import UUID
 
 import pytest
 
-from classbeat.design import interpret_kind
+from classbeat.design import interpret_admit
 from classbeat.design import sport as sport_module
 from classbeat.design.interpret_kind import InterpretRequestInput
 from classbeat.design.interpretation_row import StoredInterpretation
@@ -111,7 +111,7 @@ async def test_without_spotify_only_a_class_that_can_do_without_it_is_admitted(
     async def admits(*_args: Any) -> bool:
         return picking
 
-    monkeypatch.setattr(interpret_kind, "song_picking", admits)
+    monkeypatch.setattr(interpret_admit, "song_picking", admits)
     before = ienv.counts()
     made = await ienv.start(spotify=False, **more)
     if answer == "admitted":

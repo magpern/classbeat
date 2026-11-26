@@ -8,7 +8,7 @@ from collections.abc import Iterator
 
 import pytest
 
-from classbeat.design import interpret_kind, sport
+from classbeat.design import interpret_admit, sport
 from sketchtools import SketchEnv
 
 pytestmark = pytest.mark.usefixtures("jenv", "picking")
@@ -19,7 +19,7 @@ def picking(monkeypatch: pytest.MonkeyPatch) -> None:
     async def admits(*_args: object) -> bool:
         return True
 
-    monkeypatch.setattr(interpret_kind, "song_picking", admits)
+    monkeypatch.setattr(interpret_admit, "song_picking", admits)
 
 
 @pytest.fixture
