@@ -5,16 +5,17 @@ that moment and never follows a later edit, as MOWL does. A second and a third p
 user, each with another pool, must reach ``choose`` (before the fix, the second one reused the
 first pick's wrapper and timed out ``pool_not_synced``); each pick's analysis reads the wrapper of
 its own write, the user's link names the newest one, and a retried attempt of the same write
-reuses its attach (no second PUT). Fakes only, never the network (``tests/netguard.py``).
+reuses its attach (no second PUT). A link moved to another wrapper after the attach is never read
+(``_held_link``'s ``attached`` check, #1546). The studio's writes never reach MOWL:
+``test_studio_spotify_writes_skip_mowl``. Fakes only, never the network (``tests/netguard.py``).
 """
 
-import importlib
-import inspect
 from typing import Any
 from uuid import UUID
 
 import pytest
 
+from classbeat.design import music as design_music
 from pickfake import POOL_14
 from songtools import POOL, SongEnv, pick_script, song_id
 
@@ -102,6 +103,39 @@ async def test_a_retried_attempt_reuses_the_attach_of_its_own_write(songenv: Son
     assert tracks_read(songenv)[-1] == newest
 
 
+async def test_a_link_moved_to_another_wrapper_after_the_attach_is_not_read(
+    songenv: SongEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``_held_link``'s ``attached`` check (M5): between this pick's attach and the music step's
+    held read, the link is moved to another wrapper of the same pool (an older write's, as
+    another write's attach would). The step ends ``not_connected`` and reads no wrapper, never
+    the older one with the older tracks."""
+    rider = await songenv.rider()
+    await pick(songenv, rider, POOL_14)
+    pool_id = songenv.pool(rider.user_id).playlist_id
+    [older] = songenv.mowl.snapshots
+    reads = len(songenv.mowl.reads)
+    real_open = design_music.open_connection
+
+    async def open_then_move(*args: Any, **kwargs: Any) -> Any:
+        opened = await real_open(*args, **kwargs)
+        assert link(songenv, rider.user_id, pool_id).playlist_id != older  # this pick's own
+        songenv.sql(
+            "UPDATE mowl_playlist_links SET playlist_id = :p WHERE owner_id = :o",
+            p=older,
+            o=rider.user_id,
+        )
+        return opened
+
+    monkeypatch.setattr(design_music, "open_connection", open_then_move)
+    songenv.script = pick_script(OTHER_14)
+    second = await songenv.created(rider)
+    row = await songenv.run(second)
+    assert row.error_category == "not_connected"
+    assert len(songenv.mowl.snapshots) == 2  # this pick attached its own write
+    assert songenv.mowl.reads[reads:] == []  # neither wrapper was read
+
+
 async def test_a_wrapper_that_follows_edits_still_works(songenv: SongEnv) -> None:
     """The fix does not depend on the snapshot: a MOWL that follows Spotify edits passes too."""
     songenv.mowl.snapshot = False
@@ -109,20 +143,3 @@ async def test_a_wrapper_that_follows_edits_still_works(songenv: SongEnv) -> Non
     await pick(songenv, rider, POOL_14)
     second = await pick(songenv, rider, OTHER_14)
     assert "choose" in songenv.stages(second)
-
-
-@pytest.mark.parametrize(
-    "module",
-    [
-        "classbeat.swedebeat_studio.kind",
-        "classbeat.swedebeat_studio.sync_kind",
-        "classbeat.swedebeat_studio.outputs_spotify",
-    ],
-)
-def test_the_studio_spotify_writes_never_read_a_mowl_wrapper(module: str) -> None:
-    """Issue section 4: the studio rewrites the pool or a final playlist but never reads MOWL
-    after it (no attach, no music step), so no stale wrapper can be read; the next pick attaches
-    its own write anyway."""
-    source = inspect.getsource(importlib.import_module(module))
-    for name in ("load_music", "attach_spotify_playlist", "attach_written_playlist", "mowl_api"):
-        assert name not in source
