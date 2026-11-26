@@ -8,6 +8,8 @@ its own write, the user's link names the newest one, and a retried attempt of th
 reuses its attach (no second PUT). Fakes only, never the network (``tests/netguard.py``).
 """
 
+import importlib
+import inspect
 from typing import Any
 from uuid import UUID
 
@@ -107,3 +109,20 @@ async def test_a_wrapper_that_follows_edits_still_works(songenv: SongEnv) -> Non
     await pick(songenv, rider, POOL_14)
     second = await pick(songenv, rider, OTHER_14)
     assert "choose" in songenv.stages(second)
+
+
+@pytest.mark.parametrize(
+    "module",
+    [
+        "classbeat.swedebeat_studio.kind",
+        "classbeat.swedebeat_studio.sync_kind",
+        "classbeat.swedebeat_studio.outputs_spotify",
+    ],
+)
+def test_the_studio_spotify_writes_never_read_a_mowl_wrapper(module: str) -> None:
+    """Issue section 4: the studio rewrites the pool or a final playlist but never reads MOWL
+    after it (no attach, no music step), so no stale wrapper can be read; the next pick attaches
+    its own write anyway."""
+    source = inspect.getsource(importlib.import_module(module))
+    for name in ("load_music", "attach_spotify_playlist", "attach_written_playlist", "mowl_api"):
+        assert name not in source
