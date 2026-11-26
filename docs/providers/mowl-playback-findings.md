@@ -4,10 +4,9 @@ Captured by the account owner on their own Mac (native MOWL app, own MOWL and Sp
 read only, through a redacting mitmproxy (`mitmdump`, only `*.mowl.com` and `api.spotify.com`
 decrypted). During the capture the investigator made no calls to MOWL or Spotify. Afterwards, at the
 owner's request, one read of the played workout's metadata was made with the `mowl` tool (no writes).
-Redacted: Authorization,
-Cookie and Set-Cookie headers, any field named like token, secret, password, session or key
-(this also redacts a musical `key` field, if one exists), signed-URL parameters, emails, user and
-device ids. Ids appear only as labels (`track#1`). The raw capture was never written to disk; only a
+Redacted: Authorization, Cookie and Set-Cookie headers, any field named like token, secret, password,
+session or key (this also redacts a musical `key` field, if one exists), signed-URL parameters,
+emails, user and device ids. Ids appear only as labels (`track#1`). The raw capture was never written to disk; only a
 redacted copy was kept in a temporary folder, which was deleted after this report was written
 (together with the proxy's CA key). The system proxy was switched off and the mitmproxy certificate
 removed from the System keychain.
@@ -43,7 +42,7 @@ answered by MOWL's servers, not by the Spotify API directly.
 
 The playlist had three tracks of 184413, 189374 and 241133 ms. Reading the position as time on one
 timeline where each track is shortened by the 9540 ms crossfade, track starts fall at 0, 174873 and
-354707 ms. Each seek then matched the next `Playback` reading (a poll 0.6 to 1.2 s later):
+354707 ms. Each seek then matched the next `Playback` reading (about 0.6 s later in these rows):
 
 | Seek position (ms) | Expected: track, offset | Observed next `ProgressMS`, track |
 |---|---|---|
@@ -52,23 +51,27 @@ timeline where each track is shortened by the 9540 ms crossfade, track starts fa
 | 178001 | track#2, 3128 | 3744, track#2 |
 | 213001 | track#2, 38128 | 38799, track#2 |
 | 265001 | track#2, 90128 | 90701, track#2 |
-| 318394 | track#2, 143561 | 144110, track#2 |
+| 318394 | track#2, 143521 | 144110, track#2 |
 | 361001 | track#3, 6294 | 6900, track#3 |
 
 So a section that starts mid-track is reached by one `SeekToPosition` to a timeline position;
 the track and offset are worked out on MOWL's side. The seek body carries no track id and no offset
 inside a track.
 
-The seek positions are whole seconds plus 1 ms (83000, 134001, 178001, 213001, 265001, 311001, 361001)
-and the same values (178001, 213001, 265001) came back in two separate runs, while the track
-boundaries are 174873 and 354707. They are therefore the workout's own interval boundaries on the
-shared timeline, not track boundaries. Each forward-button press sent exactly one `SeekToPosition` to
-the next boundary, with no skip or next-track call. A later test of forward and backward presses (4 to
+The seven first-run seek positions are 83000, 134001, 178001, 213001, 265001, 318394 and 361001.
+Five are whole seconds plus 1 ms, 83000 is a whole second, and 318394 is
+neither: it is not an interval start (the nearest is 311001). Its observed progress (144110) fits a
+seek to 318394 (143521 expected, 589 ms lag, like the other rows) and does not fit 311001 (136128
+expected). What caused that one seek cannot be checked now that the capture no longer exists, so no
+cause is claimed. The values 178001, 213001 and 265001 came back in two separate runs, while the
+track boundaries are 174873 and 354707. Apart from 318394, the seeks are therefore the workout's own
+interval boundaries on the shared timeline, not track boundaries. Each forward-button press sent
+exactly one `SeekToPosition` to the next boundary, with no skip or next-track call. A later test of forward and backward presses (4 to
 5 s apart; I count 4 forward and 5 backward seeks where the owner said 3 and 4, so the owner's count
 was probably off by one) gave the boundary sequence 361001, 406001, 435001, 455001 going forward and
 435001, 406001, 361001, 311001, 265001 going back. The first forward target was the boundary after
 the position the song had reached on its own (about 352 s). Going back across a track edge
-(311001 is 136 s into track#2, 265001 also track#2, 361001 is 6.8 s into track#3) used the same
+(311001 is 136 s into track#2, 265001 also track#2, 361001 is 6.3 s into track#3) used the same
 `SeekToPosition`, with no "previous track" call. The only calls in that test were
 `SeekToPosition` and one `Playback` poll after each.
 
@@ -101,8 +104,10 @@ observed separately.
   per-track or per-segment music field (no start, offset, position, end or duration for a song).
 - **The seek positions are the interval start times.** The interval starts are 0:00, 1:23, 2:14, 2:58,
   3:33, 4:25, 5:11, 6:01, 6:46, 7:15, 7:35 (83, 134, 178, 213, 265, 311, 361, 406, 435, 455 s).
-  All ten seek targets seen (83000, 134001, 178001, 213001, 265001, 311001, 361001, 406001, 435001,
-  455001 ms) equal an interval start in seconds (the 1 ms is added by the app). So MOWL's seek
+  All ten distinct targets seen in the forward/back presses and the first run (83000, 134001, 178001,
+  213001, 265001, 311001, 361001, 406001, 435001, 455001 ms) equal an interval start in seconds (the
+  1 ms is added by the app, except for 83000). The one exception is the first-run seek to 318394
+  (see (a)), which is not an interval start and is not among the ten. So MOWL's seek
   position is simply the workout clock at the start of the interval jumped to. That is also the
   playlist timeline, because the music runs continuously from workout time 0 with each song's overlap
   taken off.
@@ -123,7 +128,7 @@ observed separately.
 - **First run had no markers.** The first run's actions were matched only by content and order
   (the seeks above). The second run used time markers.
 - The workout used was a two-block Spotify workout with three tracks in the played part; one
-  mid-track block boundary and one natural-length song were tested for (c).
+  mid-track block boundary was tested for (c); the natural handover of a song was not isolated.
 - The segment boundary (between the two segments) was not tested, only an interval boundary inside segment 1.
 - Redaction gaps found while reading (all kept out of this report): a creator display name in the
   `Play` answer, the machine's name in the devices list, the Spotify track id in `Playback` →
