@@ -56,6 +56,10 @@ The owner described the flow they want (issue #1184) and approved a three-screen
 
 The songs start by themselves when the sketch is ready. The user can keep shaping meanwhile (§8).
 
+*(Roadmap Amendment 37, 2026-11-26, #1536: the flow gains a step before the sketch. The reading shows its
+questions with the assumed answers, and the instructor may answer them; the answers re-read the request
+(`POST /api/classes/{id}/reread`) before any design. The hand-off and the sketch use the latest reading.)*
+
 ### 2. The flag
 
 - `composer_flow` follows the `running_enabled` pattern (ADR 0018 §5): an environment switch
@@ -85,7 +89,11 @@ The songs start by themselves when the sketch is ready. The user can keep shapin
   - `at` is a position hint from the request ("warm-up", "climb 3", "last climb"): cleaned text, at most 40
     characters.
   - Pinned songs are model output and only a proposal. Each is verified by search before it is used (§5).
-- **Follow-up questions**: at most 2 items `{path, question, assumed}`.
+- **Follow-up questions**: *(Roadmap Amendment 37, 2026-11-26, #1536: the model chooses them, up to 12,
+  each `{topic, text, options 2 to 5, assumed_index}`, one per topic except `other`; the old closed pair
+  `{path, question, assumed}` below is superseded. A stored question in the old shape is dropped when
+  read. The text is plain text. The instructor answers through `POST /api/classes/{id}/reread`, and the
+  hand-off and the sketch start from the reading the instructor confirmed.)*
   - They are asked only for a brief field with no explicit value whose default changes the class's shape:
     length and intensity. The brief has no warm-up field yet, so a question about the warm-up needs a later
     brief change (a design decision of its own); the reading never asks one.
