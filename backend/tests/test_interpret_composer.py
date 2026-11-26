@@ -230,9 +230,15 @@ def kept(reading: dict[str, Any], skip: Any = ()) -> list[tuple[str, int | None]
     [
         # the model's questions are kept, in its order
         (
-            {"questions": [ask("music"), ask("length", assumed=2)]},
+            {"questions": [ask("music") | {"no_music_index": 2}, ask("length", assumed=2)]},
             (),
             [("music", 0), ("length", 2)],
+        ),
+        # a music question that marks no "No music" is dropped (Amendment 37 decision 6)
+        (
+            {"questions": [ask("music"), ask("length", assumed=2)]},
+            (),
+            [("length", 2)],
         ),
         # one per topic, except "other"
         (
@@ -308,7 +314,7 @@ def test_the_no_music_marker_follows_its_option_through_cleaning_and_is_for_musi
     assert music.no_music_index == 1  # the duplicate "rock" left, the marker followed its option
     assert length.no_music_index is None
     out_of_range = submitted("A class", {"questions": [required_music(no_music_index=9)]})
-    assert composer_reading(out_of_range)[1][0].no_music_index is None
+    assert composer_reading(out_of_range)[1] == []  # offers no "No music": dropped, never mended
 
 
 def test_the_question_schema_is_closed_and_capped() -> None:

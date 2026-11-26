@@ -52,6 +52,10 @@ function words(source: Record<string, unknown>, key: string): string | null {
   return typeof value === 'string' && value !== '' ? value : null
 }
 
+function offersNoMusic(count: number, assumed: unknown, marker: unknown): boolean {
+  return typeof marker === 'number' && Number.isInteger(marker) && marker >= 0 && marker < count && marker !== assumed
+}
+
 /** The extras of an interpretation answer; an entry that does not check is left out. */
 export function decodeReadingExtras(body: Record<string, unknown>): ReadingExtras {
   const pinnedSongs: PinnedSong[] = []
@@ -64,7 +68,7 @@ export function decodeReadingExtras(body: Record<string, unknown>): ReadingExtra
   const questions: ReadingQuestion[] = []
   for (const entry of Array.isArray(body.questions) ? (body.questions as unknown[]) : []) {
     if (!isObject(entry)) continue
-    const { topic, code, text, options, assumed_index: assumedIndex } = entry
+    const { topic, code, text, options, assumed_index: assumedIndex, no_music_index: noMusicIndex } = entry
     if (code !== undefined && code !== null) {
       // A closed question is exactly the backend's: anything else is left out, never shown.
       const closed =
@@ -82,6 +86,9 @@ export function decodeReadingExtras(body: Record<string, unknown>): ReadingExtra
     if (typeof text !== 'string' || text === '') continue
     if (!Array.isArray(options) || options.length < MIN_OPTIONS || options.length > MAX_OPTIONS) continue
     if (!options.every((o): o is string => typeof o === 'string' && o !== '')) continue
+    // "No music" is always offered (Amendment 37 decision 6): a music question marks it, in range
+    // and not the assumed answer, or it is left out (the backend stores no other).
+    if (topic === 'music' && !offersNoMusic(options.length, assumedIndex, noMusicIndex)) continue
     if (assumedIndex === undefined || assumedIndex === null) {
       if (topic !== 'music') continue // only a music question goes without an assumed answer
       questions.push({ topic, text, options, assumedIndex: null })

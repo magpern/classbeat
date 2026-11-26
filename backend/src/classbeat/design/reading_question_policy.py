@@ -17,13 +17,19 @@ hand-off's ``music_unanswered`` is a backstop, never the instructor's only path:
 
 - the model's music question is kept even when its topic was skipped or "stated" (a named
   playlist or mix that matched nothing), and its assumed answer is removed;
-- with no music question from the model, the policy adds ``WHICH_MUSIC``: ``code``
+- with no music question from the model that is kept, the policy adds ``WHICH_MUSIC``: ``code``
   ``which_music``, no model text, the closed options ``WHICH_MUSIC_OPTIONS`` (one of the
   instructor's playlists, "No music", marked), no assumed answer. The page phrases it in its own
   language; a typed style answers it too. It goes first, so the cap never drops it.
 
-``no_music_index`` marks a music question's "No music" option. It is dropped when it is the
-assumed answer: "No music" is the instructor's choice, never an assumption.
+**"No music" is always offered** (Amendment 37 decision 6, the Architect 2026-11-26): every
+stored ``music`` question has ``no_music_index``, in range and not its assumed answer
+(``offers_no_music``).
+The model's music question without one (left out, out of range, or on the assumed answer, which
+is dropped: "No music" is the instructor's choice, never an assumption) is dropped, never mended
+by adding an option. For a hint-less pick ``WHICH_MUSIC`` then takes its place; with a hint
+nothing does, since a required closed question would stop "accept them all" for music that is
+already said. ``Question`` refuses such a question, and a stored list drops one when read.
 """
 
 from collections.abc import Collection
@@ -67,13 +73,17 @@ class Question(BaseModel):
     # ``None``: required, no assumed answer (a music question with no hint, #1536).
     assumed_index: Annotated[int, Field(ge=0, lt=MAX_OPTIONS)] | None = None
     # The option that means "No music" (a ``music`` question only).
-    no_music_index: Annotated[int, Field(ge=0, lt=MAX_OPTIONS)] | None = None
+    no_music_index: Annotated[int, Field(ge=0, lt=MAX_OPTIONS, strict=True)] | None = None
 
     @model_validator(mode="after")
     def _model_or_closed(self) -> Self:
         if self.code is None:
             if self.text is None:
                 raise ValueError("a question has the model's text or a code")
+            if self.topic == "music" and not offers_no_music(
+                len(self.options), self.assumed_index, self.no_music_index
+            ):
+                raise ValueError('a music question offers "No music" (no_music_index)')
             return self
         closed = (self.topic, self.text, tuple(self.options), self.assumed_index)
         if closed != ("music", None, WHICH_MUSIC_OPTIONS, None) or self.no_music_index != 1:
@@ -86,11 +96,32 @@ WHICH_MUSIC: Final = Question(
 )
 
 
+def offers_no_music(options: int, assumed: Any, marker: Any) -> bool:
+    """Whether a music question's ``no_music_index`` marks one of its ``options`` that is not the
+    assumed answer (the module's rule)."""
+    in_range = isinstance(marker, int) and not isinstance(marker, bool) and 0 <= marker < options
+    return in_range and marker != assumed
+
+
+def _readable(entry: Any) -> bool:
+    if not isinstance(entry, dict):
+        return True  # left to the model's own checks
+    if "topic" not in entry:
+        return False  # the shape before #1536
+    if entry.get("topic") != "music" or entry.get("code") is not None:
+        return True
+    options = entry.get("options")
+    count = len(options) if isinstance(options, list) else 0  # pyright: ignore[reportUnknownArgumentType]
+    return offers_no_music(count, entry.get("assumed_index"), entry.get("no_music_index"))
+
+
 def legacy_dropped(value: Any) -> Any:
-    """A stored list without the entries of the shape before #1536 (no ``topic``)."""
+    """A stored list without the entries of the shape before #1536 (no ``topic``) and without a
+    model music question that offers no "No music" (stored by no released code; dropped so the
+    row stays readable, never refused whole)."""
     if not isinstance(value, list):
         return value
-    return [q for q in value if not isinstance(q, dict) or "topic" in q]  # pyright: ignore[reportUnknownVariableType]
+    return [q for q in value if _readable(q)]  # pyright: ignore[reportUnknownVariableType]
 
 
 QuestionList = Annotated[
@@ -123,13 +154,16 @@ def questions(
             continue
         if kept_music:
             held = None  # a hint-less pick assumes nothing: the instructor answers it
+        marker = _none_index(asked, held)
+        if topic == "music" and marker is None:
+            continue  # offers no "No music": WHICH_MUSIC asks instead (hint-less) or nothing does
         out.append(
             Question(
                 topic=topic,
                 text=asked.text,
                 options=list(asked.options),
                 assumed_index=held,
-                no_music_index=_none_index(asked, held),
+                no_music_index=marker,
             )
         )
         if len(out) == MAX_QUESTIONS:
@@ -141,9 +175,9 @@ def questions(
 
 def _none_index(asked: InterpretedQuestion, assumed: int | None) -> int | None:
     index = asked.no_music_index
-    if asked.topic != "music" or index is None or index == assumed:
+    if asked.topic != "music" or not offers_no_music(len(asked.options), assumed, index):
         return None
-    return index if index < len(asked.options) else None
+    return index
 
 
 def chosen_topics(*, music: bool, sport: bool) -> frozenset[str]:

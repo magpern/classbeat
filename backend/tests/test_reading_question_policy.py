@@ -42,8 +42,12 @@ def submitted(reading: dict[str, Any], *, named: bool = False) -> InterpretedReq
 
 
 def ask(topic: str, assumed: int | None = 0, **more: Any) -> dict[str, Any]:
+    """A well-formed question: a music one marks its "No music" option (Amendment 37 decision 6);
+    ``more`` overrides, ``no_music_index=None`` leaves the marker out."""
     question = {"topic": topic, "text": f"{topic}?", "options": ["Pop", "Rock", "No music"]}
-    return question | ({} if assumed is None else {"assumed_index": assumed}) | more
+    marked = {"no_music_index": 2} if topic == "music" else {}
+    given = question | marked | ({} if assumed is None else {"assumed_index": assumed}) | more
+    return {k: v for k, v in given.items() if v is not None}
 
 
 def stored(
@@ -203,10 +207,72 @@ def test_answers_to_the_closed_question_are_the_apps_words() -> None:
 
 
 def test_the_no_music_marker_is_dropped_when_it_is_the_assumed_answer() -> None:
-    [marked] = stored({"questions": [ask("music", assumed=2, no_music_index=2)]}, hint_less=False)
-    assert (marked.assumed_index, marked.no_music_index) == (2, None)
+    # with a hint, the marker on the assumed answer is dropped, so the question offers no
+    # "No music" and is dropped with it; nothing takes its place
+    assert stored({"questions": [ask("music", assumed=2, no_music_index=2)]}, hint_less=False) == []
     [other] = stored({"questions": [ask("music", assumed=0, no_music_index=2)]}, hint_less=False)
     assert (other.assumed_index, other.no_music_index) == (0, 2)
     # a hint-less pick assumes nothing, so its "No music" option keeps its marker
     [required] = stored({"questions": [ask("music", assumed=2, no_music_index=2)]}, hint_less=True)
     assert (required.assumed_index, required.no_music_index) == (None, 2)
+
+
+# --- "No music" is always offered -------------------------------------------------------------
+
+STYLES = ["Pop", "Rock", "80s", "90s", "Hits"]
+
+
+@pytest.mark.parametrize(
+    "music",
+    [
+        ask("music", assumed=None, no_music_index=None, options=["Pop", "Rock"]),  # no marker
+        ask("music", assumed=None, no_music_index=None, options=STYLES),  # 5 styles, no marker
+        ask("music", assumed=None, no_music_index=2, options=["Pop", "Rock"]),  # == len
+        ask("music", assumed=None, no_music_index=7, options=STYLES),  # beyond the options
+    ],
+    ids=["no marker", "five unmarked", "marker at len", "marker beyond"],
+)
+def test_a_music_question_offering_no_no_music_is_replaced_by_the_closed_one(
+    music: dict[str, Any],
+) -> None:
+    """The Architect, 2026-11-26: kept only with a marker in range, never mended."""
+    got = stored({"questions": [ask("length"), music]}, hint_less=True)
+    assert [(q.topic, q.code) for q in got] == [("music", "which_music"), ("length", None)]
+    assert got[0] == WHICH_MUSIC
+    assert stored({"questions": [ask("length"), music]}, hint_less=False) == got[1:]
+
+
+def test_a_marker_on_the_assumed_answer_is_kept_only_when_nothing_is_assumed() -> None:
+    music = ask("music", assumed=2, no_music_index=2)
+    [required] = stored({"questions": [music]}, hint_less=True)
+    assert (required.code, required.assumed_index, required.no_music_index) == (None, None, 2)
+    assert stored({"questions": [music]}, hint_less=False) == []
+
+
+def test_a_negative_marker_never_reaches_the_policy() -> None:
+    with pytest.raises(ValidationError):
+        submitted({"questions": [ask("music", no_music_index=-1)]})
+
+
+def test_a_later_well_formed_music_question_is_kept_after_an_unmarked_one() -> None:
+    unmarked = ask("music", assumed=None, no_music_index=None, text="Which style?")
+    got = stored({"questions": [unmarked, ask("music", assumed=None)]}, hint_less=True)
+    assert [(q.text, q.no_music_index) for q in got] == [("music?", 2)]
+
+
+@pytest.mark.parametrize(
+    "marker",
+    [None, -1, 2, 5, 0, True],
+    ids=["none", "negative", "len", "beyond", "assumed", "bool"],
+)
+def test_every_stored_music_question_offers_no_music(marker: Any) -> None:
+    """``Question`` refuses one, and a stored list drops one when read (the row stays readable)."""
+    entry = {"topic": "music", "text": "Music?", "options": ["Pop", "Rock"], "assumed_index": 0}
+    entry |= {} if marker is None else {"no_music_index": marker}
+    with pytest.raises(ValidationError):
+        Question.model_validate(entry)
+    base = {"job_id": uuid4(), "brief": {"length_min": 45}, "music": PICK, "items": []}
+    row = StoredInterpretation.model_validate(base | {"questions": [entry, ask("length")]})
+    assert [q.topic for q in row.questions] == ["length"]
+    good = entry | {"no_music_index": 1}
+    assert Question.model_validate(good).no_music_index == 1

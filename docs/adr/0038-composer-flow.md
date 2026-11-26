@@ -101,8 +101,10 @@ sketch use the confirmed reading, which the hand-off may name (`interpret_job_id
   assumed answer: a `music` question with no hint of the music, which the instructor must answer (a pick
   with no hint is refused `music_unanswered` on the route that starts the pick now, amendment 37
   decision 7; a composer reading reaches its sketch with its music undecided, and a form "pick" is no
-  hint and leaves it undecided). With no music question from the model for such a pick, the backend
-  adds the closed question `{topic: "music", code: "which_music", options: ["my_playlists",
+  hint and leaves it undecided). Every stored `music` question marks an offered "No music"
+  (`no_music_index` in range, never the assumed answer); the model's question without one is dropped,
+  never mended. With no such music question from the model for such a pick, the backend adds the
+  closed question `{topic: "music", code: "which_music", options: ["my_playlists",
   "no_music"], no_music_index: 1}`, with no model text, which the page phrases from its own catalogue.
   Every reading stores its questions, in the classic flow too; the pinned songs stay the composer's.)*
   - They are asked only for a brief field with no explicit value whose default changes the class's shape:

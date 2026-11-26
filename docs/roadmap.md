@@ -54,7 +54,12 @@ Decisions:
    `CLASSBEAT_SOUNDLESS_ENABLED`, a soundless design is still admitted by the switch, so with it off a
    "No music" reading ends in a closed refusal at the hand-off (`feature_off`), before any job or credit.
    The marker is dropped when it is the question's assumed answer: "No music" is the instructor's
-   choice, never an assumption.
+   choice, never an assumption. A model music question with no marker in range (left out, out of
+   range, or dropped as the assumed answer) is dropped, never mended with an added option (the
+   Architect, 2026-11-26): for a pick with no hint the closed `which_music` question takes its place
+   (decision 7); with a hint nothing does, since a required closed question would stop the
+   instructor accepting every assumed answer in one click for music that is already said. A
+   stored row drops such a question when read, and the page leaves it out.
 7. **A song pick needs a hint (owner, 2026-11-26: "music should never be totally random. Some hint from
    user is needed, unless user says no").** A pick is made only with a hint: a taste item (`music_era.*`,
    `music_language`, `music_genre.*`, `music_hits`), a pinned song, a source the instructor chose in the
@@ -65,7 +70,8 @@ Decisions:
    - With no hint, the reading always has a music question with no assumed answer (`assumed_index`
      absent: the instructor must answer, with a style, one of the playlists, or "No music"). The
      model's music question is kept, with its assumed answer removed, even when its topic was settled
-     or "stated"; with none from the model, the backend adds the closed question `which_music` (a
+     or "stated"; with none from the model that marks "No music" (decision 6), the backend adds the
+     closed question `which_music` (a
      `code`, no model text, the closed options `my_playlists` and `no_music`, the latter marked), which
      the page phrases in its own language.
    - `design-from-interpretation` refuses a pick with no hint `music_unanswered`, before any job or

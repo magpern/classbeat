@@ -13,7 +13,7 @@ const BODY = {
   ],
   questions: [
     { topic: 'length', text: 'How long should the class be?', options: ['30 minutes', '45 minutes'], assumed_index: 1 },
-    { topic: 'music', text: 'What about the music?', options: ['Pick songs for me', 'Use one of my playlists', 'No music'], assumed_index: 0 },
+    { topic: 'music', text: 'What about the music?', options: ['Pick songs for me', 'Use one of my playlists', 'No music'], assumed_index: 0, no_music_index: 2 },
     { topic: 'length', text: 'One option only?', options: ['a'], assumed_index: 0 },
     { topic: 'sport', text: 'Index out of range?', options: ['a', 'b'], assumed_index: 2 },
     { topic: 'nonsense', text: 'Unknown topic?', options: ['a', 'b'], assumed_index: 0 },
@@ -53,7 +53,7 @@ describe('the composer part of the reading (ADR 0038 section 3)', () => {
   it('keeps a required music question that assumes nothing, and shows no assumed answer for it', () => {
     const body = {
       questions: [
-        { topic: 'music', text: 'What music do you want?', options: ['Pop hits', 'No music'] },
+        { topic: 'music', text: 'What music do you want?', options: ['Pop hits', 'No music'], no_music_index: 1 },
         { topic: 'length', text: 'No assumption allowed?', options: ['a', 'b'] }, // only music may go without one
       ],
     }
@@ -102,6 +102,22 @@ describe('the composer part of the reading (ADR 0038 section 3)', () => {
       </I18nProvider>,
     )
     expect(await screen.findByText(sentence)).toBeTruthy()
+  })
+
+  it('leaves out a music question that does not mark an offered "No music" (Amendment 37 decision 6)', () => {
+    const music = { topic: 'music', text: 'Music?', options: ['Pop', 'Rock', 'No music'] }
+    const body = {
+      questions: [
+        music, // no marker
+        { ...music, no_music_index: 3 }, // beyond the options
+        { ...music, no_music_index: -1 },
+        { ...music, no_music_index: 1.5 },
+        { ...music, no_music_index: '2' },
+        { ...music, assumed_index: 2, no_music_index: 2 }, // "No music" is never assumed
+        { ...music, text: 'Marked?', no_music_index: 2 },
+      ],
+    }
+    expect(decodeReadingExtras(body).questions).toEqual([{ topic: 'music', text: 'Marked?', options: ['Pop', 'Rock', 'No music'], assumedIndex: null }])
   })
 
   it('shows nothing new for a class without them', () => {
