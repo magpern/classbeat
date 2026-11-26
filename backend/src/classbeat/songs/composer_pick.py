@@ -164,7 +164,7 @@ async def pick_composer(
     stage = (provider, searcher, pool_config)  # SD-P6 stage A, #1386: always, no fallback
     matched = await matched_candidates(run, plan, picks, registry, stage, excluded)
     track_ids = tuple(p.spotify_id for p in matched.eligible)
-    playlist_id = await write_pool_playlist(run, keyring, spotify, given, track_ids)
+    playlist_id, wrapper = await write_pool_playlist(run, keyring, spotify, given, track_ids)
     await run.stage("pool_analyse")
     step = await load_music(
         run,
@@ -173,6 +173,7 @@ async def pick_composer(
         connection_id=given.mowl_connection_id,
         expect=track_ids,
         sync_wait_seconds=config.sync_wait_seconds,
+        attached=wrapper,
     )
     try:
         return await _choose(

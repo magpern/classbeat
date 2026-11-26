@@ -295,7 +295,7 @@ export const en = {
   'sentence.job.pool_unusable':
     'Your working playlist was changed in Spotify and cannot be used. Set it up again.',
   'sentence.job.pool_missing': 'Your working playlist was gone from Spotify; trying again by itself.',
-  'sentence.job.pool_not_synced': 'MOWL has not caught up with the working playlist; try again in a minute.',
+  'sentence.job.pool_not_synced': "MOWL did not list the working playlist's new songs in time. Pick the songs again.",
   'sentence.job.playlist_mismatch': "Spotify's playlist did not match the approved songs. Add it to your Spotify profile, then create it again.",
   'sentence.job.pool_too_small': 'Not enough usable songs were found; try a wider style or era.',
   'sentence.job.account_changed': 'Your Spotify account is not the one these songs were chosen for. Ask for new songs.',
@@ -1306,7 +1306,7 @@ export const en = {
   'songs.failure.pool_unusable.title': 'Your working playlist was changed',
   'songs.failure.pool_missing.title': 'Your working playlist was gone from Spotify',
   'songs.failure.pool_missing.detail': 'Your working playlist was gone from Spotify. Try again.',
-  'songs.failure.pool_not_synced.title': 'MOWL has not caught up yet',
+  'songs.failure.pool_not_synced.title': 'MOWL did not catch up in time',
   'songs.failure.playlist_mismatch.title': 'Spotify’s playlist did not match the approved songs',
   'songs.failure.playlist_mismatch.detail': 'Nothing was designed. In Spotify, choose Add to profile on the playlist, then create it again.',
   'songs.failure.pool_too_small.title': 'Not enough usable songs were found',

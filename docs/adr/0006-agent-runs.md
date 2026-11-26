@@ -492,6 +492,34 @@ or Spotify setting is an owner check on #1348, never run by an agent.
 - **Not affected**: SwedeBeat studio classes (per-transition crossfades, `crossfade_sec` 0.0, ADR 0036
   B6), soundless classes, and the gateway playlist and mix bodies.
 
+## Amendment of 2026-11-26: MOWL's Spotify wrapper is a snapshot (issue #1535)
+
+On the owner's pre-prod stack every song pick after the first failed `pool_not_synced`: MOWL's
+wrapper (`PUT v1/Spotify/Playlist`) copies the Spotify playlist's tracks once and never follows a
+later edit, and attaching the same playlist again answered a **new** `PlaylistID` with the current
+tracks (MOWL id 327006 against the stored 325691). Section 3's "later jobs on the same playlist
+need no write" holds only for a playlist classbeat never writes. So:
+
+1. **A playlist classbeat rewrites** (the pool) is attached again after every write,
+   `operations.attach_written_playlist`, under the key `spotify:<id>:<w16>` (`w16`: 16 hex
+   characters of the SHA-256 of the Spotify write's own key, also in the request hash): a retry of
+   the same write reuses its attach, a new write attaches anew. The music step uses the id that
+   attach returned (`design.music.load_music(attached=...)`).
+2. **The link names the newest wrapper.** `mowl_playlist_links` keeps one row per Spotify
+   playlist, but a succeeded attach now upserts it; a changed playlist id gets a new row id, so a
+   revision that named the older link no longer finds it and Save refuses `music_unlinked`
+   rather than saving onto other tracks. The per-write attach re-points the link itself under
+   `hold`, only while its own succeeded row still exists (a reconnect deletes both), and the music
+   step requires the link to name exactly that wrapper (`not_connected` otherwise).
+3. **Unchanged:** a playlist classbeat does not write (the user's own, a final class playlist,
+   which is created and filled once per job before its one attach) keeps the single
+   `spotify:<id>` attach and its stored link. A user's own edit of their own playlist in Spotify
+   is still not seen by an existing wrapper (a known limit, not addressed here).
+4. **Cost:** one MOWL PUT (about 10 s) per pick, and one more wrapper in the user's MOWL music
+   per pick; MOWL has no known delete (docs/status.md, "Waiting for the owner").
+5. The pool's sync wait stays as a guard (`design.pool_sync`); on a timeout it logs counts only
+   (expected, listed, overlap; no ids).
+
 ## M3a issue breakdown (ADR 0005 and this ADR)
 
 One issue per PR, milestone "M3a Jobs and design". "Opus" marks a security-critical issue with an

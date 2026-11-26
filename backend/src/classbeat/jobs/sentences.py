@@ -28,7 +28,9 @@ SONG_SENTENCES: Final[dict[str, str]] = {
         "Your working playlist was changed in Spotify and cannot be used. Set it up again."
     ),
     "pool_missing": "Your working playlist was gone from Spotify; trying again by itself.",
-    "pool_not_synced": ("MOWL has not caught up with the working playlist; try again in a minute."),
+    "pool_not_synced": (
+        "MOWL did not list the working playlist's new songs in time. Pick the songs again."
+    ),
     "playlist_mismatch": (
         "Spotify's playlist did not match the approved songs. "
         "Add it to your Spotify profile, then create it again."

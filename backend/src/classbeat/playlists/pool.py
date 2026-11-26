@@ -70,6 +70,7 @@ class PoolWrite:
     playlist_id: str
     created: bool
     count: int
+    key: str  # the ``spotify_replace_items`` key of this write (a MOWL attach is keyed by it)
 
 
 _POOL = text("SELECT id, playlist_id, spotify_user_id FROM spotify_pool WHERE owner_id = :owner_id")
@@ -220,7 +221,8 @@ async def replace_pool(
     playlist_id: str,
     track_ids: tuple[str, ...],
     recheck: Guard | None = None,
-) -> None:
+) -> str:
+    """The replace of the pool's items; its key."""
     key = await write_key(run, pool.id, track_ids)  # a rewrite after another list: #1188 B1
     guard = _guard(run, opened, pool, SPOTIFY_REPLACE_KIND, key, playlist_id, recheck)
     request = replace.replace_request(key, "pool", playlist_id, track_ids, guard, pool_id=pool.id)
@@ -231,6 +233,7 @@ async def replace_pool(
             async with run.fenced() as fs:
                 await pool_missing(fs.db, run.lease.owner_id, pool.id, playlist_id)
         raise
+    return key
 
 
 async def write_pool(
@@ -255,5 +258,5 @@ async def write_pool(
             playlist_id = await create_pool(run, keyring, opened, pool, recheck)
             pool = Pool(pool.id, playlist_id, pool.account)
             created = True
-        await replace_pool(run, keyring, opened, pool, playlist_id, ids, recheck)
-    return PoolWrite(pool.id, playlist_id, created, len(ids))
+        key = await replace_pool(run, keyring, opened, pool, playlist_id, ids, recheck)
+    return PoolWrite(pool.id, playlist_id, created, len(ids), key)

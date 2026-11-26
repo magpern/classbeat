@@ -937,3 +937,14 @@ the example list's `"crossfade_sec": 9` is 9.54 for a new list (a stored list ke
 tempo-clash amendment of 2026-11-13 judges adjacent songs at the 9.54 s overlap (`CROSSFADE_SEC` is
 the constant it names; the 6 % rule is unchanged). The SwedeBeat studio is unaffected (its list has
 `crossfade_sec` 0).
+
+## Amendment of 2026-11-26: the pool is attached to MOWL after every write (issue #1535)
+
+Section 2's pool attach "once, later picks reuse the stored link" is replaced: MOWL's wrapper is a
+snapshot of the Spotify playlist at attach time (ADR 0006 amendment of 2026-11-26), so every pool
+write (a pick's candidates, a composer's chosen songs) is followed by its own attach
+(`spotify:<pool id>:<w16>`), and the pool's analysis reads that wrapper. A retried attempt of the
+same write reuses its attach. The final class playlist is unchanged: it is created and filled once
+per job, then attached once, and a resume reuses it only for the same list. `pool_not_synced` no
+longer tells the user to try again in a minute (a retry on a stale wrapper could never help); it
+asks them to pick the songs again.

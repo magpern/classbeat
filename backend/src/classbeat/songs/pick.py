@@ -13,9 +13,9 @@ the wait for the user's one approval. Everything runs in the worker, inside the 
 2. ``pool_write``: ``classbeat.playlists.write_pool`` (ensure the pool playlist: a
    ``spotify_create_playlist`` under this job's own key when the pool row has no playlist yet; the
    owner check; a ``spotify_replace_items`` of exactly the candidates, read back and compared),
-   then the MOWL attach of the pool playlist (``mowl_attach_spotify_playlist``, key
-   ``spotify:<pool id>``, once: later picks reuse the stored link).
-3. ``pool_analyse``: the design music step on the pool playlist (``classbeat.design.music``), which
+   then a MOWL attach of the pool playlist after **every** write (``attach_written_playlist``,
+   key ``spotify:<pool id>:<w16>`` of the replace's key; MOWL's wrapper is a snapshot, #1535).
+3. ``pool_analyse``: the design music step on that wrapper (``classbeat.design.music``), which
    first waits until MOWL's track list is exactly the candidates just written
    (``pool_not_synced`` after ``CLASSBEAT_SPOTIFY_POOL_SYNC_WAIT_SECONDS``; retried once), then
    analyses it; a candidate still without a BPM is left out and counted (``omitted_no_bpm``),
@@ -74,7 +74,7 @@ from classbeat.connections import OpenConnection, hold
 from classbeat.crypto.keks import KeyRing
 from classbeat.design.music import MusicStep, load_music
 from classbeat.jobs import AwaitApproval, FencedSession, JobFailure, JobRun
-from classbeat.operations import attach_spotify_playlist
+from classbeat.operations.attach import attach_written_playlist
 from classbeat.playlists import open_spotify, write_pool
 from classbeat.songs import song_list
 from classbeat.songs.config import SongConfig
@@ -135,14 +135,16 @@ async def write_pool_playlist(
     spotify: OpenConnection,
     given: SongJob,
     track_ids: tuple[str, ...],
-) -> str:
+) -> tuple[str, int]:
+    """Step 2: the pool playlist's id and the MOWL wrapper of this write."""
     await run.stage("pool_write")
     written = await write_pool(run, keyring, spotify, track_ids)
     await run.checkpoint()
-    await attach_spotify_playlist(
-        run, keyring, written.playlist_id, connection_id=given.mowl_connection_id
+    mowl_id = given.mowl_connection_id
+    wrapper = await attach_written_playlist(
+        run, keyring, written.playlist_id, written.key, connection_id=mowl_id
     )
-    return written.playlist_id
+    return written.playlist_id, wrapper
 
 
 async def run_phase_one(
@@ -178,7 +180,7 @@ async def run_phase_one(
     # SD-P6 (#1303, #1354): spotdown's match of the pool, always; a missing song is left out.
     matched = await match_pool(run, plan, pool, registry, (provider, searcher, pool_config))
     track_ids = tuple(p.spotify_id for p in matched.playlist)
-    playlist_id = await write_pool_playlist(run, keyring, spotify, given, track_ids)
+    playlist_id, wrapper = await write_pool_playlist(run, keyring, spotify, given, track_ids)
 
     await run.stage("pool_analyse")
     step = await load_music(
@@ -188,6 +190,7 @@ async def run_phase_one(
         connection_id=given.mowl_connection_id,
         expect=track_ids,
         sync_wait_seconds=config.sync_wait_seconds,
+        attached=wrapper,
     )
     try:
         chosen, made = await _choose(

@@ -294,7 +294,7 @@ const da: Catalogue = {
     'Din arbejdsplayliste er ændret i Spotify og kan ikke bruges. Sæt den op igen.',
   'sentence.job.pool_missing': 'Din arbejdsplayliste var væk fra Spotify; prøver igen af sig selv.',
   'sentence.job.pool_not_synced':
-    'MOWL er ikke nået til at følge med arbejdsplaylisten; prøv igen om et minut.',
+    'MOWL viste ikke arbejdsplaylistens nye sange i tide. Vælg sangene igen.',
   'sentence.job.playlist_mismatch':
     'Spotifys playliste passede ikke til de godkendte sange. Føj den til din Spotify-profil, og opret den igen.',
   'sentence.job.pool_too_small': 'Der blev ikke fundet nok brugbare sange; prøv en bredere stil eller epoke.',
@@ -1170,7 +1170,7 @@ const da: Catalogue = {
   'songs.failure.pool_unusable.title': 'Din arbejdsplayliste blev ændret',
   'songs.failure.pool_missing.title': 'Din arbejdsplayliste fandtes ikke længere i Spotify',
   'songs.failure.pool_missing.detail': 'Din arbejdsplayliste fandtes ikke længere i Spotify. Prøv igen.',
-  'songs.failure.pool_not_synced.title': 'MOWL er ikke nået med endnu',
+  'songs.failure.pool_not_synced.title': 'MOWL nåede ikke at følge med i tide',
   'songs.failure.playlist_mismatch.title': 'Spotifys playliste stemte ikke med de godkendte sange',
   'songs.failure.playlist_mismatch.detail':
     'Intet blev designet. Vælg Føj til profil på playlisten i Spotify, og opret den så igen.',
