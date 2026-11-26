@@ -109,7 +109,8 @@ with no markup or link, at most 160 characters; options, 2 to 5 short answers in
 language, each at most 60 characters; assumed_index, the 0-based index of the option the app \
 assumes if the instructor does not answer. The app assumes it and does not wait for an answer. \
 Music rule: songs are never picked at random. When the request gives no hint of the music (no \
-playlist, mix, style, era, language, artist or song, and the message has no "attached_playlists"), \
+playlist, mix, style, era, language, artist or song, and the message has no "attached_playlists"; \
+a playlist or mix the request names that is not in the numbered list is no hint), \
 always ask about music and leave assumed_index out of that question: the instructor must answer \
 it. Its at most 5 options are up to 3 style suggestions in the language of the request (such as \
 "Pop hits", "80s and 90s", "Rock"), "Use one of my playlists", and always "No music"; set \

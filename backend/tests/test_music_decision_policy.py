@@ -65,6 +65,19 @@ def test_a_request_that_says_what_the_music_is_is_decided_as_requested(
     assert got == DEFAULT == MusicDecision(state="decided", choice="request")
 
 
+@pytest.mark.parametrize(
+    ("reading", "chose"),
+    [
+        ({}, True),  # a pick chosen in the form: not a choice of music (#1536)
+        ({"music": {"value": 0, "origin": "explicit"}}, False),  # a name that ended as a pick
+    ],
+)
+def test_a_song_pick_with_no_hint_is_undecided(reading: dict[str, Any], chose: bool) -> None:
+    """Whatever else the reading says: the composer asks before any song is picked."""
+    got = initial(read(**reading), composer=True, attached=False, chose=chose, hintless=True)
+    assert got == UNDECIDED
+
+
 def test_only_a_composer_cycling_class_gets_a_decision() -> None:
     assert initial(read(), composer=False, attached=False, chose=False) is None
 

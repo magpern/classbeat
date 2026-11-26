@@ -9,9 +9,10 @@
   a song pick, ``None`` for a running class with no MOWL playlist): what the hand-off enqueues,
   unchanged;
 - ``items``: the interpretation items (``agent.interpretation_record``, bounded there);
-- ``pinned_songs`` and ``questions`` (ADR 0038 section 3, #1185): the composer's part of the
-  reading (``interpret_composer_policy``), only for a class started with ``composer_flow`` on.
-  They are left out of the stored value when empty, so every other row is as before;
+- ``pinned_songs`` (ADR 0038 section 3, #1185): the composer's part of the reading
+  (``interpret_composer_policy``), only for a class started with ``composer_flow`` on; and
+  ``questions`` (#1536, ``reading_question_policy``), for every reading. They are left out of the
+  stored value when empty, so every other row is as before;
 - ``refusal``: the hand-off's stored refusal (a reason code and whole numbers or short codes), so
   every caller after it, a second tab or a reopened one, gets the same answer;
 - ``fill`` (ADR 0038 section 5, #1188): the song fill of the composer's current sketch,
@@ -45,8 +46,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.agent.interpretation_record import InterpretationList
-from classbeat.design.interpret_composer_policy import PinnedList, QuestionList
+from classbeat.design.interpret_composer_policy import PinnedList
 from classbeat.design.music_decision import MusicDecision
+from classbeat.design.reading_question_policy import QuestionList
 from classbeat.jobs import FencedSession, JobFailure
 from classbeat.jobs.inputs import jsonb_size
 

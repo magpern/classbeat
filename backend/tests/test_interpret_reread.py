@@ -14,11 +14,13 @@ from uuid import UUID
 import pytest
 
 from agentfake import provider
-from classbeat import design
+from classbeat import connections, design
 from classbeat.classes import reread as reread_module
 from classbeat.design import composer, interpret_admit, interpretation_row, limits, music_kind
 from classbeat.design.interpretation_row import handoff_key
 from classbeat.jobs.credits import QuotaRefused
+from classbeat.songs import config as songs_config
+from ctx import make_context
 from interprettools import REQUEST, InterpretEnv, interpreter, refusing
 from revisetools import ReviseEnv
 
@@ -517,8 +519,22 @@ def picking(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(interpret_admit, "song_picking", admits)
 
 
-async def pick_class(ienv: InterpretEnv, reading: dict[str, Any], **more: Any) -> UUID:
-    """A class whose reading is a song pick (Spotify connected, nothing chosen in the form)."""
+WHICH = {
+    "topic": "music",
+    "code": "which_music",
+    "options": ["my_playlists", "no_music"],
+    "no_music_index": 1,
+}
+TASTE = {"music_taste": {"hits": {"value": True, "origin": "inferred"}}}
+
+
+async def pick_class(
+    ienv: InterpretEnv, reading: dict[str, Any], *, composing: bool = False, **more: Any
+) -> UUID:
+    """A class whose reading is a song pick, Spotify connected; on the classic route unless
+    ``composing`` (the autouse fixture turns the composer back on after the test)."""
+    if not composing:
+        composer.configure(composer.ComposerGate(enabled=False))
     spotify = str(await ienv.connect_spotify())
     class_id, _ = await ienv.interpreted(
         reading, spotify=False, spotify_connection_id=spotify, **more
@@ -527,39 +543,98 @@ async def pick_class(ienv: InterpretEnv, reading: dict[str, Any], **more: Any) -
     return class_id
 
 
-@pytest.mark.usefixtures("picking")
-async def test_a_pick_with_no_hint_is_refused_at_the_hand_off(ienv: InterpretEnv) -> None:
-    class_id = await pick_class(ienv, {"questions": MUSIC_Q})
+async def refused_unanswered(ienv: InterpretEnv, class_id: UUID) -> None:
     before = ienv.counts()
     refused = await ienv.handoff(class_id)
     assert (refused.status_code, refused.json()["detail"]["reason"]) == (409, "music_unanswered")
     assert (ienv.counts(), ienv.design_jobs(class_id)) == (before, [])  # no job, no credit
 
 
+def music_questions(ienv: InterpretEnv, class_id: UUID) -> list[dict[str, Any]]:
+    return [q for q in ienv.interpretation(class_id).get("questions", []) if q["topic"] == "music"]
+
+
 @pytest.mark.parametrize(
     ("reading", "more"),
     [
-        ({"music_taste": {"hits": {"value": True, "origin": "inferred"}}}, {}),
-        ({"pinned_songs": [{"song": "one climb", "at": "two sprints", "origin": "explicit"}]}, {}),
-        ({}, {"music_sources": SOURCES}),
+        ({}, {}),  # the model asked nothing
+        ({}, {"music_override": {"source": "pick"}}),  # "Pick songs for me" in the form
+        ({"music": {"value": 3, "origin": "explicit"}}, {}),  # a name that matched nothing
     ],
-    ids=["taste", "pinned song", "music_sources"],
+    ids=["nothing asked", "form pick", "unmatched name"],
 )
 @pytest.mark.usefixtures("picking")
-async def test_a_pick_with_a_hint_is_designed(
+async def test_a_classic_pick_with_no_hint_asks_the_closed_question_and_is_refused(
     ienv: InterpretEnv, reading: dict[str, Any], more: dict[str, Any]
 ) -> None:
+    """The classic flow stores the reading's questions too (the Architect, 2026-11-26), so the
+    refusal always leaves a question to answer."""
     class_id = await pick_class(ienv, reading, **more)
-    designed = await ienv.handoff(class_id)
-    assert designed.status_code == 201, designed.text
+    assert music_questions(ienv, class_id) == [WHICH]
+    await refused_unanswered(ienv, class_id)
 
 
 @pytest.mark.usefixtures("picking")
-async def test_a_pick_the_form_chose_is_a_hint(ienv: InterpretEnv) -> None:
-    class_id, _ = await ienv.interpreted(
-        {},
-        music_override={"source": "pick"},
-        spotify_connection_id=str(await ienv.connect_spotify()),
+async def test_the_models_music_question_is_kept_with_nothing_assumed_and_not_doubled(
+    ienv: InterpretEnv,
+) -> None:
+    assumed = [MUSIC_Q[0] | {"assumed_index": 0}, MUSIC_Q[1]]
+    class_id = await pick_class(ienv, {"questions": assumed}, music_override={"source": "pick"})
+    [music] = music_questions(ienv, class_id)
+    assert (music.get("code"), music["text"], music.get("assumed_index")) == (
+        None,
+        "What about the music?",
+        None,
     )
-    designed = await ienv.handoff(class_id)
+    await refused_unanswered(ienv, class_id)
+
+
+@pytest.mark.parametrize("more", [{}, {"music_override": {"source": "pick"}}], ids=["", "form"])
+@pytest.mark.usefixtures("picking")
+async def test_a_pick_with_a_hint_is_designed_and_asks_nothing(
+    ienv: InterpretEnv, more: dict[str, Any]
+) -> None:
+    class_id = await pick_class(ienv, TASTE, **more)
+    assert music_questions(ienv, class_id) == []
+    assert await connections.give_pool_consent(
+        ienv.renv.denv.ops.factory, make_context(ienv.owner), 1
+    )
+    ienv.sql(
+        "INSERT INTO entitlements (owner_id, features, source) "
+        "VALUES (:o, ARRAY['song_picking'], 'grant')",
+        o=ienv.owner,
+    )
+    songs_config.configure(songs_config.SongConfig(enabled=True))
+    try:
+        designed = await ienv.handoff(class_id)
+    finally:
+        songs_config.configure(None)
     assert designed.status_code == 201, designed.text
+    [job] = ienv.design_jobs(class_id)
+    assert job.kind == "design_with_songs"
+
+
+@pytest.mark.parametrize("more", [{}, {"music_override": {"source": "pick"}}], ids=["", "form"])
+@pytest.mark.usefixtures("picking")
+async def test_a_composer_pick_with_no_hint_is_undecided_and_reaches_its_sketch(
+    ienv: InterpretEnv, more: dict[str, Any]
+) -> None:
+    """Amendment 36: the sketch picks no song, so the hint rule waits for ``PUT /music``."""
+    class_id = await pick_class(ienv, {}, composing=True, **more)
+    stored = ienv.interpretation(class_id)
+    assert stored["music_decision"]["state"] == "undecided"  # a form pick is no decision
+    assert music_questions(ienv, class_id) == [WHICH]
+    sketch = await ienv.handoff(class_id)
+    assert sketch.status_code == 201, sketch.text
+    [job] = ienv.design_jobs(class_id)
+    assert (job.kind, ienv.stored_input(job.id)["mode"]) == ("design_draft", "sketch")
+
+
+@pytest.mark.usefixtures("picking")
+async def test_a_composer_reading_handed_off_on_the_classic_route_needs_its_hint(
+    ienv: InterpretEnv,
+) -> None:
+    """Read with the composer, handed off once it is off, with Spotify: the pick starts now."""
+    class_id = await pick_class(ienv, {}, composing=True)
+    composer.configure(composer.ComposerGate(enabled=False))
+    await refused_unanswered(ienv, class_id)

@@ -34,7 +34,7 @@ from classbeat.agent.interpret_input import clean_request
 from classbeat.agent.interpreted import InterpretedRequest
 from classbeat.agent.ride_shape import SectionFields
 from classbeat.class_title_policy import proposed_name
-from classbeat.design.interpret_composer_policy import TOPIC_PATHS
+from classbeat.design.reading_question_policy import TOPIC_PATHS
 from classbeat.evals.checks import Check
 from classbeat.evals.interpret_cases import InterpretCase, PinExpect, TasteExpect
 

@@ -5,8 +5,9 @@ pure: no database, no network, no model).
 ``{state: "undecided" | "decided", choice, sources, note}``, closed values except ``note``.
 
 - **Set by the reading** (``initial``): ``decided`` with ``choice: "request"`` when the request
-  attached playlists, chose a source (``music_override``, "No music" included), named one of the
-  instructor's playlists or mixes, or its reading has a music taste; otherwise ``undecided``.
+  attached playlists, chose a source (``music_override``, "No music" included, a pick not), named
+  one of the instructor's playlists or mixes, or its reading has a music taste; otherwise, and
+  always for a song pick with no hint (#1536), ``undecided``.
 - **Answered** by the instructor (``answered``, ``PUT /api/classes/{id}/music``): ``pick`` (choose
   for me), ``describe`` (``note``: the sound in the instructor's own words), ``playlists`` (up to
   ``MAX_SOURCES`` Spotify playlists, ``sources``, checked as ``music_sources`` are: shape, count,
@@ -112,13 +113,23 @@ def decision_of(stored: MusicDecision | None) -> MusicDecision:
 
 
 def initial(
-    read: InterpretedRequest, *, composer: bool, attached: bool, chose: bool
+    read: InterpretedRequest,
+    *,
+    composer: bool,
+    attached: bool,
+    chose: bool,
+    hintless: bool = False,
 ) -> MusicDecision | None:
     """The reading's decision (None unless ``composer``: a cycling class read with the composer):
     ``decided`` / ``request`` when the request already says what the music is (attached
-    playlists, a chosen source, a named playlist or mix, a music taste), else ``undecided``."""
+    playlists, a chosen source other than a pick, a named playlist or mix, a music taste), else
+    ``undecided``. Always ``undecided`` for a song pick with no hint of what to play
+    (``hintless``, ``music_hint_policy``, #1536): a pick chosen in the form, or a name that
+    matched nothing, is no decision, so the composer asks."""
     if not composer:
         return None
+    if hintless:
+        return MusicDecision(state="undecided")
     taste = read.music_taste
     tasted = taste is not None and bool(
         taste.eras or taste.genres or taste.language is not None or taste.hits is not None

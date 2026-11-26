@@ -6,7 +6,8 @@ checks each answer against the stored question it names and turns the answers in
 sentences; the new request is the request that made the reading, then those sentences. Only the
 instructor's own words (a typed answer, the note) and the stored question text (cleaned model text)
 and the chosen option are put into it, never an index or markup: the interpreter reads them as
-the instructor's words, as it read the first request.
+the instructor's words, as it read the first request. The closed ``which_music`` question
+(``reading_question_policy.WHICH_MUSIC``) is put in the app's own words.
 
 ``chose_no_music`` reports an answer that picked the marked "No music" option (the route then sets
 ``music_override`` ``none``; a typed "no music" is never read as one, #1137).
@@ -23,7 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from classbeat.agent.interpreted_composer import MAX_OPTIONS, MAX_QUESTIONS
 from classbeat.agent.schemas import clean_text
-from classbeat.design.interpret_composer_policy import Question
+from classbeat.design.reading_question_policy import Question
 from classbeat.design.revise_input import MAX_REQUEST
 
 ANSWER_CHARS: Final = 200
@@ -70,16 +71,32 @@ def sentences(questions: Sequence[Question], body: RereadIn) -> str | None:
         if given.option_index is not None:
             if given.option_index >= len(asked.options):
                 return None
-            said = asked.options[given.option_index]
+            said = _option_words(asked, given.option_index)
         else:
             said = clean_text(given.text or "")
         if not said:
             return None
-        parts.append(f"{asked.text} Answer: {said}")
+        parts.append(f"{_question_words(asked)} Answer: {said}")
     note = clean_text(body.note or "")
     if note:
         parts.append(f"Also: {note}")
     return " ".join(parts) if parts else None
+
+
+# The closed question's words for the interpreter (``WHICH_MUSIC``): the app's, never the model's.
+_CLOSED_TEXT: Final = {"which_music": "What music should the class have?"}
+_CLOSED_OPTIONS: Final = {"my_playlists": "Use one of my playlists", "no_music": "No music"}
+
+
+def _question_words(asked: Question) -> str:
+    if asked.text is not None:
+        return asked.text
+    return _CLOSED_TEXT[asked.code or "which_music"]  # a question without text has a code
+
+
+def _option_words(asked: Question, index: int) -> str:
+    option = asked.options[index]
+    return option if asked.code is None else _CLOSED_OPTIONS[option]
 
 
 def chose_no_music(questions: Sequence[Question], body: RereadIn) -> bool:

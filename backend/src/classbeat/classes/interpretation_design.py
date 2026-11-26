@@ -16,7 +16,7 @@ from classbeat.design.interpret_music_policy import (
 )
 from classbeat.design.interpretation_row import StoredInterpretation
 from classbeat.design.kind import DesignDraftInput, NoMusicChoice, SpotifyMusicChoice
-from classbeat.design.music_hint_policy import MUSIC_UNANSWERED, has_hint, is_pick
+from classbeat.design.music_hint_policy import MUSIC_UNANSWERED, has_hint
 from classbeat.jobs.inputs import JobInput
 from classbeat.jobs.kinds import JobKind
 from classbeat.songs.inputs import DesignWithSongsInput
@@ -67,7 +67,9 @@ def design_input(
     soundless one, cycling only). A class with no music that takes the older route (the composer
     is not available now) is refused as before, and so is one read for the composer with no
     Spotify (a song pick or a Spotify playlist, ``Offer.composed``): ``needs_spotify``
-    (Amendment 25)."""
+    (Amendment 25). A song pick with no hint of what to play is refused ``music_unanswered``
+    (``music_hint_policy``, #1536), after ``needs_spotify`` and only on the route that starts the
+    pick now: never before a sketch."""
     if row.music is None and not (composer and _undecided(row)):
         return _no_music(row)
     if not isinstance(job_input, dict):
@@ -75,14 +77,6 @@ def design_input(
     try:
         given = InterpretRequestInput.model_validate(job_input)
         brief = Brief.model_validate(row.brief)
-        if is_pick(row.music) and not has_hint(
-            row.items,
-            brief.music_taste,
-            pinned=len(row.pinned_songs),
-            override=given.music_override,
-            sources=given.music_sources,
-        ):
-            return MUSIC_UNANSWERED  # no song is picked at random (#1536)
         if composer and given.composer is True and _sketched(row, brief):
             return DESIGN_DRAFT, DesignDraftInput(
                 class_id=class_id,
@@ -107,6 +101,16 @@ def design_input(
             # Read for the composer, which needs no Spotify until the song search; the older
             # route needs it now (the addendum's fallback): Amendment 25's refusal.
             return NEEDS_SPOTIFY
+        if pick and not has_hint(
+            row.items,
+            brief.music_taste,
+            pinned=len(row.pinned_songs),
+            override=None if given.music_override is None else given.music_override.source,
+            sources=given.music_sources,
+        ):
+            # Only a song pick that starts now needs its hint here (#1536): a composer reading
+            # reached its sketch above with the music left open, and ``PUT /music`` asks later.
+            return MUSIC_UNANSWERED
         if pick or (own and given.spotify_connection_id is not None):
             if given.spotify_connection_id is None:
                 return "not_connected"

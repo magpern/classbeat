@@ -27,7 +27,7 @@ from classbeat.agent.interpret_input import MusicName
 from classbeat.agent.interpreted import MAX_NAMES, SCALARS, StatedOrigin
 from classbeat.agent.interpreted_composer import MAX_PINNED, MAX_QUESTIONS, QuestionTopic
 from classbeat.agent.ride_shape import MAX_SECTIONS, SectionFields
-from classbeat.design.interpret_composer_policy import TOPIC_PATHS
+from classbeat.design.reading_question_policy import TOPIC_PATHS
 
 MAX_REQUEST: Final = 2000
 

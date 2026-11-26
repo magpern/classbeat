@@ -114,14 +114,19 @@ async def test_with_the_flag_off_attached_music_is_refused_before_anything_is_ma
     assert ienv.counts() == before  # no class, no job, no message, no credit
 
 
-async def test_with_the_flag_off_the_reading_is_stored_as_before(ienv: InterpretEnv) -> None:
-    """The model may report pins and questions; a job admitted with the flag off stores none."""
+async def test_with_the_flag_off_the_questions_are_stored_and_the_pins_are_not(
+    ienv: InterpretEnv,
+) -> None:
+    """The model may report pins and questions; a job admitted with the flag off stores its
+    questions (both flows ask, the Architect on #1536, 2026-11-26) and no pins."""
     class_id, job_id = await ienv.interpreted(COMPOSED)
     assert ienv.stored_input(job_id)["composer"] is False
     stored = ienv.interpretation(class_id)
-    assert set(stored) == {"v", "job_id", "brief", "music", "items", "refusal"}
+    assert set(stored) == {"v", "job_id", "brief", "music", "items", "refusal", "questions"}
     view = (await ienv.renv.browser.get(f"/api/classes/{class_id}/interpretation")).json()
-    assert (view["pinned_songs"], view["questions"]) == ([], [])
+    assert view["pinned_songs"] == []
+    assert [q["topic"] for q in view["questions"]] == [q["topic"] for q in stored["questions"]]
+    assert [q["topic"] for q in stored["questions"]][-2:] == ["length", "other"]
 
 
 async def test_attached_music_and_no_music_are_refused_invalid_input(ienv: InterpretEnv) -> None:

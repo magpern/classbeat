@@ -35,6 +35,8 @@ from classbeat.design import (
     interpret_policy,
     interpretation_row,
     music_decision,
+    music_hint_policy,
+    reading_question_policy,
 )
 from classbeat.design.interpret_admit import (
     InterpretRequestInput as InterpretRequestInput,  # re-exported: the input models live there
@@ -99,20 +101,28 @@ async def run(job_run: JobRun) -> Complete:
         sport_override=given.sport_override,
         music_override=override,
     )
-    skip = interpret_composer_policy.chosen_topics(
-        music=given.music_override is not None or bool(given.music_sources),
-        sport=given.sport_override is not None,
+    read = outcome.output.request
+    pins = interpret_composer_policy.pinned(read) if given.composer else []
+    source = None if given.music_override is None else given.music_override.source
+    chose = source is not None and source != music_hint_policy.PICK  # a pick is no choice (#1536)
+    hintless = music_hint_policy.hintless(
+        resolved.music,
+        resolved.items,
+        resolved.brief.music_taste,
+        pinned=len(pins),
+        override=source,
+        sources=given.music_sources,
     )
-    pins, questions = (
-        interpret_composer_policy.composer_reading(outcome.output.request, skip)
-        if given.composer
-        else ([], [])
+    skip = reading_question_policy.chosen_topics(
+        music=chose or bool(given.music_sources), sport=given.sport_override is not None
     )
+    questions = reading_question_policy.questions(read, skip, hintless=hintless)  # both flows
     decision = music_decision.initial(
-        outcome.output.request,
+        read,
         composer=bool(given.composer) and resolved.brief.sport == "cycling",
         attached=bool(given.music_sources),
-        chose=given.music_override is not None,
+        chose=chose,
+        hintless=hintless,
     )
     from_request = interpret_policy.title_for(given.request)
     stored = interpretation_row.StoredInterpretation(
@@ -125,7 +135,7 @@ async def run(job_run: JobRun) -> Complete:
         music_decision=decision,
     )
 
-    name = outcome.output.request.name if given.title == from_request else None
+    name = read.name if given.title == from_request else None
     reread = given.reread_of is not None  # #1536: the class keeps its title and its first message
 
     async def store(fs: FencedSession) -> None:
