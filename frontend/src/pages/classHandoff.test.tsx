@@ -164,6 +164,24 @@ describe('the hand-off from the start screen', () => {
     expect(api.to('POST', `${CLASS_PATH}/design-from-interpretation`)[0]?.body).toEqual({ interpret_job_id: READ_AGAIN })
   })
 
+  it('reads again when the re-read job completed after the reading was fetched, and shows the new reading', async () => {
+    let fetched = 0
+    fakeApi(
+      routes({
+        // The first read (before the job completed) is the old reading; the next ones are the new reading.
+        [INTERPRETATION]: () => (++fetched <= 2 ? reading({ questions: [LENGTH_Q] }) : reading({ interpret_job_id: READ_AGAIN })),
+        [REREAD]: { job_id: READ_AGAIN },
+        [`GET /api/jobs/${READ_AGAIN}`]: jobBody('completed', { id: READ_AGAIN, kind: 'interpret_request' }),
+      }),
+    )
+    renderAt(PAGE)
+    fireEvent.click(await screen.findByRole('radio', { name: /60 minutes/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Update the reading' }))
+    await waitFor(() => expect(screen.queryByRole('group', { name: 'How long should it be?' })).toBeNull(), { timeout: 4000 })
+    expect(await screen.findByRole('button', { name: 'Design this class' }, { timeout: 4000 })).toBeEnabled()
+    expect(screen.queryByText(/could not be updated/)).toBeNull()
+  }, 10_000)
+
   it('shows the reading state while the new reading is made, then the earlier reading when the re-read failed', async () => {
     let jobState = 'running'
     fakeApi(

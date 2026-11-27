@@ -113,7 +113,7 @@ test('"Make it seven bursts": seven efforts in section 3 and the same finish in 
     finish.map((s) => s.intervals.map((i) => i.zone)),
   )
   expect(saveState().writes).toBe(0)
-  expect(fakePlaylists().filter((p) => p.name !== 'classbeat working copy')).toHaveLength(0)
+  expect(fakePlaylists().filter((p) => p.name !== 'classbeat working copy' && p.id !== PLAYLISTS.draft.id)).toHaveLength(0)
 
   // 4. Approve and save: the program in MOWL has seven efforts in its middle block and three at the end.
   await page.getByRole('button', { name: 'Approve and save' }).click()

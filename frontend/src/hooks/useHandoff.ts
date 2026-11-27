@@ -100,7 +100,9 @@ export function useHandoff(summary: ClassSummary, reload: () => void): Handoff {
           // The new reading is not stored yet: the old one is not shown (its questions are no longer asked).
           const job = await getJob(rereadJob.current, abort.signal)
           if (abort.signal.aborted) return
-          waiting = job.state === 'queued' || job.state === 'running'
+          // A completed job stored its reading in the same step that completed it: the reading fetched
+          // just before was the old one, so read it again rather than call the re-read failed.
+          waiting = job.state === 'queued' || job.state === 'running' || job.state === 'completed'
           if (!waiting) {
             rereadJob.current = null // ended with no new reading: the earlier one stands
             setRereadFailed(true)
