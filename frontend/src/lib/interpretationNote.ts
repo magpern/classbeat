@@ -90,6 +90,7 @@ export const REASONS: Record<string, CatalogueKey> = {
   game_placement: 'interp.reason.game_placement',
   game_duration: 'interp.reason.game_duration',
   needs_mowl_playlist: 'interp.reason.needs_mowl_playlist',
+  two_sports: 'interp.reason.two_sports',
   needs_spotify: 'interp.reason.needs_spotify',
   song_picking_unavailable: 'interp.reason.song_picking_unavailable',
   taste_needs_pick: 'interp.reason.taste_needs_pick',

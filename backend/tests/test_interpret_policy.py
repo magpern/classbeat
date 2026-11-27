@@ -240,16 +240,18 @@ def test_an_index_beyond_the_options_is_no_match() -> None:
 @pytest.mark.parametrize(
     ("kwargs", "refused"),
     [
-        ({}, True),
-        ({"music_source": "mowl_spotify_playlist"}, True),
+        # #1544: running is always offered, so with no sport chosen the request may be read as
+        # running (MOWL playlists only) and is never refused before the reading; only a sport
+        # chosen as cycling can be (``running_offered`` is gone with the switch).
+        ({}, False),
+        ({"music_source": "mowl_spotify_playlist"}, False),
         ({"sport_override": "cycling"}, True),
-        ({"music_source": "none"}, False),
-        ({"music_source": "mowl_swedebeat_mix"}, False),
+        ({"sport_override": "cycling", "music_source": "mowl_spotify_playlist"}, True),
+        ({"sport_override": "cycling", "music_source": "none"}, False),
+        ({"sport_override": "cycling", "music_source": "mowl_swedebeat_mix"}, False),
         ({"sport_override": "running"}, False),
-        ({"running_offered": True}, False),  # the request may be read as running
-        ({"running_offered": True, "sport_override": "cycling"}, True),
-        ({"mixes": True}, False),  # the request may name a Swedebeat mix
-        ({"mixes": True, "music_source": "mowl_spotify_playlist"}, True),
+        ({"sport_override": "cycling", "mixes": True}, False),  # may name a Swedebeat mix
+        ({"sport_override": "cycling", "mixes": True, "music_source": "pick"}, True),
     ],
 )
 def test_no_spotify_refuses_only_what_can_end_without_music(
@@ -258,7 +260,6 @@ def test_no_spotify_refuses_only_what_can_end_without_music(
     given: dict[str, Any] = {
         "music_source": None,
         "sport_override": None,
-        "running_offered": False,
         "mixes": False,
     }
     assert without_spotify_is_refused(**(given | kwargs)) is refused

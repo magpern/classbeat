@@ -1,0 +1,17 @@
+{
+ "kind": "interpret",
+ "name": "interpret_sport_toggle",
+ "about": "The form says running and the request a spin class: the reading asks about the sport (#1544).",
+ "request": "A 45 minute spin class",
+ "sports": [
+  "cycling",
+  "running"
+ ],
+ "sport_override": "running",
+ "expect": {
+  "values": {
+   "sport": "cycling"
+  },
+  "sport_question": true
+ }
+}

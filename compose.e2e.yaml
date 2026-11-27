@@ -207,15 +207,12 @@ services:
       # ADR 0028: the MOWL QR is on by default, and the e2e fake MOWL has no QR endpoint, so the
       # specs connect MOWL with the password form (the dialog then has no Scan tab).
       CLASSBEAT_MOWL_QR_ENABLED: "false"
-      # ADR 0018: running classes are on in the e2e stack only (the default stack keeps them off).
-      CLASSBEAT_RUNNING_ENABLED: "true"
       # ADR 0038 section 2 (#1191): the composer flow switch is on in the e2e stack only; the flag is
       # still off until a spec stores `composer_flow` as `on` (composer-workspace.spec.ts).
       CLASSBEAT_COMPOSER_FLOW: "true"
-      # ADR 0018 amendment of 2026-11-04 (#509): running is on only with a stored `on` and every
-      # plan's route covering running; soundless classes (ADR 0007 amendments, #533 and #824) need
-      # no stored value, only the routes. The web's own `fake` outside prod counts as covering
-      # both (the worker replays scripts with `fake` too). The web builds no provider and holds no key.
+      # Running and "No music" need no switch (ADR 0018 Amendment 6, #1544; ADR 0007 amendment of
+      # 2026-11-27, #1543). The web's own `fake` outside prod counts as covering the composer's
+      # sketch (the worker replays scripts with `fake` too). The web builds no provider and holds no key.
       CLASSBEAT_MODEL_PROVIDER: fake
       CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID: e2e-fake-google-client
       CLASSBEAT_OAUTH_MICROSOFT_CLIENT_ID: e2e-fake-microsoft-client
@@ -384,7 +381,6 @@ services:
       # ADR 0035 section 9: the fake gateway, as web's.
       CLASSBEAT_SWEDEBEAT_GATEWAY_URL: https://gateway.classbeat-e2e.test
       CLASSBEAT_SWEDEBEAT_STUDIO: design,swedebeat_playlist,swedebeat_mix  # as web's (SR C8)
-      CLASSBEAT_RUNNING_ENABLED: "true"
       CLASSBEAT_COMPOSER_FLOW: "true"
       # ADR 0040 amendment (#1337, #1354): the Spotify song pick's spotdown match and analysis run
       # for every user, against the fake spotdown (the worker only); there is no switch.

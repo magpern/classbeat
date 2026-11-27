@@ -12,17 +12,13 @@ The database can tighten what the environment allows, never loosen it:
 - ``swedebeat_enabled``: stored ``off`` or ``on``; absent means ``on``, but only under the
   environment's kill switch (``CLASSBEAT_SWEDEBEAT_ENABLED``, off by default): the database
   can switch Swedebeat off for everyone, never on past the environment (ADR 0015).
-- ``running_enabled`` (ADR 0018 section 5 and its amendment of 2026-11-04, #509): stored ``off``
-  or ``on``, under ``CLASSBEAT_RUNNING_ENABLED`` (off by default), but **unlike**
-  ``swedebeat_enabled`` a missing, ``null`` or invalid stored value is ``off``: only a stored
-  ``on`` switches it on, so clearing the row turns it off. ``running_switch`` is that part; the
-  effective flag also needs every plan's model route to cover running
-  (``classbeat.flags.effective.running_enabled``). Soundless classes have no stored key and no
-  switch (ADR 0007 amendments of 2026-11-08, #824, and 2026-11-27, #1543): "No music" is always
-  a choice.
-- ``composer_flow`` (ADR 0038 section 2, #1185): the ``running_enabled`` switch's rule under
-  ``CLASSBEAT_COMPOSER_FLOW`` (off by default): only a stored ``on`` switches it on, and no
-  coverage is checked (``composer_switch``).
+- ``composer_flow`` (ADR 0038 section 2, #1185): stored ``off`` or ``on``, under
+  ``CLASSBEAT_COMPOSER_FLOW`` (off by default), but **unlike** ``swedebeat_enabled`` a missing,
+  ``null`` or invalid stored value is ``off``: only a stored ``on`` switches it on, so clearing the
+  row turns it off (``composer_switch``).
+- Running and soundless classes have no stored key and no switch (ADR 0018 Amendment 6, #1544:
+  running is always available; ADR 0007 amendments of 2026-11-08, #824, and 2026-11-27, #1543:
+  "No music" is always a choice). Migration 0082 removed the ``running_enabled`` key.
 - ``trial``: ``{plan, days}``; absent or invalid is off.
 - ``banner``: ``{text, level}``; absent or invalid is none. Its text is plain text: no control
   character (``Cc``), no format character (``Cf``: the bidi embeddings, overrides and isolates,
@@ -32,9 +28,8 @@ The database can tighten what the environment allows, never loosen it:
 The mail settings' rules are ``classbeat.flags.mail_settings``.
 
 A stored value that does not validate falls back to the key's default, which is its stricter
-choice (``invite``, ``granted``, Swedebeat off, running off, composer off, trial off, no
-banner), and is logged by key only: the value is never logged, since it may hold an admin's free
-text.
+choice (``invite``, ``granted``, Swedebeat off, composer off, trial off, no banner), and is
+logged by key only: the value is never logged, since it may hold an admin's free text.
 """
 
 import logging
@@ -55,7 +50,7 @@ _STRICTNESS: Final[dict[str, int]] = {"open": 0, "invite": 1, "closed": 2}
 _SIGNUP_STORED: Final = ("invite", "closed")
 _SONG_STORED: Final = ("off", "granted", "on")
 _SWEDEBEAT_STORED: Final = ("off", "on")
-_ON_OFF: Final = ("off", "on")  # running_enabled and composer_flow
+_ON_OFF: Final = ("off", "on")  # composer_flow
 _LEVELS: Final = ("info", "warning")
 # What banner text may not hold (#227, the #303 review's note 5 for the admin's free text): the
 # control characters, the format characters (bidi controls such as U+202E, which reorder what
@@ -121,16 +116,10 @@ def swedebeat_setting(environment_on: bool, stored: Any) -> bool:
     return stored == "on"
 
 
-def running_switch(environment_on: bool, stored: Any) -> bool:
-    """The switch part of ``running_enabled`` (ADR 0018 amendment of 2026-11-04, #509): the
-    environment's switch is on **and** the stored value is exactly ``on``. Absent (``None``, also
-    the cleared JSON ``null``) is off; an invalid value is off and logged by key. Coverage is not
-    checked here (``flags.effective``)."""
-    return _stored_on("running_enabled", environment_on, stored)
-
-
 def composer_switch(environment_on: bool, stored: Any) -> bool:
-    """``composer_flow`` (ADR 0038 section 2): ``running_switch``'s rule, its own key."""
+    """``composer_flow`` (ADR 0038 section 2): the environment's switch is on **and** the stored
+    value is exactly ``on``. Absent (``None``, also the cleared JSON ``null``) is off; an invalid
+    value is off and logged by key."""
     return _stored_on("composer_flow", environment_on, stored)
 
 
@@ -188,7 +177,6 @@ KEYS: Final = (
     "signup_mode",
     "song_picking",
     "swedebeat_enabled",
-    "running_enabled",
     "composer_flow",
     "trial",
     "banner",
@@ -210,7 +198,7 @@ def validate_for_write(
     - ``signup_mode``: ``invite`` or ``closed``; ``open`` comes only from the environment
       (``environment_only``).
     - ``song_picking``: ``off``, ``granted`` or ``on``.
-    - ``swedebeat_enabled``, ``running_enabled`` and ``composer_flow``: ``off`` or ``on``.
+    - ``swedebeat_enabled`` and ``composer_flow``: ``off`` or ``on``.
     - ``trial``: exactly ``{plan, days}``, a plan code and ``days`` from 0 to ``trial_days_max``
       (``above_environment_bound`` over it). Whether the plan exists and ranks at most
       ``instructor`` is checked against ``plans`` by the caller.
@@ -235,7 +223,7 @@ def validate_for_write(
         if value not in _SWEDEBEAT_STORED:
             raise FlagRefused("invalid_value")
         return value
-    if key in ("running_enabled", "composer_flow"):
+    if key == "composer_flow":
         if not isinstance(value, str) or value not in _ON_OFF:
             raise FlagRefused("invalid_value")
         return value

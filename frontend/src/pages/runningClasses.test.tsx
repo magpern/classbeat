@@ -34,18 +34,9 @@ afterEach(() => {
 })
 
 describe('the new-class form and running', () => {
-  it('has no sport control and no running copy while the flag is off', async () => {
+  // #1544 (ADR 0018 Amendment 6): no flag hides Running any more; the "flag off" case is gone with it.
+  it('always offers Cycling and Running, with Cycling chosen', async () => {
     fakeApi(newClassRoutes({}))
-    renderAt('/classes/new/advanced')
-    await screen.findByLabelText('Class name')
-    expect(screen.queryByRole('radio', { name: 'Running' })).toBeNull()
-    expect(screen.queryByText('Sport')).toBeNull()
-    expect(document.body).not.toHaveTextContent(/running/i)
-    expect(screen.getByLabelText('Climbs')).toBeInTheDocument()
-  })
-
-  it('offers Cycling and Running with Cycling chosen when the flag is on', async () => {
-    fakeApi(newClassRoutes({ running_enabled: true }))
     renderAt('/classes/new/advanced')
     await screen.findByLabelText('Class name')
     expect(screen.getByRole('radio', { name: 'Cycling' })).toBeChecked()
@@ -56,7 +47,6 @@ describe('the new-class form and running', () => {
   it('hides the bike-only knobs and the song choices for Running and sends a running brief', async () => {
     const api = fakeApi(
       newClassRoutes({
-        running_enabled: true,
         swedebeat: { enabled: false, available: false },
       }),
     )
@@ -91,7 +81,7 @@ describe('the new-class form and running', () => {
   })
 
   it('goes back to the cycling form and brief when Cycling is chosen again', async () => {
-    const api = fakeApi(newClassRoutes({ running_enabled: true }))
+    const api = fakeApi(newClassRoutes({}))
     renderAt('/classes/new/advanced')
     fireEvent.change(await screen.findByLabelText('Class name'), { target: { value: 'Back' } })
     fireEvent.click(screen.getByRole('radio', { name: 'Running' }))
@@ -168,7 +158,7 @@ function runningClass(extra: Record<string, unknown> = {}, messages: unknown[] =
     [`GET /api/classes/${CLASS_ID}/revisions/${REV1}`]: revisionBody(REV1, 1, RUNNING_CONTENT, {
       unknown_bpm: [],
     }),
-    'GET /api/connections': { connections: [MOWL], running_enabled: true },
+    'GET /api/connections': { connections: [MOWL] },
   }
 }
 

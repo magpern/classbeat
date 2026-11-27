@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import ValidationError
 
 from classbeat.agent.brief import Brief
-from classbeat.design import DESIGN_DRAFT
+from classbeat.design import DESIGN_DRAFT, two_sports_policy
 from classbeat.design.interpret_kind import InterpretRequestInput
 from classbeat.design.interpret_music_policy import (
     NEEDS_MOWL_PLAYLIST,
@@ -69,7 +69,10 @@ def design_input(
     Spotify (a song pick or a Spotify playlist, ``Offer.composed``): ``needs_spotify``
     (Amendment 25). A song pick with no hint of what to play is refused ``music_unanswered``
     (``music_hint_policy``, #1536), after ``needs_spotify`` and only on the route that starts the
-    pick now: never before a sketch."""
+    pick now: never before a sketch. A reading of a request for both sports is ``two_sports``
+    before anything else (``two_sports_policy``, #1544): no design, no credit, a retry too."""
+    if two_sports_policy.ended(row.items):
+        return two_sports_policy.TWO_SPORTS
     if row.music is None and not (composer and _undecided(row)):
         return _no_music(row)
     if not isinstance(job_input, dict):

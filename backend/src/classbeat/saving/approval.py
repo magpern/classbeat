@@ -41,11 +41,11 @@ against the authenticated user and failing closed:
   playlist written is the library's "no music", ``NO_PLAYLIST`` (``PlaylistID: -1``;
   ``playlist_for``).
 
-The ``running_enabled`` flag is not checked here (the reconcilers rebuild the spec through
-``revision`` and must still decide a running write when the flag is off): the Save and Update
-kinds check it next to these, ``running_refused``. A soundless revision has no switch (ADR 0007
-amendment of 2026-11-27, #1543: "No music" is always a choice); every check above still runs for
-it, and it is saved and updated with ``NO_PLAYLIST`` only when it passes them all.
+Neither a running class nor a soundless revision has a switch (ADR 0018 Amendment 6, #1544:
+running is always available; ADR 0007 amendment of 2026-11-27, #1543: "No music" is always a
+choice). Every check above still runs for both: a running revision is saved and updated only when
+it passes them all (its sport agreeing with the class's stored brief, its spec a valid running
+spec, its music the user's own MOWL playlist link), and a soundless one with ``NO_PLAYLIST``.
 
 For an Update (``classbeat.saving.update``) also ``targets.saved_target``: the saved row is the
 user's own live row of that class (``invalid_input`` otherwise, section 9: a detached row is
@@ -245,14 +245,6 @@ async def revision(
         link_source=LINK_SOURCES[music.source],
         sport=sport,
     )
-
-
-async def running_refused(db: AsyncSession, found: Revision) -> bool:
-    """Whether Save or Update must refuse ``feature_off``: the class is running and
-    ``running_enabled``'s switch (the environment's and a stored ``on``) is off now (ADR 0018
-    section 5). Save makes no model call, so coverage is not read (#509). A cycling class never
-    reads the flag."""
-    return found.running and not await class_sport.running_switch(db)
 
 
 async def playlist_for(db: AsyncSession, ctx: UserContext, found: Revision) -> int | None:

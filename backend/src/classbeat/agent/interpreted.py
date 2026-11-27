@@ -20,6 +20,10 @@ are then the whole list after the change, and ``remove_games`` says the request 
 itself; ``shape`` (#1485, ``interpreted_shape``) is the ordered sections of the ride when the
 request describes it in parts, each with its origin and quote.
 
+``two_sports`` (#1544) is a closed flag: the request asks for both a cycling and a running class
+(``design.two_sports_policy`` ends such a reading, since a class is one or the other); the other
+sport named only as context is no such request.
+
 ``pinned_songs`` and ``questions`` (ADR 0038 section 3, #1185) are the composer's:
 ``classbeat.agent.interpreted_composer``. ``name`` (#1233) is a new class's short title, and a
 question's text and options (#1536) are model text too: display text only, cleaned in
@@ -181,6 +185,9 @@ class InterpretedRequest(BaseModel):
     # A change to a class (``current`` in the message, a revise): the request removes every game.
     # A closed flag, so "no games reported" (nothing said of them) stays apart from "remove them".
     remove_games: bool | None = None
+    # The request asks for a cycling and a running class at once (#1544). A closed flag, so "the
+    # sport is running" and "both sports" stay apart; context ("for runners") is neither.
+    two_sports: bool | None = None
     music_taste: InterpretedTaste | None = None
     pinned_songs: list[InterpretedPin] = Field(
         default_factory=lambda: list[InterpretedPin](), max_length=MAX_PINNED

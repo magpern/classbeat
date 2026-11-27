@@ -97,39 +97,12 @@ async def swedebeat_enabled(db: AsyncSession, environment_on: bool) -> bool:
     return core.swedebeat_setting(environment_on, await _stored(db, "swedebeat_enabled"))
 
 
-async def running_switch(db: AsyncSession, environment_on: bool) -> bool:
-    """``CLASSBEAT_RUNNING_ENABLED`` and a stored ``running_enabled`` of exactly ``on``
-    (``core.running_switch``: missing, ``null`` or invalid is off). Not the effective flag:
-    ``running_enabled`` also checks coverage."""
-    if not environment_on:
-        return False
-    return core.running_switch(environment_on, await _stored(db, "running_enabled"))
-
-
 async def composer_flow(db: AsyncSession, environment_on: bool) -> bool:
     """``CLASSBEAT_COMPOSER_FLOW`` and a stored ``composer_flow`` of exactly ``on`` (ADR 0038
     section 2; ``core.composer_switch``: missing, ``null`` or invalid is off)."""
     if not environment_on:
         return False
     return core.composer_switch(environment_on, await _stored(db, "composer_flow"))
-
-
-async def running_enabled(db: AsyncSession, environment_on: bool, *, fake_covers: bool) -> bool:
-    """The effective ``running_enabled`` (ADR 0018 amendment of 2026-11-04, #509), computed on
-    every read: the switch (``running_switch``) **and** every plan's
-    ``route_key`` has a ``design`` route that covers running now
-    (``models.routes.every_plan_covers``). ``fake_covers`` is the web's own ``fake`` model provider
-    outside prod (``design.sport.SportGate``), which counts as covering, as the worker's ``fake``
-    bypass does; it is never true in prod."""
-    if not await running_switch(db, environment_on):
-        return False
-    if fake_covers:
-        return True
-    # Imported here: ``classbeat.models`` loads the agent's stage definitions, which the plans
-    # package (a reader of this module) must not import at its own import time.
-    from classbeat.models.routes import every_plan_covers
-
-    return await every_plan_covers(db, "running")
 
 
 async def trial(db: AsyncSession) -> TrialSetting | None:

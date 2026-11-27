@@ -51,6 +51,13 @@ leave the quote out. Never translate or reword a quote.
 Report what the instructor asked for even if it is beyond the plan's limits or the allowed \
 sports; the app applies the limits and tells the instructor. Never lower a number to fit them.
 
+sport: "running" for a run in any language ("run", "running", "jog", "löpning", "springa", \
+"løb", "løbetur"), "cycling" for a ride ("ride", "spin", "bike", "cykel", "cykling"). A class is \
+one sport. Set two_sports to true only when the request asks for both a cycling and a running \
+class or part ("a ride, then a 20 min run", "half spin, half run"); then leave sport out. Never \
+set it when the other sport is only context: "a cycling class for triathletes who run" is \
+cycling, "a run for cyclists" is running.
+
 Fields: sport; length_min (minutes); intensity (easy, moderate, hard); class_type (plain, \
 interval, hiit, journey, ftp_test); climbs, sprints and races (a class-wide count that names no \
 parts); ftp_test (3, 5 or 20 \

@@ -6,7 +6,8 @@ import type { CatalogueKey } from '../i18n/en'
  * interpretation names whose it is, so the words never blame the request for an account or a site
  * limit, and the offered actions are only ones that can help:
  *
- * - `request`: the request is what to change (start screen with the same request);
+ * - `request`: the request is what to change (start screen with the same request; "Change my request"
+ *   for a request for both sports, #1544);
  * - `account`: the instructor can act on the account (a link there);
  * - `site`: not available on this server now; nothing was charged and the request is kept; no
  *   retry, because a retry cannot succeed until the operator changes the installation (the
@@ -18,7 +19,7 @@ import type { CatalogueKey } from '../i18n/en'
  * `start.handoff.refused` (says nothing about the request) is the text of `other`.
  */
 export type RefusalKind = 'request' | 'account' | 'site' | 'transient' | 'state' | 'other'
-export type RefusalAction = 'interpretAgain' | 'retry' | 'account' | 'spotify' | 'startAgain' | 'classes'
+export type RefusalAction = 'interpretAgain' | 'retry' | 'account' | 'spotify' | 'startAgain' | 'changeRequest' | 'classes'
 
 export type RefusalCopy = { kind: RefusalKind; text: CatalogueKey; actions: readonly RefusalAction[] }
 
@@ -43,6 +44,8 @@ export const REFUSALS: Readonly<Record<string, RefusalCopy>> = {
   // No song is picked at random: the music question must be answered (a style, a playlist, or No music).
   music_unanswered: { kind: 'request', text: 'ws.refused.music_unanswered', actions: ['interpretAgain', 'startAgain'] },
   class_designed: { kind: 'state', text: 'ws.refused.class_designed', actions: ['classes'] },
+  // A class is one sport (#1544): said kindly, with the start screen to change the request (no credit was used).
+  two_sports: { kind: 'request', text: 'interp.reason.two_sports', actions: ['changeRequest'] },
 }
 
 export const UNKNOWN_REFUSAL: RefusalCopy = { kind: 'other', text: 'start.handoff.refused', actions: ['startAgain'] }

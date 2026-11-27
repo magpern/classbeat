@@ -215,7 +215,8 @@ testers?
 Off means **`feature_off`**: the new-class UI shows cycling only, and the API rejects
 `sport=running`. `song_picking` (`off` / `granted` / `on`) is a separate flag.
 **Superseded in part by Amendment 5** (2026-11-04, #509): a missing stored value is `off`, not
-`on`, and the effective flag also needs every plan's route to cover running.
+`on`, and the effective flag also needs every plan's route to cover running. **Replaced by
+Amendment 6** (2026-11-27, #1544): there is no flag; running is always available.
 
 ### 6. Roadmap and milestones
 
@@ -334,6 +335,8 @@ its own design and revise prompts and is a later change.
 
 ## Amendment 5 (2026-11-04, Architect, #509): the running gate cannot be switched on around it
 
+*(Replaced by Amendment 6, #1544: the gate is retired.)*
+
 The Opus review of #502 found that the coverage check of E1 (#465) ran only when an admin **stored**
 `running_enabled` = `on`. Section 5 copied `swedebeat_enabled`, where a missing stored value counts as `on`,
 so the admin's `DELETE` (the JSON `null`) or `CLASSBEAT_RUNNING_ENABLED=true` with nothing stored turned
@@ -377,3 +380,81 @@ now uses the soundless gate's pattern (ADR 0007 amendment of 2026-11-03, item 2)
 would still mean "on as far as the admin decided", which is the reading that caused this. Take the route
 writes' lock in the admin check: it protects nothing once coverage is read on every request (5).
 
+
+## Amendment 6 (2026-11-27, owner decision of 2026-11-26; #1544): running is always available
+
+Status: accepted (owner decision 2026-11-26, in chat; Architect, 2026-11-27).
+
+**Context.** Owner, 2026-11-26: "If user says it is a running class, switch to running." "Maybe a switch
+in UI user can select would be nice too. This switch toggles [if] running is mentioned." "Cycling and
+running in same prompt rejects politely." Running was built and tested on fakes (M8) but sat behind
+section 5 as amended by Amendment 5: `CLASSBEAT_RUNNING_ENABLED`, a stored `running_enabled` of exactly
+`on` and every plan's route covering running. With any of them off the web hid the sport toggle, `admit`
+refused a running design, revise, refit and duplicate (`feature_off`, `running_not_evaluated`), the worker
+ended a queued one `feature_off` or `model_config`, and Save and Update refused a running class
+`feature_off`. Roadmap Amendment 38 (#1543) retired the soundless switch the same way.
+
+**Decision.** This replaces section 5 and Amendment 5. Every other section and amendment stands.
+
+1. **No switch and no flag.** `CLASSBEAT_RUNNING_ENABLED` (compose `RUNNING_ENABLED`), the admin flag
+   `running_enabled` and the effective flag are removed: from the settings, `flags.core` and
+   `flags.effective` (`running_switch`, `running_enabled`), `design.sport` (`SportGate`, `running_on`,
+   `admit_running`, `admit_class`, `still_on`, `require_evaluated`), the admin's Settings (the key is now
+   `unknown_key`; the coverage check `running_not_evaluated` at store time is gone),
+   `GET /api/connections` (no `running_enabled`), the compose files, `.env.example` and
+   `scripts/check-prod-compose.sh`, whose variable allow-list now refuses the variable on any service. A
+   process that still has it in its environment ignores it. Migration 0082 deletes a stored
+   `running_enabled` row and narrows the `app_settings.key` check, as 0043 did for `soundless_enabled`.
+2. **The toggle always shows and follows the request.** The Cycling/Running toggle is always on the start
+   screen, the composer and the Advanced form. While the instructor types, the start screen and the
+   composer set it from the words (`frontend/src/lib/sportHint.ts`, pure: whole words in English, Swedish
+   and Danish; Running only when the words name a run and no ride), back to Cycling when the words are
+   gone, until the instructor sets it by hand. A choice by hand always wins and is sent as
+   `sport_override`, Cycling included; the toggle on Running is sent too, as before.
+3. **The reading has the final say.** The model is never told `sport_override`. When it and the sport the
+   request names disagree, the reading asks the closed `which_sport` question
+   (`reading_question_policy.which_sport`, a first reading only) with the form's sport assumed; the
+   instructor's answer is the re-read's `sport_override` (a closed field, never read from words).
+4. **Two sports are refused politely.** The interpreter marks a request that asks for both a cycling and
+   a running class (`InterpretedRequest.two_sports`); the other sport named only as context is not such a
+   request. `design.two_sports_policy` ends that reading: one Not as asked `sport` item with reason
+   `two_sports`, no question, no pinned song, no music decision, and the stored refusal `two_sports`. The
+   hand-off answers `two_sports` before anything else, a retry too, so no design job is created and no
+   class credit is taken. The page says that a class is either cycling or running and offers "Change my
+   request". The interpret prompt changed, so the suite is version 35 (four sport cases, ADR 0012).
+5. **Model coverage is a warning, not a refusal** (ADR 0012 section 5). A running job resolves the
+   `design` group's model as any job does (the route, or the bootstrap choice; a route with a newer
+   failure, no key or a disallowed provider is still `model_config` before any call), then
+   `sport.serve_model`: a model whose choice does not cover running (`GroupModel.running_covered`, the
+   rule of ADR 0012's amendment of 2026-11-03 unchanged) serves the running class, and the worker logs
+   `model route stale` with reason `running_not_evaluated` once per process and route key (codes only).
+   The running prompts and schema and `workout.validate_running` check every draft as before. No route
+   rule is widened: the fake bypass stays dev and CI only.
+6. **Save and Update keep every approval check.** Only the switch is gone (`approval.running_refused`).
+   At creation and in `prepare`, against the authenticated user (`UserContext`, every row read with
+   `owner_id`): the class and revision are the user's own and the revision belongs to the class, it is a
+   ready `draft`, the approved and recomputed hashes, retired games, the sport (the revision's spec
+   validates as the sport of the class's stored brief, and Update never crosses sports:
+   `program_other_sport`, `overwrite` included), the revision's music a MOWL playlist link of the user
+   (never a mix, picked songs or `none` for running: Amendment 4), the connection, the unresolved-write
+   rule and the plan. The live save and update checks of 2026-11-03 (Amendments 2 and 3) stand: a running
+   save is the cycling save with `ActivityTypeID: 1`, and an update re-saves the same program.
+7. **A running class still needs a MOWL playlist** (section 2): without one the reading says
+   `needs_mowl_playlist`; "running with a new mix" stays refused (Amendment 3). Running has no "No music"
+   (Amendment 4).
+8. **The owner's live check stays, as a pre-deploy item.** One running save and one update against the
+   owner's real account, each read back once, before the first deploy that offers running to real users
+   (`docs/status.md`, "Waiting for the owner"); it is not a code gate, and agents run no live check.
+
+**Alternatives.** Keep the switch and default it on: the owner asked for running to be always available,
+and a switch nobody turns off is one more path that can refuse a class for no reason. Refuse running on a
+route not evaluated for running (the old `model_config`): no live eval has been recorded, so running
+would be refused everywhere in production, which is the gate under another name; ADR 0012 section 5
+already serves a stale route with a warning, and #1543 chose the same for soundless. Tell the
+interpreter the form's sport: it would read the toggle instead of the words, and the reading could no
+longer ask when they disagree.
+
+**Consequences.** Every instructor can start a running class from the words alone. A running class on an
+unevaluated route is designed with a logged warning until the owner records a running eval
+(`docs/runbooks/running-evals.md`). `feature_off` and `running_not_evaluated` are no longer answers for a
+running class; the web keeps their sentences for older jobs' messages.

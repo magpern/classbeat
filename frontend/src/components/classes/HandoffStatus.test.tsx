@@ -48,6 +48,22 @@ describe('HandoffStatus', () => {
     expect(screen.queryByText(/needs your Spotify/)).toBeNull()
   })
 
+  it('says kindly that a class is one sport and offers to change the request, nothing else (#1544)', async () => {
+    show('two_sports')
+    expect(await screen.findByText(/A class is either cycling or running/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Change my request' })).toHaveAttribute('href', expect.stringContaining('/en/classes/new'))
+    expect(screen.queryByRole('button')).toBeNull() // no retry: the request is what changes
+  })
+
+  it.each([
+    ['sv', /Ett pass är antingen cykling eller löpning/, 'Ändra min begäran'],
+    ['da', /Et hold er enten cykling eller løb/, 'Ret min anmodning'],
+  ] as const)('says it in %s too', async (language, text, link) => {
+    show('two_sports', language)
+    expect(await screen.findByText(text)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: link })).toBeInTheDocument()
+  })
+
   it('does not offer the Spotify link for another refusal', async () => {
     show('plan_limit')
     await screen.findByTestId('handoff-stopped')

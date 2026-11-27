@@ -75,11 +75,6 @@ class Limits:
         return cls(gates.max_class_minutes, gates.games, tuple(sports))
 
 
-def allowed_sports(*, running_enabled: bool, plan_runs: bool) -> tuple[str, ...]:
-    """Cycling always; running only when the switch is on and the plan includes it."""
-    return ALL_SPORTS if running_enabled and plan_runs else ALL_SPORTS[:1]
-
-
 def music_order(sport: str) -> tuple[str, ...]:
     return RUNNING_MUSIC if sport == "running" else CYCLING_MUSIC
 

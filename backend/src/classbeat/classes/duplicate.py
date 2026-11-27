@@ -17,10 +17,8 @@ every statement scoped by ``owner_id``:
    content must validate under the class's sport (500 ``internal`` otherwise); a class with no
    stored brief is 409 ``not_ready``; a SwedeBeat studio class (its source or the draft's music;
    ADR 0036, whose hash covers the mix spec) is 409 ``studio_not_duplicable``;
-2. (``classbeat.classes.duplicate_gates``) a running class is admitted only by
-   ``design.sport.admit_running``, as a running design is
-   (``feature_off``, or ``running_not_evaluated`` for the user's uncovered plan; ADR 0018 Amendment
-   5, #509), and a class or draft on a Swedebeat mix while ``swedebeat_enabled`` is off (the
+2. (``classbeat.classes.duplicate_gates``) a class or draft on a Swedebeat mix while
+   ``swedebeat_enabled`` is off (a running class has no gate, ADR 0018 Amendment 6, #1544; the
    class's current source **or** the chosen revision's music on a mix: the stricter rule, on
    purpose) is 409 ``feature_off``; a soundless class (``{source:
    "none"}``, #526) has no gate, as a soundless design has none (#1543: "No music" is always a
@@ -192,7 +190,7 @@ async def duplicate(
             )
         except ValidationError:
             return Outcome("internal")
-        refusal = await flag_refusal(db, settings, ctx, sport, row.music_source, row.music)
+        refusal = await flag_refusal(db, settings, row.music_source, row.music)
         if refusal is not None:
             return Outcome(refusal)
         plan, gates = await current_gates(db, ctx)

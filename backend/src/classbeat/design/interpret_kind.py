@@ -21,6 +21,12 @@ cannot reach the jobs API (``tests/session_scan.py``) and the class's one-open-j
 refuse a design job while this one runs. The browser, or the class page after a reopened tab,
 calls ``POST /api/classes/{id}/design-from-interpretation`` (``classbeat.classes.interpretation``).
 A failed interpret stores nothing and uses no credit.
+
+A request for both sports (``two_sports_policy``, #1544) is stored ended: its Not as asked
+``two_sports`` item, no question, no pinned song, no music decision, and the refusal
+``two_sports``, so the page says so at once and the hand-off never creates a design job. When the
+sport chosen in the form and the request disagree, the reading asks ``which_sport``
+(``reading_question_policy.which_sport``).
 """
 
 from typing import Final
@@ -37,6 +43,7 @@ from classbeat.design import (
     music_decision,
     music_hint_policy,
     reading_question_policy,
+    two_sports_policy,
 )
 from classbeat.design.interpret_admit import (
     InterpretRequestInput as InterpretRequestInput,  # re-exported: the input models live there
@@ -49,6 +56,7 @@ from classbeat.design.interpret_admit import (
 )
 from classbeat.design.interpret_admit import admit
 from classbeat.design.interpret_music import music_options
+from classbeat.design.interpretation_row import Refusal
 from classbeat.design.kind import current_runtime, group_model
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
 from classbeat.quota.route import with_plan, with_plan_run
@@ -102,7 +110,8 @@ async def run(job_run: JobRun) -> Complete:
         music_override=override,
     )
     read = outcome.output.request
-    pins = interpret_composer_policy.pinned(read) if given.composer else []
+    both = two_sports_policy.asked_both(read)  # #1544: ended, before any question or music
+    pins = interpret_composer_policy.pinned(read) if given.composer and not both else []
     source = None if given.music_override is None else given.music_override.source
     chose = source is not None and source != music_hint_policy.PICK  # a pick is no choice (#1536)
     hintless = music_hint_policy.hintless(
@@ -116,27 +125,33 @@ async def run(job_run: JobRun) -> Complete:
     skip = reading_question_policy.chosen_topics(
         music=chose or bool(given.music_sources), sport=given.sport_override is not None
     )
-    questions = reading_question_policy.questions(read, skip, hintless=hintless)  # both flows
-    decision = music_decision.initial(
-        read,
-        composer=bool(given.composer) and resolved.brief.sport == "cycling",
-        attached=bool(given.music_sources),
-        chose=chose,
-        hintless=hintless,
-    )
+    reread = given.reread_of is not None  # #1536: the class keeps its title and its first message
+    sport = reading_question_policy.which_sport(read, given.sport_override, reread=reread)
+    questions = reading_question_policy.questions(read, skip, hintless=hintless, sport=sport)
+    if both:
+        questions = []  # an ended reading asks nothing (both flows otherwise)
+    decision = None
+    if not both:
+        decision = music_decision.initial(
+            read,
+            composer=bool(given.composer) and resolved.brief.sport == "cycling",
+            attached=bool(given.music_sources),
+            chose=chose,
+            hintless=hintless,
+        )
     from_request = interpret_policy.title_for(given.request)
     stored = interpretation_row.StoredInterpretation(
         job_id=job_run.lease.job_id,
         brief=resolved.brief.stored(),
         music=resolved.music,
-        items=resolved.items,
+        items=two_sports_policy.ended_items(resolved.items) if both else resolved.items,
         pinned_songs=pins,
         questions=questions,
         music_decision=decision,
+        refusal=Refusal(reason=two_sports_policy.TWO_SPORTS) if both else None,
     )
 
     name = read.name if given.title == from_request else None
-    reread = given.reread_of is not None  # #1536: the class keeps its title and its first message
 
     async def store(fs: FencedSession) -> None:
         await interpretation_row.store(fs, stored, reread=reread)

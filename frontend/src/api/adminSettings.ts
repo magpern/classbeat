@@ -8,7 +8,7 @@ import { count, flag, isObject, list, object, optionalText, strings, text, type 
 
 const BASE = '/api/admin'
 
-export type FlagKey = 'signup_mode' | 'song_picking' | 'swedebeat_enabled' | 'trial' | 'banner' | 'composer_flow' | 'running_enabled'
+export type FlagKey = 'signup_mode' | 'song_picking' | 'swedebeat_enabled' | 'trial' | 'banner' | 'composer_flow'
 
 export interface Person {
   id: string

@@ -1,0 +1,16 @@
+{
+ "kind": "interpret",
+ "name": "interpret_two_sports",
+ "about": "A ride and then a run in one request is marked as both sports, with no single sport (#1544).",
+ "request": "A ride, then a 20 min run",
+ "sports": [
+  "cycling",
+  "running"
+ ],
+ "expect": {
+  "absent": [
+   "sport"
+  ],
+  "two_sports": true
+ }
+}

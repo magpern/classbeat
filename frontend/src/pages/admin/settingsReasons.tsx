@@ -15,8 +15,6 @@ export const REASONS = {
   notInEffect: 'On, not in effect',
   composerFlowOff:
     'The composer flow is switched off on the server. Storing on here has no effect until CLASSBEAT_COMPOSER_FLOW is true on the server.',
-  runningOff:
-    'Running classes are switched off on the server. Storing on here has no effect until CLASSBEAT_RUNNING_ENABLED is true on the server.',
 }
 
 /** A disabled control's reason, tied to it with `aria-describedby`. */

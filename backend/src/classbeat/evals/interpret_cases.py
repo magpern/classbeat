@@ -14,6 +14,9 @@ changes. A composer case (ADR 0038 section 3, #1185) may say how many playlists 
 questions it ``asks`` (topics that must be among them; ``not_asks`` and ``no_questions`` the
 reverse, #1536). The ride's ``shape`` (#1485) is judged
 section by section, in order: a field the case gives must match, one it leaves out is not judged.
+A sport case (#1544) may expect ``two_sports`` (the request asks for both sports, or must not be
+read so), and a case with the form's ``sport_override`` (never sent to the model, as in the app)
+may expect the ``sport_question`` the policy asks when the reading's sport disagrees with it.
 A new-class case may expect the class to be ``named`` (#1233): a short name that survives
 ``class_title_policy.proposed_name``. Pure: no I/O.
 """
@@ -102,6 +105,11 @@ class InterpretExpect(BaseModel):
     named: bool = False  # a new class gets a short name that survives the cleaning (#1233)
     # The ride's sections in order (#1485); ``None``: not judged, ``[]``: the reading has none.
     shape: list[SectionFields] | None = Field(default=None, max_length=MAX_SECTIONS)
+    # Both sports asked for (#1544): ``True`` it must be marked, ``False`` it must not; ``None``:
+    # not judged.
+    two_sports: bool | None = None
+    # With the case's ``sport_override``: the policy asks ``which_sport`` (or must not).
+    sport_question: bool | None = None
 
     @model_validator(mode="after")
     def _removal_leaves_no_games(self) -> "InterpretExpect":
@@ -146,6 +154,8 @@ class InterpretCase(BaseModel):
     )
     current: Brief | None = None  # a revise: the class as it stands
     attached: int = Field(default=0, ge=0, le=5)  # the composer's attached playlists (#1185)
+    # The sport chosen in the form (#1544): never sent to the model; only the policy reads it.
+    sport_override: Sport | None = None
     expect: InterpretExpect
 
     @model_validator(mode="after")
@@ -155,4 +165,8 @@ class InterpretCase(BaseModel):
             raise ValueError("the expected music is an index into the case's music names")
         if self.expect.named and self.current is not None:
             raise ValueError("only a new class is named; a revise keeps its title")
+        if (self.expect.sport_question is None) != (self.sport_override is None):
+            raise ValueError("a sport question is expected exactly when the form chose a sport")
+        if self.expect.two_sports and "sport" in self.expect.values:
+            raise ValueError("a request for both sports reports no single sport")
         return self

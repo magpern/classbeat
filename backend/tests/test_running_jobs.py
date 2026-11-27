@@ -2,19 +2,19 @@
 #463), against Postgres as ``classbeat_app``, the fake MOWL and ``FakeProvider`` scripts. Never
 the network, never a real account or model.
 
-Covered: the ``running_enabled`` matrix at creation (environment off, admin flag off, both on) and
-in the worker (a queued running design or revise whose flag went off ends ``feature_off`` and calls
-nothing); a running class designed and revised end to end on the running prompts and schema, its
-brief stored with the sport, its revision, provenance, views and export; the refusals at creation
-(a bike-only knob, a Swedebeat mix, song picking, a class of the other sport) and in the final
-store (two queued jobs of different sports); Save admitting a running class (R1b) and the class
-API naming every class's sport; a running design or revise on a model whose recorded result does
-not cover running ends ``model_config`` before any request (ADR 0012 amendment of 2026-11-03,
-issue #465), while cycling is unaffected.
+Covered: a running design admitted with no switch and nothing stored (ADR 0018 Amendment 6,
+#1544: the ``feature_off`` matrix of the retired flag is gone with it, ``test_running_no_switch``
+guards that it stays gone); a running class designed and revised end to end on the running prompts
+and schema, its brief stored with the sport, its revision, provenance, views and export; the
+refusals at creation (a bike-only knob, a Swedebeat mix, song picking, a class of the other sport)
+and in the final store (two queued jobs of different sports); Save admitting a running class (R1b)
+and the class API naming every class's sport; a running design or revise on a model whose recorded
+result does not cover running is served with the stale-route warning (#1544, ADR 0012 section 5;
+it ended ``model_config`` before), while cycling is unaffected.
 """
 
 import json
-from collections.abc import Iterator
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -39,29 +39,6 @@ from revisetools import ReviseEnv
 pytestmark = pytest.mark.usefixtures("jenv")
 
 RUN: dict[str, Any] = {"sport": "running", "length_min": 30, "intensity": "moderate"}
-
-
-@pytest.fixture(autouse=True)
-def running_on(renv: ReviseEnv) -> Iterator[None]:
-    """The environment's switch on, in the web and the worker alike (one process here), the web's
-    ``fake`` covering (as the e2e stack) and the admin flag stored ``on`` (#509: nothing stored
-    is off); after ``renv``, whose app set the gate from its settings (off) when it was built."""
-    sport.configure(sport.SportGate(running_enabled=True, fake_covers=True))
-    admin_flag(renv, "on")
-    try:
-        yield
-    finally:
-        sport.configure(None)
-        admin_flag(renv, None)
-
-
-def admin_flag(renv: ReviseEnv, value: str | None) -> None:
-    renv.sql("DELETE FROM app_settings WHERE key = 'running_enabled'")
-    if value is not None:
-        renv.sql(
-            "INSERT INTO app_settings (key, value) VALUES ('running_enabled', CAST(:v AS jsonb))",
-            v=json.dumps(value),
-        )
 
 
 def design_body(renv: ReviseEnv, brief: dict[str, Any], **more: Any) -> dict[str, Any]:
@@ -103,59 +80,17 @@ async def test_a_running_class_on_a_mowl_playlist_needs_no_spotify_connection(
     assert made.status_code == 201, made.text
 
 
-# --- the flag ------------------------------------------------------------------------------------
+# --- no switch (ADR 0018 Amendment 6, #1544) ------------------------------------------------
 
 
-@pytest.mark.parametrize("off", ["environment", "database"])
-async def test_a_running_design_is_refused_feature_off_while_the_flag_is_off(
-    renv: ReviseEnv, fake_mowl: FakeMowlMusic, off: str
-) -> None:
-    if off == "environment":
-        sport.configure(sport.SportGate(running_enabled=False, fake_covers=True))
-        # the database can never switch it on past the environment (the fixture stored ``on``)
-    else:
-        admin_flag(renv, "off")
-    try:
-        refused = await create(renv, design_body(renv, RUN))
-    finally:
-        admin_flag(renv, "on")
-    assert refused.status_code == 409, refused.text
-    assert refused.json()["detail"]["reason"] == "feature_off"
-    assert jobs(renv) == 0
-    assert fake_mowl.reads == []
-    cycling = await create(renv, design_body(renv, BRIEF))  # cycling never reads the flag
-    assert cycling.status_code == 201, cycling.text
-
-
-async def test_a_running_design_is_admitted_with_both_switches_on(renv: ReviseEnv) -> None:
-    made = await create(renv, design_body(renv, RUN))  # the fixture stored ``on``
+async def test_a_running_design_is_admitted_with_nothing_stored(renv: ReviseEnv) -> None:
+    assert renv.sql("SELECT count(*) FROM app_settings").scalar_one() == 0
+    made = await create(renv, design_body(renv, RUN))
     assert made.status_code == 201, made.text
     stored_input = renv.sql(
         "SELECT input FROM jobs WHERE id = :j", j=UUID(made.json()["id"])
     ).scalar_one()
     assert stored_input["brief"] == {**RUN, "style": "", "text": ""}  # with the sport
-
-
-@pytest.mark.parametrize("off", ["environment", "database"])
-async def test_a_queued_running_design_whose_flag_went_off_ends_feature_off_calling_nothing(
-    renv: ReviseEnv, fake_mowl: FakeMowlMusic, off: str
-) -> None:
-    renv.use("running_first_draft")
-    made = await create(renv, design_body(renv, RUN))
-    assert made.status_code == 201, made.text
-    if off == "environment":
-        sport.configure(sport.SportGate(running_enabled=False))
-    else:
-        admin_flag(renv, "off")
-    try:
-        await renv.run(design.KIND)
-    finally:
-        admin_flag(renv, "on")
-    row = renv.denv.ops.row(UUID(made.json()["id"]))
-    assert (row.state, row.error_category) == ("failed", "feature_off")
-    assert renv.providers == []  # no model was built
-    assert fake_mowl.reads == []
-    assert fake_mowl.attaches == []
 
 
 # --- designed and revised ------------------------------------------------------------------------
@@ -222,65 +157,48 @@ async def test_a_running_class_is_revised_on_the_running_revise_prompt(
     assert Provenance.model_validate_json(json.dumps(second.provenance)).sport == "running"
 
 
-@pytest.mark.parametrize("off", ["at_creation", "in_the_worker"])
-async def test_a_running_revise_is_refused_or_ends_feature_off_while_the_flag_is_off(
-    renv: ReviseEnv, fake_mowl: FakeMowlMusic, off: str
+# --- a model not evaluated for running (ADR 0012 section 5; #1544) ------------------------------
+# It ended ``model_config`` before any request while running had a gate (#465). With no gate
+# (owner, 2026-11-26: running is always available) it is served like a stale route, warned once.
+
+
+def stale(caplog: pytest.LogCaptureFixture) -> list[str]:
+    found = [r for r in caplog.records if r.getMessage() == "model route stale"]
+    return [r.__dict__["reason"] for r in found]
+
+
+async def test_a_running_design_on_a_model_not_evaluated_for_running_is_served_with_a_warning(
+    renv: ReviseEnv, fake_mowl: FakeMowlMusic, caplog: pytest.LogCaptureFixture
 ) -> None:
-    class_id, _, base = await running_class(renv)
-    renv.use("running_revise")
-    if off == "at_creation":
-        admin_flag(renv, "off")
-        try:
-            refused = await renv.ask(class_id, base)
-        finally:
-            admin_flag(renv, "on")
-        assert refused.status_code == 409, refused.text
-        assert refused.json()["detail"]["reason"] == "feature_off"
-        return
-    asked = await renv.ask(class_id, base)
-    assert asked.status_code == 201, asked.text
-    reads = len(fake_mowl.reads)
-    built = len(renv.providers)
-    sport.configure(sport.SportGate(running_enabled=False))
-    await renv.run(design.REVISE_KIND)
-    row = renv.denv.ops.row(UUID(asked.json()["id"]))
-    assert (row.state, row.error_category) == ("failed", "feature_off")
-    assert (len(fake_mowl.reads), len(renv.providers)) == (reads, built)
-
-
-# --- an evaluated model only (ADR 0012 amendment of 2026-11-03, issue #465) ---------------------
-
-
-async def test_a_running_design_on_a_model_not_evaluated_for_running_ends_model_config(
-    renv: ReviseEnv, fake_mowl: FakeMowlMusic
-) -> None:
+    sport._warned.clear()  # pyright: ignore[reportPrivateUsage]
     renv.running_covered = False
     renv.use("running_first_draft")
     made = await create(renv, design_body(renv, RUN))
     assert made.status_code == 201, made.text
-    await renv.run(design.KIND)
+    with caplog.at_level(logging.WARNING, logger=sport.__name__):
+        await renv.run(design.KIND)
     row = renv.denv.ops.row(UUID(made.json()["id"]))
-    assert (row.state, row.error_category) == ("failed", "model_config")
-    assert all(p.sent == [] for p in renv.providers)  # no model request
-    assert (fake_mowl.reads, fake_mowl.attaches) == ([], [])  # no MOWL call
-    assert renv.denv.revisions(UUID(made.json()["id"])) == []
+    assert (row.state, row.error_category) == ("completed", None)
+    assert stale(caplog) == [sport.UNCOVERED]
+    [revision] = renv.denv.revisions(UUID(made.json()["id"]))
+    RunningDraft.model_validate_json(json.dumps(revision.content))  # still the running schema
 
 
-async def test_a_running_revise_on_a_model_not_evaluated_for_running_ends_model_config(
-    renv: ReviseEnv, fake_mowl: FakeMowlMusic
+async def test_a_running_revise_on_a_model_not_evaluated_for_running_is_served_with_a_warning(
+    renv: ReviseEnv, fake_mowl: FakeMowlMusic, caplog: pytest.LogCaptureFixture
 ) -> None:
     class_id, _, base = await running_class(renv)
+    sport._warned.clear()  # pyright: ignore[reportPrivateUsage]
     renv.running_covered = False
     renv.use("running_revise")
     asked = await renv.ask(class_id, base)
     assert asked.status_code == 201, asked.text
-    reads = len(fake_mowl.reads)
-    sent = sum(len(p.sent) for p in renv.providers)
-    await renv.run(design.REVISE_KIND)
+    with caplog.at_level(logging.WARNING, logger=sport.__name__):
+        await renv.run(design.REVISE_KIND)
     row = renv.denv.ops.row(UUID(asked.json()["id"]))
-    assert (row.state, row.error_category) == ("failed", "model_config")
-    assert (len(fake_mowl.reads), sum(len(p.sent) for p in renv.providers)) == (reads, sent)
-    assert renv.current(class_id) == base
+    assert (row.state, row.error_category) == ("completed", None)
+    assert stale(caplog) == [sport.UNCOVERED]
+    assert renv.current(class_id) != base
 
 
 async def test_a_cycling_design_does_not_need_a_running_evaluation(

@@ -106,7 +106,7 @@ describe('the new-class form and No music', () => {
 
   it('keeps the No playlists found card for a Running class, which has no No music', async () => {
     // Before #1543 the card showed for every class while the flag was off; now cycling always has No music.
-    fakeApi(newClassRoutes({ running_enabled: true }, []))
+    fakeApi(newClassRoutes({}, []))
     renderAt('/classes/new/advanced')
     await screen.findByLabelText('Class name')
     expect(screen.queryByText('No playlists found')).toBeNull()
@@ -115,7 +115,7 @@ describe('the new-class form and No music', () => {
   })
 
   it('is hidden for Running, and a Running class never sends none', async () => {
-    const api = fakeApi(newClassRoutes({ running_enabled: true }))
+    const api = fakeApi(newClassRoutes({}))
     renderAt('/classes/new/advanced')
     fireEvent.change(await screen.findByLabelText('Class name'), { target: { value: 'Run' } })
     fireEvent.click(screen.getByRole('radio', { name: 'No music' }))

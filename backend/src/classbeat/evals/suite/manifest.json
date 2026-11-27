@@ -1,6 +1,6 @@
 {
- "suite_version": 34,
- "digest": "a098be48336a9495b760e3ebf123e31b80581c8dc13aec9f2fef68af88b9cc21",
+ "suite_version": 35,
+ "digest": "65efc597071d2426eb0f72d77d080fcbf2091465cd7a4ad5c0d349d67575a882",
  "rules": {
   "repeat": 3,
   "pass_share": 0.9,
@@ -104,7 +104,9 @@
     "interpret_questions", "interpret_questions_music", "interpret_questions_none_needed",
     "interpret_questions_structure", "interpret_questions_complete", "interpret_class_name",
     "interpret_ride_shape", "interpret_ride_range_only", "interpret_ride_shape_swedish",
-    "interpret_ride_no_parts", "interpret_revise_shape"
+    "interpret_ride_no_parts", "interpret_revise_shape",
+    "interpret_sport_running", "interpret_two_sports", "interpret_sport_context",
+    "interpret_sport_toggle"
    ]
   },
   "adversarial": {

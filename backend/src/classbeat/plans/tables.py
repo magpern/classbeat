@@ -39,7 +39,6 @@ SETTING_KEYS = (
     "signup_mode",
     "song_picking",
     "swedebeat_enabled",
-    "running_enabled",
     "composer_flow",
     "trial",
     "banner",

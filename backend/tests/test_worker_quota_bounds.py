@@ -54,7 +54,6 @@ async def test_the_worker_applies_the_environment_length_bound(
     patch(worker_main, "playlists_runtime", nothing)
     for module, names in (
         (worker_main.design, ("configure", "runtime_from_settings")),
-        (worker_main.sport, ("configure",)),
         (worker_main.music_kind, ("configure",)),
         (worker_main.saving, ("configure", "configure_listing_lag")),
         (worker_main.playlists, ("configure",)),
@@ -64,7 +63,6 @@ async def test_the_worker_applies_the_environment_length_bound(
     ):
         for name in names:
             patch(module, name, nothing)
-    patch(worker_main.sport.SportGate, "from_settings", classmethod(nothing))
     patch(worker_main.music_kind.SoundlessGate, "from_settings", classmethod(nothing))
     patch(worker_main.songs.SongConfig, "from_settings", classmethod(nothing))
     patch(worker_main.swedebeat_match.MatchConfig, "from_settings", classmethod(nothing))

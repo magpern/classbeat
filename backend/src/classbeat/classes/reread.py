@@ -15,7 +15,8 @@ questions into one more ``interpret_request`` job on the **same** class, before 
   marked "No music" option (``no_music_index``: the stored question's own marker, never the
   option's words), or the body's closed ``no_music: true`` (#1538: a reading with no music question
   has no option to mark). A typed "no music" is not read (#1137). A soundless design the switch
-  does not admit is refused at the hand-off, before any job or credit;
+  does not admit is refused at the hand-off, before any job or credit; the sport picked on the
+  closed ``which_sport`` question (#1544) is the new job's ``sport_override`` the same way;
 - ``music_sources`` (#1538: the confirm screen's playlist picker) are checked as the request's own
   are (``MusicSources``: Spotify ids, at most five, each once; the Spotify connection must be the
   user's current one, attached playlists need the composer, "No music" excludes them: the jobs
@@ -113,6 +114,7 @@ async def reread(
     if said is None:
         return Handoff(reason="invalid_answer")
     no_music = interpret_reread_policy.wants_no_music(row.questions, body)
+    sport = interpret_reread_policy.chosen_sport(row.questions, body)  # #1544: a closed answer
     try:
         given = InterpretRequestInput.model_validate(earlier)
         request = interpret_reread_policy.combined(given.request, said)
@@ -132,7 +134,9 @@ async def reread(
             return Handoff(reason="not_connected")  # a song pick needs Spotify
         parsed = InterpretRequestInput.model_validate(
             {
-                **interpret_reread_policy.browser_fields(kept, body, no_music=no_music),
+                **interpret_reread_policy.browser_fields(
+                    kept, body, no_music=no_music, sport=sport
+                ),
                 "request": request,
                 "class_id": str(class_id),
                 "reread_of": str(row.job_id),

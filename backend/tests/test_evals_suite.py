@@ -102,6 +102,9 @@ RELEASED: dict[int, str] = {
     # #1536: model-chosen questions (topic, text, options, assumed answer) in the interpret
     # prompt and schema, four new question cases, the soundless offer in the case.
     34: "a098be48336a9495b760e3ebf123e31b80581c8dc13aec9f2fef68af88b9cc21",
+    # #1544: the sport in the interpret prompt, ``two_sports`` in its schema, four sport cases
+    # (a run, a ride and a run, running as context, the form's sport against the request).
+    35: "65efc597071d2426eb0f72d77d080fcbf2091465cd7a4ad5c0d349d67575a882",
 }
 
 SUITE = load_suite()
@@ -233,13 +236,14 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
     # Swedish, attached music, questions), #1233: one (a new class's short name)
     # #1485: five (a ride in parts, a range with no parts, Swedish parts, no parts, a revise)
     # #1536: four more question cases (music, none needed, structure, none at all)
-    assert len(SUITE.interpret_cases) == 8 + 3 + 1 + 1 + 2 + 4 + 1 + 5 + 4
+    # #1544: four sport cases (a run, both sports, running as context, the form's sport)
+    assert len(SUITE.interpret_cases) == 8 + 3 + 1 + 1 + 2 + 4 + 1 + 5 + 4 + 4
     assert set(SUITE.interpret_cases) == set(MANIFEST.cases_of("interpret", "design")) | {
         "interpret_playlist_injection"
     }  # the injection is judged in adversarial: every run
     assert (
-        len(index) == 30 + 70 + 3 + 15 + 1 + 1 + 1 + 8 + 3 + 1 + 1 + 2 + 4 + 1 + 5 + 4 + 1
-    )  # #1485, #1493 (a soundless ride in parts)
+        len(index) == 30 + 70 + 3 + 15 + 1 + 1 + 1 + 8 + 3 + 1 + 1 + 2 + 4 + 1 + 5 + 4 + 4 + 1
+    )  # #1485, #1493 (a soundless ride in parts), #1544 (four sport cases)
     assert all(index[n][1] == "design" for n in SUITE.design_cases)
     assert all(index[n][1] == "songs" for n in SUITE.song_cases)
     assert set(MANIFEST.categories) == set(suite.CATEGORY_GROUPS)

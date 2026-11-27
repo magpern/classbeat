@@ -16,11 +16,14 @@ export interface PinnedSong {
 
 export type QuestionTopic = 'music' | 'length' | 'intensity' | 'structure' | 'sport' | 'other'
 
-/** The closed questions the backend adds in no model's words (`reading_question_policy.WHICH_MUSIC`). */
-export type QuestionCode = 'which_music'
+/** The closed questions the backend adds in no model's words (`reading_question_policy.WHICH_MUSIC`, `WHICH_SPORT`). */
+export type QuestionCode = 'which_music' | 'which_sport'
 
 /** The closed options of `which_music`, in the backend's order; the page phrases them. */
 export const WHICH_MUSIC_OPTIONS: readonly string[] = ['my_playlists', 'no_music']
+
+/** The closed options of `which_sport` (#1544: the form's sport and the request disagree), in the backend's order. */
+export const SPORT_OPTIONS: readonly string[] = ['cycling', 'running']
 
 /** The closed option that sends the picked playlists with the re-read (`WHICH_MUSIC_OPTIONS[0]`). */
 export const MY_PLAYLISTS_INDEX = WHICH_MUSIC_OPTIONS.indexOf('my_playlists')
@@ -87,6 +90,19 @@ export function decodeReadingExtras(body: Record<string, unknown>): ReadingExtra
       if (closed) {
         const closedNone = WHICH_MUSIC_OPTIONS.indexOf('no_music')
         questions.push({ topic: 'music', code: 'which_music', text: '', options: [...WHICH_MUSIC_OPTIONS], assumedIndex: null, noMusicIndex: closedNone })
+      }
+      // The form's sport against the request's: assumed is the form's (a manual choice wins until answered).
+      const sport =
+        code === 'which_sport' &&
+        topic === 'sport' &&
+        (text === undefined || text === null) &&
+        (assumedIndex === 0 || assumedIndex === 1) &&
+        (noMusicIndex === undefined || noMusicIndex === null) &&
+        Array.isArray(options) &&
+        options.length === SPORT_OPTIONS.length &&
+        options.every((o, n) => o === SPORT_OPTIONS[n])
+      if (sport) {
+        questions.push({ topic: 'sport', code: 'which_sport', text: '', options: [...SPORT_OPTIONS], assumedIndex, noMusicIndex: null })
       }
       continue
     }

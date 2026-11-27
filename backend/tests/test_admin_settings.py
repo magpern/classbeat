@@ -21,7 +21,7 @@ from classbeat import auth
 from classbeat.admin.routes import admin_area_routes, gate_problems
 from dbtools import migration_module
 from flows import Browser
-from modeltools import add_result, clear_gate
+from modeltools import clear_gate
 from test_plans_routes import plant_ledger
 
 SETTINGS = "/api/admin/settings"
@@ -198,7 +198,7 @@ async def test_the_read_shows_each_flag_with_its_effective_value_and_source(
         "signup_mode",
         "song_picking",
         "swedebeat_enabled",
-        "running_enabled",  # ADR 0018 section 5
+        # no running_enabled: retired by ADR 0018 Amendment 6 (#1544), running is always on
         "composer_flow",  # ADR 0038 section 2
         "trial",  # no soundless_enabled: retired by ADR 0007's amendment of 2026-11-08 (#824)
         "banner",
@@ -293,43 +293,11 @@ async def test_swedebeat_stays_off_while_the_environment_switch_is_off_whatever_
     )  # fmt: skip
 
 
-async def test_running_is_a_real_flag_on_under_the_environment_and_off_when_stored_off(
-    env: Env, make_actor: Any, superuser: Connection
-) -> None:
-    """ADR 0018 section 5: ``running_enabled`` follows ``swedebeat_enabled``'s rule."""
-    actor = await stepped_admin(env, make_actor)
-    off_env = flag(await actor.get(SETTINGS), "running_enabled")  # the default: off
-    assert (off_env["effective"], off_env["source"], off_env["environment"]) == (
-        "off", "environment", "off",
-    )  # fmt: skip
-    route_every_plan(superuser)  # an evaluated model for every plan (issue #465)
-    assert (await put(actor, "running_enabled", "on")).status_code == 200
-    still = flag(await actor.get(SETTINGS), "running_enabled")
-    assert (still["effective"], still["source"]) == ("off", "environment")  # never past it
-    assert still["environment_note"] == "environment_off"  # #1484: a stored ``on`` with no effect
-    env.app.state.settings = env.settings.model_copy(update={"running_enabled": True})
-    on = flag(await actor.get(SETTINGS), "running_enabled")
-    assert (on["effective"], on["environment_note"]) == ("on", None)
-    assert (await put(actor, "running_enabled", "off")).status_code == 200
-    assert stored(superuser, "running_enabled") == "off"
-    off = flag(await actor.get(SETTINGS), "running_enabled")
-    assert (off["effective"], off["source"], off["stored_valid"]) == ("off", "database", True)
-    rows = [r for r in rows_of(superuser, actor.user_id) if r.action == "setting.set"]
-    assert given(rows[-1].params) == {"key": "running_enabled", "value": "off"}
-    for bad in ("yes", True):
-        refused = await put(actor, "running_enabled", bad)
-        assert refused.status_code == 422, refused.text
-        assert refused.json()["detail"]["reason"] == "invalid_value"
-    store(superuser, "running_enabled", "maybe")  # an invalid stored value reads as off
-    bad_view = flag(await actor.get(SETTINGS), "running_enabled")
-    assert (bad_view["stored_valid"], bad_view["effective"]) == (False, "off")
-
-
 async def test_the_composer_flag_is_on_only_stored_on_under_the_environment(
     env: Env, make_actor: Any, superuser: Connection
 ) -> None:
-    """ADR 0038 section 2 (#1185): ``composer_flow`` follows ``running_enabled``'s switch rule,
-    with no coverage check."""
+    """ADR 0038 section 2 (#1185): ``composer_flow`` is on only stored ``on`` under the
+    environment, with no coverage check."""
     actor = await stepped_admin(env, make_actor)
     off_env = flag(await actor.get(SETTINGS), "composer_flow")  # the default: off
     assert (off_env["effective"], off_env["source"], off_env["environment"]) == (
@@ -364,147 +332,34 @@ def clean_gate(superuser: Connection) -> Any:
     clear_gate(superuser)
 
 
-def route_every_plan(
-    conn: Connection, *, prompt_versions: dict[str, str] | None = None, skip: str | None = None
+@pytest.mark.parametrize("key", ["soundless_enabled", "running_enabled"])
+async def test_a_retired_key_is_not_shown_and_put_or_delete_is_unknown_key(
+    env: Env, make_actor: Any, superuser: Connection, key: str
 ) -> None:
-    """A passing design-group result and a ``design`` route at it for every plan's route key
-    (``skip``: all but that one), inserted as the superuser (setup only)."""
-    clear_gate(conn)
-    result = add_result(conn, prompt_versions=prompt_versions)
-    keys = conn.execute(text("SELECT DISTINCT route_key FROM plans")).scalars().all()
-    for key in keys:
-        if key == skip:
-            continue
-        conn.execute(
-            text(
-                "INSERT INTO model_routes (route_key, stage_group, provider, model, effort, "
-                "eval_result_id, set_at, set_by, gate_passed) SELECT :k, 'design', provider, "
-                "model, effort, id, now(), 'setup', true FROM model_eval_results WHERE id = :r"
-            ),
-            {"k": key, "r": result},
-        )
-
-
-async def test_running_is_stored_on_only_on_an_evaluated_model_for_every_plan(
-    env: Env, make_actor: Any, superuser: Connection
-) -> None:
-    """ADR 0012 amendment of 2026-11-03 (issue #465): ``on`` needs, for every plan's route key, a
-    ``design`` route whose result covers running; ``off`` never does."""
-    from classbeat.models.versions import running_prompt_versions
-
-    actor = await stepped_admin(env, make_actor)
-    env.app.state.settings = env.settings.model_copy(update={"running_enabled": True})
-    clear_gate(superuser)
-    cycling_only = {
-        k: v for k, v in running_prompt_versions("design").items() if not k.startswith("running")
-    }
-    cases = [
-        {},  # no route at all: the bootstrap choice has no recorded result
-        {"skip": "pro"},  # one plan's jobs would run on the bootstrap
-        {"prompt_versions": cycling_only},  # a result recorded without the running stages
-    ]
-    for case in cases:
-        if case:
-            route_every_plan(superuser, **case)
-        refused = await put(actor, "running_enabled", "on")
-        assert refused.status_code == 422, refused.text
-        assert refused.json()["detail"]["reason"] == "running_not_evaluated"
-        assert stored(superuser, "running_enabled") is None
-    last = [r for r in rows_of(superuser, actor.user_id) if r.action == "setting.set"][-1]
-    assert (last.outcome, last.reason) == ("refused", "running_not_evaluated")
-    assert (await put(actor, "running_enabled", "off")).status_code == 200  # tightening: always
-    route_every_plan(superuser)
-    assert (await put(actor, "running_enabled", "on")).status_code == 200
-    assert stored(superuser, "running_enabled") == "on"
-
-
-async def test_the_retired_soundless_key_is_not_shown_and_put_or_delete_is_unknown_key(
-    env: Env, make_actor: Any, superuser: Connection
-) -> None:
-    """ADR 0007 amendment of 2026-11-08 (#824): ``soundless_enabled`` is no setting any more. The
-    read does not list it, even with the web's ``fake`` covering (the environment's switch is gone
-    too since #1543); a PUT (``on`` or ``off``) or DELETE is 422 ``unknown_key``, stores nothing
-    and writes a ``refused`` audit row."""
+    """ADR 0007 amendment of 2026-11-08 (#824): ``soundless_enabled`` is no setting any more, and
+    neither is ``running_enabled`` since ADR 0018 Amendment 6 (#1544: running is always
+    available; it replaces the running flag's store, coverage and effective-value tests, whose
+    rule is gone). The read does not list either, even with the web's ``fake`` covering; a PUT
+    (``on`` or ``off``) or DELETE is 422 ``unknown_key``, stores nothing and writes a ``refused``
+    audit row."""
     actor = await stepped_admin(env, make_actor)
     env.app.state.settings = env.settings.model_copy(
         update={"model_provider": "fake", "environment": "dev"}
     )
     body = (await actor.get(SETTINGS)).json()
-    assert "soundless_enabled" not in [f["key"] for f in body["flags"]]
+    assert key not in [f["key"] for f in body["flags"]]
     for value in ("on", "off"):
-        refused = await put(actor, "soundless_enabled", value)
+        refused = await put(actor, key, value)
         assert (refused.status_code, reason(refused)) == (422, "unknown_key"), value
-    cleared = await actor.call("DELETE", f"{SETTINGS}/soundless_enabled", None)
+    cleared = await actor.call("DELETE", f"{SETTINGS}/{key}", None)
     assert (cleared.status_code, reason(cleared)) == (422, "unknown_key")
-    assert stored(superuser, "soundless_enabled") is None
+    assert stored(superuser, key) is None
     outcomes = [(r.action, r.outcome, r.reason) for r in rows_of(superuser, actor.user_id)]
     assert outcomes[-3:] == [
         ("setting.set", "refused", "unknown_key"),
         ("setting.set", "refused", "unknown_key"),
         ("setting.clear", "refused", "unknown_key"),
     ]
-
-
-async def test_running_shows_on_only_with_every_plan_covered_read_on_every_request(
-    env: Env, make_actor: Any, superuser: Connection
-) -> None:
-    """ADR 0018 amendment of 2026-11-04 (#509): the shown effective ``running_enabled`` is the
-    three conditions, read again on every request: nothing stored, the admin's DELETE, a route
-    cleared later, a plan added later and the kill switch each turn it off."""
-    actor = await stepped_admin(env, make_actor)
-    env.app.state.settings = env.settings.model_copy(update={"running_enabled": True})
-
-    async def shown() -> Any:
-        return flag(await actor.get(SETTINGS), "running_enabled")
-
-    route_every_plan(superuser)
-    nothing = await shown()
-    assert (nothing["effective"], nothing["stored"]) == ("off", None)  # environment-only: off
-    stored_on = await put(actor, "running_enabled", "on")
-    assert stored_on.status_code == 200, stored_on.text
-    assert stored_on.json()["effective"] == "on"
-    superuser.execute(text("DELETE FROM model_routes WHERE route_key = 'pro'"))
-    assert (await shown())["effective"] == "off"  # a route cleared later, nothing stored
-    route_every_plan(superuser)
-    assert (await shown())["effective"] == "on"
-    superuser.execute(
-        text(
-            "INSERT INTO plans (id, name, rank, classes_per_month, revisions_per_class, "
-            "concurrent_jobs, monthly_cost_micros, route_key) "
-            "VALUES ('later', 'Later', 99, 3, 3, 1, 10000000, 'later')"
-        )
-    )
-    try:
-        assert (await shown())["effective"] == "off"  # a plan added later, with no route
-    finally:
-        superuser.execute(text("DELETE FROM plans WHERE id = 'later'"))
-    assert (await shown())["effective"] == "on"
-    env.app.state.settings = env.settings.model_copy(update={"running_enabled": False})
-    assert (await shown())["effective"] == "off"  # the kill switch
-    env.app.state.settings = env.settings.model_copy(update={"running_enabled": True})
-    cleared = await actor.call("DELETE", f"{SETTINGS}/running_enabled", None)
-    assert cleared.status_code == 200, cleared.text
-    assert cleared.json()["effective"] == "off"  # cleared (the JSON null) is off
-
-
-@pytest.mark.parametrize(("environment", "accepted"), [("dev", True), ("prod", False)])
-async def test_the_webs_own_fake_covers_running_outside_prod_only(
-    env: Env, make_actor: Any, superuser: Connection, environment: str, accepted: bool
-) -> None:
-    """The web counts ``fake`` only when its own provider is ``fake`` and it is not prod (the e2e
-    stack); a production web treats nothing as covered without a recorded route."""
-    actor = await stepped_admin(env, make_actor)
-    env.app.state.settings = env.settings.model_copy(
-        update={"running_enabled": True, "model_provider": "fake", "environment": environment}
-    )
-    clear_gate(superuser)
-    answer = await put(actor, "running_enabled", "on")
-    if accepted:
-        assert answer.status_code == 200, answer.text
-        assert answer.json()["effective"] == "on"
-    else:
-        assert answer.status_code == 422, answer.text
-        assert answer.json()["detail"]["reason"] == "running_not_evaluated"
 
 
 # --- flag writes ------------------------------------------------------------------------------

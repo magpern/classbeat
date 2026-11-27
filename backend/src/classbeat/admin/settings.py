@@ -17,18 +17,9 @@ read only.
   trial longer than ``CLASSBEAT_TRIAL_DAYS_MAX`` (422 ``above_environment_bound``), a trial plan
   that is unknown (422 ``unknown_plan``) or ranks above ``instructor`` (422
   ``plan_above_instructor``), a key that is no flag, billing and Swedebeat included (422
-  ``unknown_key``), and ``running_enabled`` stored ``on`` while a plan's ``route_key`` has no
-  ``design`` route whose recorded result covers running (422 ``running_not_evaluated``; ADR 0012
-  amendment of 2026-11-03, issue #465) through ``models.routes.every_plan_covers`` (the web's own
-  ``fake`` provider outside prod counts, ``design.music_kind.fake_covers``). Soundless classes have
-  no key (``soundless_enabled`` was retired, ADR 0007 amendment of 2026-11-08, #824), so it is
-  ``unknown_key`` too. A refusal changes nothing and writes one ``refused`` audit row.
-  ``running_enabled``'s effective value is the three conditions (environment, stored ``on``,
-  every plan covered), computed on every read like the form's (ADR 0018 amendment of 2026-11-04,
-  #509), so the check at store time is not what keeps it safe: it reads the routes without the
-  row locks the route writes take, and a route cleared just after it only makes the next read
-  off (a job admitted in between ends ``model_config`` in the worker, which checks its model on
-  every attempt, before any call).
+  ``unknown_key``). Soundless and running classes have no key (``soundless_enabled`` was retired,
+  ADR 0007 amendment of 2026-11-08, #824; ``running_enabled`` by ADR 0018 Amendment 6, #1544), so
+  each is ``unknown_key`` too. A refusal changes nothing and writes one ``refused`` audit row.
 - ``DELETE /settings/{key}``: clears the stored value (the JSON ``null``, which every reader takes
   as no row: maint has no ``DELETE`` on ``app_settings``), so the environment's value applies
   (404 ``not_found`` when nothing was stored).
@@ -59,12 +50,7 @@ from classbeat.admin.db import AdminRefused, admin_session
 from classbeat.admin.plan_rules import bounds
 from classbeat.admin.plans import all_plans, plan_out
 from classbeat.admin.routes import AdminActor, admin_router, require_admin_db
-from classbeat.admin.settings_checks import (
-    check_running_evaluated,
-    check_trial_plan,
-    covered,
-    trial_plan_refusal,
-)
+from classbeat.admin.settings_checks import check_trial_plan, trial_plan_refusal
 from classbeat.admin.settings_mail import ALL_SETTINGS, mail_flags, person, stored_valid
 from classbeat.admin.settings_models import (
     BoundsOut,
@@ -115,7 +101,6 @@ def _flag(
     row: Any,
     ranks: dict[str, int],
     emails: dict[UUID, str],
-    running_covered: bool = False,
 ) -> FlagOut:
     stored, note = None if row is None else row.value, None
     if key == "signup_mode":
@@ -131,12 +116,6 @@ def _flag(
         environment = "on" if settings.swedebeat_enabled else "off"
         effective = "on" if core.swedebeat_setting(settings.swedebeat_enabled, stored) else "off"
         source = "database" if settings.swedebeat_enabled and stored is not None else "environment"
-    elif key == "running_enabled":
-        environment = "on" if settings.running_enabled else "off"
-        switch = core.running_switch(settings.running_enabled, stored)
-        effective = "on" if switch and running_covered else "off"
-        source = "database" if settings.running_enabled and stored is not None else "environment"
-        note = _switch_off_note(settings.running_enabled, stored)
     elif key == "composer_flow":  # ADR 0038 section 2: the switch and a stored ``on``
         environment = "on" if settings.composer_flow else "off"
         effective = "on" if core.composer_switch(settings.composer_flow, stored) else "off"
@@ -171,9 +150,8 @@ async def _view(session: AsyncSession, settings: Settings) -> SettingsOut:
     people = [r.updated_by for r in (*rows.values(), *plans) if r.updated_by is not None]
     emails = await auth.account_emails(session, people)
     ranks = {p.id: p.rank for p in plans}
-    running = await covered(session, settings, "running")
     return SettingsOut(
-        flags=[_flag(k, settings, rows.get(k), ranks, emails, running) for k in core.KEYS],
+        flags=[_flag(k, settings, rows.get(k), ranks, emails) for k in core.KEYS],
         plans=[plan_out(p, emails) for p in plans],
         bounds=BoundsOut(
             **bounds(settings),
@@ -256,8 +234,6 @@ async def set_flag(request: Request, actor: AdminActor, key: KeyPath, body: Sett
             raise AdminRefused(refusal, 422)
         if key == "trial":
             await check_trial_plan(session, canonical["plan"])
-        if key == "running_enabled" and canonical == "on":
-            await check_running_evaluated(session, settings)
         await session.execute(_UPSERT, {"k": key, "v": json.dumps(canonical), "by": actor.user_id})
         return await _flag_view(session, settings, key)
 

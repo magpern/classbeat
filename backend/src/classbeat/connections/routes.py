@@ -99,11 +99,7 @@ class SwedebeatAccessOut(BaseModel):
 class ConnectionsOut(BaseModel):
     connections: list[ConnectionOut]
     swedebeat: SwedebeatAccessOut
-    # ADR 0018 section 5 (M8 U1, #509): the effective ``running_enabled`` (the environment's
-    # switch, a stored ``on`` and every plan's route covering running), so the new-class form
-    # offers Running only when a running design would be admitted. Signed-in users only;
-    # nothing here says anything about the user's own account.
-    running_enabled: bool = False
+    # No ``running_enabled`` any more (ADR 0018 Amendment 6, #1544): running is always offered.
     # ADR 0024 (#647): whether the desktop page may offer "Scan with the MOWL app"
     # (``CLASSBEAT_MOWL_QR_ENABLED``). Nothing here says anything about the user's own account.
     mowl_qr_enabled: bool = False
@@ -141,12 +137,10 @@ async def get_connections(
     access = await swedebeat_access(request.app.state.settings, factory)
     held = any(row.provider == "swedebeat" for row in rows)
     email = await swedebeat_email(factory, ctx) if held else None
-    async with system_session(factory) as db:
-        # Imported here: ``classbeat.design`` imports this package (its music step opens the
-        # MOWL connection), so the routes module must not import it at its own import time.
-        from classbeat.design import composer, sport
+    # Imported here: ``classbeat.design`` imports this package (its music step opens the MOWL
+    # connection), so the routes module must not import it at its own import time.
+    from classbeat.design import composer
 
-        running = await sport.running_on(db)
     async with user_session(factory, ctx) as db:  # the plan is read under the user's own context
         composing = await composer.composer_available(db, ctx)
     return ConnectionsOut(
@@ -158,7 +152,6 @@ async def get_connections(
             available=access.available,
             uses_swedebeat=await uses_swedebeat(factory, ctx),
         ),
-        running_enabled=running,
         mowl_qr_enabled=request.app.state.settings.mowl_qr_enabled,
         composer_flow=composing,
     )

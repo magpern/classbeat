@@ -478,32 +478,21 @@ def test_the_diff_compares_running_gradients() -> None:
     assert out["duration_sec"] == {"before": 1800, "after": 1800}
 
 
-def test_the_running_switch_needs_the_environment_and_a_stored_on() -> None:
-    """#509: only a stored ``on`` under the environment switches it on;
-    nothing stored (or the cleared ``null``) is off."""
-    assert [core.running_switch(False, v) for v in (None, "on", "off")] == [False] * 3
-    assert [core.running_switch(True, v) for v in (None, "on", "off")] == [False, True, False]
-    assert core.running_switch(True, "maybe") is False  # invalid: the stricter reading
-    assert core.running_switch(True, True) is False
-    assert core.validate_for_write("running_enabled", "on", trial_days_max=30) == "on"
-    for bad in ("yes", True, None, 1, ["on"]):
-        with pytest.raises(core.FlagRefused):
-            core.validate_for_write("running_enabled", bad, trial_days_max=30)
-    assert "running_enabled" in core.KEYS
+def test_running_has_no_flag_key() -> None:
+    """#1544 (ADR 0018 Amendment 6): the ``running_enabled`` key and its switch rule (#509) are
+    retired with the gate, so the admin cannot store it (``test_running_no_switch``)."""
+    assert "running_enabled" not in core.KEYS
+    assert not hasattr(core, "running_switch")
 
 
-def test_running_is_off_by_default_and_on_in_e2e_web_and_worker_only() -> None:
-    for compose in ("compose.yaml", "compose.prod.yaml"):
+def test_running_has_no_switch_in_any_compose_file_or_the_env_example() -> None:
+    """#1544 replaces "off by default, on in e2e only" (#505): no compose file sets the retired
+    variable for any service, and ``.env.example`` does not offer it."""
+    for compose in ("compose.yaml", "compose.prod.yaml", "compose.e2e.yaml"):
         services = yaml.safe_load((ROOT / compose).read_text("utf-8"))["services"]
-        for service in ("web", "worker"):
-            env = services[service]["environment"]
-            assert env["CLASSBEAT_RUNNING_ENABLED"] == "${RUNNING_ENABLED:-false}"
-    assert "RUNNING_ENABLED=false" in (ROOT / ".env.example").read_text("utf-8")
-    e2e = yaml.safe_load((ROOT / "compose.e2e.yaml").read_text("utf-8"))["services"]
-    # The e2e stack turns it on (#505), on web and worker only and as the literal "true".
-    on = {n for n, s in e2e.items() if "CLASSBEAT_RUNNING_ENABLED" in s.get("environment", {})}
-    assert on == {"web", "worker"}
-    assert all(e2e[n]["environment"]["CLASSBEAT_RUNNING_ENABLED"] == "true" for n in on)
+        for name, service in services.items():
+            assert "CLASSBEAT_RUNNING_ENABLED" not in (service.get("environment") or {}), name
+    assert "RUNNING_ENABLED" not in (ROOT / ".env.example").read_text("utf-8")
 
 
 # --- the quality sentences in running words (issue #465) ----------------------------------------
