@@ -64,7 +64,7 @@ export const legalSv: Catalogue = {
   'privacy.processors.li1':
     'En leverantör av AI-modeller (Anthropic) får texten om passet och låtsammanfattningen ovan för att utforma ditt pass. Den finns utanför EU, så det är en överföring till tredje land.',
   'privacy.processors.li2':
-    'MOWL, Spotify och Swedebeat får förfrågningar via din anslutning när du ansluter ett konto, när classbeat läser din musik för att utforma ett pass (dina spellistor och deras analys, sökningar efter låtar och mixar) och när det sparar det du godkänt. De har egna integritetspolicyer.',
+    'MOWL, Spotify och Swedebeat får förfrågningar via din anslutning när du ansluter ett konto, när classbeat läser din musik för att utforma ett pass (dina spellistor, sökningar efter låtar och mixar) och när det sparar det du godkänt. MOWL spelar och tidsätter ditt pass; classbeat analyserar musiken. De har egna integritetspolicyer.',
   'privacy.processors.li3':
     'Om du väljer att logga in med Google, GitHub eller Microsoft talar den leverantören om din verifierade e-postadress och ditt konto-ID för oss.',
   'privacy.processors.li4':

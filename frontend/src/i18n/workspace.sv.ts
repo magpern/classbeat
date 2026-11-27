@@ -94,6 +94,6 @@ export const workspaceSv: Catalogue = {
   'cw.music.error.fixed': 'Låtarna väljs redan, så musiken kan inte längre ändras här.',
   'cw.music.error.refused': 'Svaret kunde inte sparas för det här passet.',
   'cw.music.consent.title': 'Innan låtsökningen',
-  'cw.music.consent.body': 'classbeat håller en offentlig arbetsspellista i ditt Spotify-konto med kandidatlåtar och länkar den i MOWL, så att passet kan tidsättas efter den. spotdown, musikanalystjänsten som classbeat använder, får följande för varje låt: titel, artister, längd, Spotifys flagga för explicit text och en kod som härleds från låtens id hos Spotify. Den analyserar samma inspelning från en annan källa än Spotify. Den slutliga spellistan och passet skapas först när du godkänner.',
+  'cw.music.consent.body': 'classbeat håller en offentlig arbetsspellista i ditt Spotify-konto med kandidatlåtar och länkar den i MOWL, så att passet kan tidsättas efter den. classbeat analyserar låtarna. För varje låt använder den följande: titel, artister, längd, Spotifys flagga för explicit text och en kod som härleds från låtens id hos Spotify. Den analyserar samma inspelning från en annan källa än Spotify. Den slutliga spellistan och passet skapas först när du godkänner.',
   'composer.spotify.later': 'Låtar kräver Spotify. Du kan ansluta det efter skissen.',
 }

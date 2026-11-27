@@ -279,7 +279,7 @@ describe('the consent before the first song search', () => {
     renderAt(PAGE)
     const consent = await screen.findByTestId('music-consent')
     expect(consent).toHaveTextContent(
-      'classbeat keeps one public working playlist in your Spotify account with candidate songs and links it in MOWL, so your class can be timed to it. spotdown, the music-analysis service classbeat uses, gets the following for each song: the title, artists, length, the explicit-lyrics flag from Spotify and a code derived from the song’s Spotify track id. It analyses the same recording from a source other than Spotify. The final playlist and the workout are created only when you approve.',
+      'classbeat keeps one public working playlist in your Spotify account with candidate songs and links it in MOWL, so your class can be timed to it. classbeat analyses the songs. For each song it uses the following: the title, artists, length, the explicit-lyrics flag from Spotify and a code derived from the song’s Spotify track id. It analyses the same recording from a source other than Spotify. The final playlist and the workout are created only when you approve.',
     )
     expect(within(consent).getByTestId('spotify-consent-text')).toHaveTextContent('The working playlist sentence.')
     await settle()
@@ -291,7 +291,7 @@ describe('the consent before the first song search', () => {
     const api = setup({ decision: DECIDED, consent: false, olderConsent: 2 })
     renderAt(PAGE)
     const consent = await screen.findByTestId('music-consent')
-    expect(consent).toHaveTextContent('spotdown, the music-analysis service classbeat uses')
+    expect(consent).toHaveTextContent('classbeat analyses the songs. For each song it uses the following')
     const toggle = within(consent).getByRole('switch', { name: 'Allow the working playlist' })
     expect(toggle).not.toBeChecked()
     await settle()
