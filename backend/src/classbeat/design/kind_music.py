@@ -1,8 +1,9 @@
 """The music checks of ``design_draft``'s ``admit`` (split out of ``classbeat.design.kind``).
 
 Reads only; the jobs API reserves the credit after. It takes plain values (not the kind's input
-models) so it never imports ``kind``: a class's music kind never changes (#527), a soundless
-class passes the soundless gate (the switch, the job's own plan's route, every plan's route) and a
+models) so it never imports ``kind``: a class's music kind never changes (#527), a real no-music
+class passes on no switch (#1543: "No music" is always a choice; the worker decides the model,
+``music_kind.serve_model``), a composer's sketch only through ``sketch_gate.admit_sketch``, and a
 Swedebeat mix only through ``mixadmit.admit_mix`` (the flag, the MOWL connection, the user's own
 listing, the daily limit).
 """
@@ -36,10 +37,8 @@ async def admit_music_choice(
     refused = await music_kind.admit_music(db, ctx.user_id, soundless, class_id)
     if refused is not None:
         return refused
-    if soundless:  # a sketch is never written to MOWL: no switch (ADR 0038 amendment 2026-11-24)
-        refused = await (
-            sketch_gate.admit_sketch(db, ctx) if sketch else music_kind.admit_soundless(db, ctx)
-        )
+    if soundless and sketch:  # the sketch's own gate (ADR 0038 amendment 2026-11-24)
+        refused = await sketch_gate.admit_sketch(db, ctx)
         if refused is not None:
             return refused
     if spotify_playlist and not spotify_optional and ctx.connection("spotify") is None:

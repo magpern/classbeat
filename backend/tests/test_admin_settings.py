@@ -422,12 +422,12 @@ async def test_the_retired_soundless_key_is_not_shown_and_put_or_delete_is_unkno
     env: Env, make_actor: Any, superuser: Connection
 ) -> None:
     """ADR 0007 amendment of 2026-11-08 (#824): ``soundless_enabled`` is no setting any more. The
-    read does not list it, even with the environment's switch on and the web's ``fake``
-    covering; a PUT (``on`` or ``off``) or DELETE is 422 ``unknown_key``, stores nothing and
-    writes a ``refused`` audit row."""
+    read does not list it, even with the web's ``fake`` covering (the environment's switch is gone
+    too since #1543); a PUT (``on`` or ``off``) or DELETE is 422 ``unknown_key``, stores nothing
+    and writes a ``refused`` audit row."""
     actor = await stepped_admin(env, make_actor)
     env.app.state.settings = env.settings.model_copy(
-        update={"soundless_enabled": True, "model_provider": "fake", "environment": "dev"}
+        update={"model_provider": "fake", "environment": "dev"}
     )
     body = (await actor.get(SETTINGS)).json()
     assert "soundless_enabled" not in [f["key"] for f in body["flags"]]

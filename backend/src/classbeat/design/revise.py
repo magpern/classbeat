@@ -8,10 +8,10 @@ credit (a class is one credit however often it is revised) and writes nothing ou
 ``invalid_input`` unless the base is a ``draft`` of the class; ``stale_base`` unless it is the
 class's current revision; ``not_changeable`` for a class without a music source (a duplicate of
 a class on picked songs, #536); then the running gate of a running class (``sport.admit_class``,
-ADR 0018, #509: ``feature_off``, ``running_not_evaluated``) and the soundless gate of a soundless
-class (``music_kind.admit_class``, below), each before anything is written; ``revision_limit``
-(``classbeat.design.limits``), then the month's model cost cap (``classbeat.quota.check_cost``:
-409 ``quota`` ``cost``), then ``chat_full``, then
+ADR 0018, #509: ``feature_off``, ``running_not_evaluated``) and the kind check of
+``music_kind.admit_class`` (a studio class, below), each before anything is written;
+``revision_limit`` (``classbeat.design.limits``), then the month's model cost cap
+(``classbeat.quota.check_cost``: 409 ``quota`` ``cost``), then ``chat_full``, then
 for a class designed on a Swedebeat mix ``feature_off`` and ``analysis_limit``
 (``mixadmit.admit_class_mix``, ADR 0016 sections 2 and 7).
 It stores the base's hash and inserts the user's ``class_messages`` row with the job.
@@ -19,8 +19,8 @@ It stores the base's hash and inserts the user's ``class_messages`` row with the
 A **sketch** base (ADR 0038 section 4, ``revise_sketch``) is revised as a sketch: the soundless
 gate and run, a ``sketch`` revision with its base and request; the server field ``sketch_base``.
 A class whose ``music_source`` is ``none`` (a soundless class, ADR 0007 amendment of 2026-11-03;
-#528) is admitted through ``music_kind.admit_class`` (the three-condition gate: ``feature_off`` or
-``soundless_not_evaluated``, before the job row) and runs ``revise_soundless.run_soundless``
+#528) is admitted through ``music_kind.admit_class`` (no switch, #1543: "No music" is always a
+choice) and runs ``revise_soundless.run_soundless``
 instead: no ``music`` stage, no MOWL or Spotify call, the soundless ``revise`` stage, revision
 music ``{"source": "none"}``, ``music_changed`` never told.
 

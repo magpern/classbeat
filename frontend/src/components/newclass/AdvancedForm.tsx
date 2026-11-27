@@ -38,7 +38,6 @@ export function AdvancedForm({
   swedebeat,
   mixes,
   runningEnabled,
-  soundlessEnabled,
 }: {
   connection: Connection
   playlists: Playlist[]
@@ -47,8 +46,6 @@ export function AdvancedForm({
   mixes: SwedebeatMix[]
   /** The effective `running_enabled` flag: without it the form has no Running at all. */
   runningEnabled: boolean
-  /** The effective `soundless_enabled` flag: without it the form has no "No music". */
-  soundlessEnabled: boolean
 }) {
   const t = useT()
   const { navigate } = useRouter()
@@ -63,8 +60,8 @@ export function AdvancedForm({
   const [sport, setSport] = useState<'cycling' | 'running'>('cycling')
   // Running is never on the form while the flag is off, whatever the state says.
   const running = runningEnabled && sport === 'running'
-  // "No music" is cycling only and never on the form while the flag is off, whatever the state says.
-  const noMusic = soundlessEnabled && !running && music === 'none'
+  // "No music" is cycling only; no flag hides it (#1543).
+  const noMusic = !running && music === 'none'
   const [length, setLength] = useState(preset.length)
   const [intensity, setIntensity] = useState<Brief['intensity']>(preset.intensity)
   const [climbs, setClimbs] = useState(preset.climbs)
@@ -155,11 +152,7 @@ export function AdvancedForm({
     races: running || !racesOn ? 0 : whole(races),
   })
 
-  if (
-    playlists.length === 0 &&
-    (running ||
-      (!soundlessEnabled && songs.kind !== 'ready' && swedebeat.kind !== 'ready' && swedebeat.kind !== 'failed'))
-  ) {
+  if (playlists.length === 0 && running) {
     return (
       <Card>
         <CardTitle>{t('newclass.noPlaylists.title')}</CardTitle>
@@ -215,7 +208,7 @@ export function AdvancedForm({
             <MusicChoice
               songs={songs}
               swedebeat={swedebeat}
-              soundless={soundlessEnabled}
+              soundless
               spotifyNoted={gate?.need === 'connect'}
               value={music}
               onChange={setMusic}

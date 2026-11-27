@@ -58,7 +58,6 @@ export function StartScreen({ source, example = null }: { source: ReadySource; e
     mixes: source.mixes,
     songs: source.songs,
     swedebeat: source.swedebeat,
-    soundlessEnabled: source.soundlessEnabled,
     running,
   })
   // A choice that the sport no longer offers falls back to "classbeat chooses".
@@ -186,9 +185,9 @@ export function StartScreen({ source, example = null }: { source: ReadySource; e
           </ul>
           <MusicSourcePicker rows={rows} value={chosen?.key ?? null} onChange={setMusicKey} />
           {gate !== null ? (
-            <SpotifyPrompt need={gate.need} soundless={source.soundlessEnabled && !running} />
+            <SpotifyPrompt need={gate.need} soundless={!running} />
           ) : refusedForSpotify !== null ? (
-            <SpotifyPrompt need={refusedForSpotify} soundless={source.soundlessEnabled && !running} />
+            <SpotifyPrompt need={refusedForSpotify} soundless={!running} />
           ) : null}
         </FieldCard>
       </div>

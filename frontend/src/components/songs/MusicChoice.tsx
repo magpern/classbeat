@@ -28,8 +28,8 @@ export type SwedebeatMixAvailability =
  * Without Spotify and the working-playlist consent the second choice is not selectable and links
  * to the wizard; with song picking switched off nothing is shown. The Swedebeat mix choice needs
  * the effective `swedebeat_enabled` flag (the page itself needs the MOWL connection). "No music"
- * (a soundless class, ADR 0007 amendment of 2026-11-03) is offered only when `soundless` is true:
- * the page passes the effective `soundless_enabled` flag and never offers it for a running class.
+ * (a soundless class, ADR 0007 amendment of 2026-11-03) is offered when `soundless` is true: the form
+ * passes it for every cycling class (no flag since #1543) and never renders this for a running class.
  */
 export function MusicChoice({
   songs,
@@ -41,7 +41,7 @@ export function MusicChoice({
 }: {
   songs: SongsAvailability
   swedebeat: SwedebeatMixAvailability
-  /** Whether "No music" is offered: the effective `soundless_enabled` flag, cycling only. */
+  /** Whether "No music" is offered: always for a cycling class (#1543). */
   soundless?: boolean
   /** The page already says the class needs Spotify, with the link (roadmap Amendment 25): no second line. */
   spotifyNoted?: boolean

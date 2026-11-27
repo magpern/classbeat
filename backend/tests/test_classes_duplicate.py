@@ -527,11 +527,11 @@ NONE: dict[str, str] = {"source": "none"}
 
 @pytest.fixture
 def soundless(jobs_admin: Connection) -> Iterator[Callable[..., None]]:
-    """``set(enabled=, fake=)``: the soundless gate (#527) of the web app under test, as
-    ``test_soundless_jobs`` sets it (no stored admin flag since #824); cleared afterwards."""
+    """``set(fake=)``: the soundless coverage setting (#527) of the web app under test, as
+    ``test_soundless_jobs`` sets it (no switch since #1543); cleared afterwards."""
 
-    def configure(*, enabled: bool = True, fake: bool = True) -> None:
-        music_kind.configure(music_kind.SoundlessGate(enabled=enabled, fake_covers=fake))
+    def configure(*, fake: bool = True) -> None:
+        music_kind.configure(music_kind.SoundlessGate(fake_covers=fake))
 
     try:
         yield configure
@@ -543,28 +543,27 @@ def soundless_source(admin: Connection, browser: Browser) -> Source:
     return Source(admin, browser, music_source=NONE, music=dict(NONE))
 
 
-async def test_a_soundless_class_is_refused_while_the_gate_is_off(
+async def test_a_soundless_class_is_copied_with_no_switch_and_no_coverage(
     browsers: Any, jobs_admin: Connection, soundless: Callable[..., None]
 ) -> None:
+    """#1543: before, the switch off was ``feature_off`` and an uncovered plan
+    ``soundless_not_evaluated``; "No music" is always a choice now, so a copy is made with
+    nothing covering soundless, and it takes the month's class as any copy does."""
     mine = soundless_source(jobs_admin, await browsers(mowl=False))
     classes = mine.classes()
-    for setting, reason in (
-        ({"enabled": False}, "feature_off"),  # the environment's switch
-        ({"fake": False}, "soundless_not_evaluated"),  # the user's own plan has no covering route
-    ):
-        soundless(**setting)
-        got = await mine.duplicate()
-        assert (got.status_code, got.json()["detail"]["reason"]) == (409, reason), setting
-    assert mine.classes() == classes
-    assert mine.ledger() == []
+    soundless(fake=False)  # no route covers soundless for any plan
+    got = await mine.duplicate()
+    assert got.status_code == 201, got.text
+    assert mine.classes() == classes + 1
+    assert len(mine.ledger()) == 1
 
 
 async def test_a_soundless_copy_stays_soundless_and_its_revise_follows_the_gate(
     renv: ReviseEnv, soundless: Callable[..., None]
 ) -> None:
     """A soundless copy keeps ``{source: "none"}`` (class and revision), and a revise of it goes
-    through ``music_kind.admit_class`` like any soundless revise (SL2): the gate's refusal, with
-    nothing written, while the gate is closed; accepted once it is open."""
+    through ``music_kind.admit_class`` like any soundless revise (SL2): admitted with nothing
+    covering soundless (#1543: before, the switch and coverage refused it)."""
     mine = soundless_source(renv.denv.ops.admin, renv.browser)
     soundless()
     made = await mine.duplicate()
@@ -577,15 +576,8 @@ async def test_a_soundless_copy_stays_soundless_and_its_revise_follows_the_gate(
         jobs = renv.sql("SELECT count(*) FROM jobs WHERE class_id = :c", c=copy_id).scalar_one()
         return jobs, len(renv.messages(copy_id))
 
-    for setting, reason in (
-        ({"enabled": False}, "feature_off"),  # the environment's switch
-        ({"fake": False}, "soundless_not_evaluated"),  # the user's own plan is not covered
-    ):
-        soundless(**setting)
-        asked = await renv.ask(copy_id, copy_rev)
-        assert (asked.status_code, asked.json()["detail"]["reason"]) == (409, reason), setting
-        assert written() == (0, 0), setting
-    soundless()  # the gate open again
+    assert written() == (0, 0)
+    soundless(fake=False)  # nothing covers soundless
     asked = await renv.ask(copy_id, copy_rev)
     assert asked.status_code == 201, asked.text
     assert written() == (1, 1)

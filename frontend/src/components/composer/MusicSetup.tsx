@@ -50,7 +50,6 @@ export function MusicSetup({
         classId={classId}
         offered={setup.offered}
         connected={setup.songs.kind !== 'needs_spotify'}
-        soundlessEnabled={setup.soundlessEnabled}
         canPick={pinned > 0}
         canStartWithout={words !== null && mowl !== null}
         onAnswered={reload}

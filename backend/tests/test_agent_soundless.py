@@ -234,11 +234,9 @@ def test_the_webs_fake_covers_soundless_only_outside_prod(
     provider: str, environment: str, covers: bool
 ) -> None:
     base = make_settings("postgresql+psycopg://app@127.0.0.1:1/classbeat")
-    made = base.model_copy(
-        update={"model_provider": provider, "environment": environment, "soundless_enabled": True}
-    )
+    made = base.model_copy(update={"model_provider": provider, "environment": environment})
     assert fake_covers(made) is covers
-    assert SoundlessGate.from_settings(made) == SoundlessGate(enabled=True, fake_covers=covers)
+    assert SoundlessGate.from_settings(made) == SoundlessGate(fake_covers=covers)
 
 
 # --- the input and the revision ----------------------------------------------------------------

@@ -77,7 +77,7 @@ class SketchEnv:
 @pytest.fixture
 async def skenv(ienv: InterpretEnv) -> AsyncIterator[SketchEnv]:
     composer_on(ienv.renv)
-    music_kind.configure(music_kind.SoundlessGate(enabled=True, fake_covers=True))
+    music_kind.configure(music_kind.SoundlessGate(fake_covers=True))
     try:
         yield SketchEnv(ienv)
     finally:

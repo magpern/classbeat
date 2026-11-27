@@ -11,8 +11,6 @@ export interface MusicSetup {
   songs: SongsAvailability | null
   /** The Spotify status for the consent switch; read only while the consent is missing. */
   status: SpotifyStatus | null
-  /** The effective `soundless_enabled` flag: "Continue without music" is offered only with it. */
-  soundlessEnabled: boolean
   mowlConnectionId: string | null
   /** The instructor's Spotify playlists the composer's picker offers. */
   offered: readonly PlaylistTag[]
@@ -22,7 +20,7 @@ export interface MusicSetup {
 
 /**
  * What the music question and the consent card need beyond the class (ADR 0038 amendment of 2026-11-24):
- * Spotify's state, the consent status, the playlists on offer and the `soundless_enabled` flag. It reads
+ * Spotify's state, the consent status and the playlists on offer ("No music" needs no flag, #1543). It reads
  * only while `needed` (a composer class with a decision whose song search has not started), so every
  * other class makes no extra call. A failed first read leaves `songs` as "unreachable": the search waits.
  * The state is read again when the window gets focus or the tab becomes visible, so a Spotify connection
@@ -32,7 +30,6 @@ export function useMusicSetup(needed: boolean): MusicSetup {
   const [setup, setSetup] = useState<Omit<MusicSetup, 'refresh'>>({
     songs: null,
     status: null,
-    soundlessEnabled: false,
     mowlConnectionId: null,
     offered: [],
   })
@@ -67,7 +64,7 @@ export function useMusicSetup(needed: boolean): MusicSetup {
         )
         if (abort.signal.aborted) return
         loaded.current = true
-        setSetup({ songs, status, soundlessEnabled: view.soundlessEnabled, mowlConnectionId: mowl?.id ?? null, offered })
+        setSetup({ songs, status, mowlConnectionId: mowl?.id ?? null, offered })
       } catch {
         if (!abort.signal.aborted && !loaded.current) setSetup((was) => ({ ...was, songs: { kind: 'off', unreachable: true } }))
       }

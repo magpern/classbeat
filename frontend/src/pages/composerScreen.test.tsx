@@ -121,7 +121,7 @@ describe('the attached-music tags', () => {
     fakeApi(
       routes(
         { 'GET /api/music/swedebeat-mixes': { mixes: [{ mix_id: 'mix-1', name: 'Friday mix', duration_seconds: 2700, analysed: true }] } },
-        { swedebeat: { enabled: true, available: true, uses_swedebeat: true }, soundless_enabled: true },
+        { swedebeat: { enabled: true, available: true, uses_swedebeat: true } },
       ),
     )
     renderAt('/classes/new')
@@ -204,8 +204,8 @@ describe('the attached-music tags', () => {
     expect(row).toContainElement(wrapper)
   })
 
-  it('offers "No music" only when it is enabled, as a tag that clears the playlists, and the other way round', async () => {
-    fakeApi(routes({}, { soundless_enabled: true }))
+  it('always offers "No music", as a tag that clears the playlists, and the other way round', async () => {
+    fakeApi(routes())
     renderAt('/classes/new')
     await openMenu()
     choose('Hill climbs')
@@ -220,11 +220,12 @@ describe('the attached-music tags', () => {
     expect(tags()).toHaveLength(0)
   })
 
-  it('has no "No music" while it is not enabled', async () => {
+  it('offers "No music" even when a stale answer still says the retired flag is off (#1543)', async () => {
+    // Before #1543 the menu had no "No music" while `soundless_enabled` was off.
     fakeApi(routes({}, { soundless_enabled: false }))
     renderAt('/classes/new')
     await openMenu()
-    expect(within(screen.getByRole('group', { name: 'Add music to your request' })).queryByRole('button', { name: 'No music' })).toBeNull()
+    expect(within(screen.getByRole('group', { name: 'Add music to your request' })).getByRole('button', { name: 'No music' })).toBeInTheDocument()
   })
 })
 
@@ -258,7 +259,7 @@ describe('starting from the composer', () => {
   })
 
   it('sends "No music" as music_override and no music_sources', async () => {
-    const api = fakeApi(routes({}, { soundless_enabled: true }))
+    const api = fakeApi(routes())
     renderAt('/classes/new')
     fireEvent.change(await prompt(), { target: { value: 'A quiet ride' } })
     fireEvent.click(screen.getByRole('button', { name: /Add music/ }))
@@ -325,7 +326,7 @@ describe('the sport select', () => {
   })
 
   it('sends running, and drops "No music", which a running class does not have', async () => {
-    const api = fakeApi(routes({}, { running_enabled: true, soundless_enabled: true }))
+    const api = fakeApi(routes({}, { running_enabled: true }))
     renderAt('/classes/new')
     fireEvent.change(await prompt(), { target: { value: 'A 5k run' } })
     fireEvent.click(screen.getByRole('button', { name: /Add music/ }))
@@ -446,7 +447,7 @@ describe('the Spotify gate in the composer', () => {
   })
 
   it('still needs Spotify for attached playlists, and lets "No music" through', async () => {
-    const api = fakeApi(routes({}, { ...connectionsBody(false), soundless_enabled: true }))
+    const api = fakeApi(routes({}, connectionsBody(false)))
     renderAt('/classes/new')
     fireEvent.change(await prompt(), { target: { value: 'An easy ride' } })
     fireEvent.click(screen.getByRole('button', { name: /Add music/ }))
@@ -465,7 +466,7 @@ describe('the Spotify gate in the composer', () => {
 
   it('needs the working-playlist consent for attached playlists too, and lets "No music" through', async () => {
     const api = fakeApi(
-      routes({ 'GET /api/connections/spotify': { ...SPOTIFY_STATUS_OK, pool_consent: false } }, { soundless_enabled: true }),
+      routes({ 'GET /api/connections/spotify': { ...SPOTIFY_STATUS_OK, pool_consent: false } }),
     )
     renderAt('/classes/new')
     fireEvent.change(await prompt(), { target: { value: 'An easy ride' } })

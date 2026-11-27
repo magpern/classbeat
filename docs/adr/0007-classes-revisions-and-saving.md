@@ -919,7 +919,8 @@ set, positive. The music shapes need no migration. **The flag does** (item 2).
    `ClassOut.soundless` read `music_source`; the checks above keep the two in agreement.
 2. **The flag, which cannot be switched on around the gate.** *(Superseded in part by the
    amendment of 2026-11-08 below, #824: the stored admin value is retired; the environment switch,
-   the coverage condition and the `admit` order stay.)* `CLASSBEAT_SOUNDLESS_ENABLED`
+   the coverage condition and the `admit` order stay. Superseded for a real no-music class by the
+   amendment of 2026-11-27, #1543: no switch, no flag, coverage only a warning.)* `CLASSBEAT_SOUNDLESS_ENABLED`
    (compose `SOUNDLESS_ENABLED`, default false, web and worker) is the kill switch only. The admin
    flag `soundless_enabled` (`off`/`on`) is a new `app_settings` key: SL1 adds a migration that
    widens the `app_settings.key` CHECK (as `0016` and `0025` did; its downgrade deletes the row
@@ -1577,7 +1578,8 @@ feature an admin switches on. The stored `soundless_enabled` value (item 2 of th
 is the kill switch, and the coverage condition keeps any design from running a soundless prompt
 with no recorded eval.
 
-**Decision.**
+**Decision.** *(Items 1 and 2 are replaced by the amendment of 2026-11-27 below, #1543; item 3
+and the migration of item 4 stand.)*
 
 1. **Two conditions, no stored value.** Soundless is effective exactly when
    `CLASSBEAT_SOUNDLESS_ENABLED` is on **and** every plan's `route_key` has a `design` route that
@@ -1618,3 +1620,71 @@ Since ADR 0038's amendment of 2026-11-24 (#1484) the soundless switch no longer 
 composer's sketch: its off switch is `composer_flow` and its gate is the plan's coverage
 (`design.sketch_gate.admit_sketch`); the switch still gates a real no-music class and its Save and
 Update.
+
+## Amendment of 2026-11-27: the soundless switch is retired, "No music" is always a choice (#1543)
+
+Status: accepted (owner decision 2026-11-26; Architect, 2026-11-27).
+
+**Context.** Owner, 2026-11-26: "There should be no such thing [as soundless off]. Sound is always on,
+but user can opt out if he says no, and music should never be totally random." With roadmap
+Amendment 37 (#1536, #1538) the reading asks a hint-less class's music question and always offers
+"No music"; behind it, the switch of item 2 of the amendment of 2026-11-03, as amended on 2026-11-08
+(`CLASSBEAT_SOUNDLESS_ENABLED` and every plan's coverage), still hid "No music" in the web and refused
+a soundless design, revise, duplicate, Save and Update (`feature_off`, `soundless_not_evaluated`). A
+"No music" re-read then ended at the hand-off with the generic `feature_off` and no way back
+(finding 4 of the #1550 review).
+
+**Decision.** This replaces item 2 of the amendment of 2026-11-03 and items 1 and 2 of the
+amendment of 2026-11-08 for a real no-music class. Every other item of both stands.
+
+1. **No switch and no flag.** `CLASSBEAT_SOUNDLESS_ENABLED` (compose `SOUNDLESS_ENABLED`) and the
+   effective `soundless_enabled` are removed: from the settings, `flags.effective`, `design.music_kind`
+   (`switch_on`, `soundless_on`, `admit_soundless`, `still_on`), `GET /api/connections`, the compose
+   files, `.env.example` and `scripts/check-prod-compose.sh` (whose variable allow-list now refuses
+   the variable on any service). A process that still has it in its environment ignores it. The
+   admin key stays retired (2026-11-08, item 3; migration 0043 unchanged).
+2. **"No music" is always offered** for a cycling class: the start screen, the composer and its music
+   question, the Advanced form and Change music. A running class still has no "No music" (item 1:
+   running v1 designs on an existing MOWL playlist).
+3. **`admit`** of a soundless design, a revise of a soundless class and a duplicate of one checks
+   only what it checked besides the switch: the generic checks, the class's music kind
+   (`admit_music`, `invalid_input`), a studio class (`admit_class`, `invalid_input`), the running gate
+   for a running brief, credits and the plan. Nothing answers `feature_off` or
+   `soundless_not_evaluated` for it. A composer's **sketch** keeps its own gate
+   (`sketch_gate.admit_sketch`, ADR 0038 amendment of 2026-11-24): the job's own plan's coverage.
+4. **Model coverage is a warning, not a refusal** (ADR 0012 section 5). The worker resolves the
+   `design` group's model as for any job (the route, or the bootstrap choice with no route; a route
+   with a newer failure, no key or a disallowed provider is still `model_config` before any call),
+   then `music_kind.serve_model`: a model whose choice does not cover soundless
+   (`GroupModel.soundless_covered`, the rule of item 6 unchanged) serves a real no-music class with
+   the soundless prompts, and the worker logs `model route stale` with reason
+   `soundless_not_evaluated` once per process and route key (codes only), as a stale route is
+   flagged for other stages. A sketch on such a model still ends `model_config` (`require_covered`).
+5. **Save and Update** no longer refuse a soundless revision on the switch. Every other check of
+   section 5 and item 8 stands, at creation and in `prepare`, against the authenticated user
+   (`UserContext`, every row read with `owner_id`): the class and revision are the user's own and
+   the revision belongs to the class, it is a ready `draft` (a sketch is `not_ready`), the approved
+   and recomputed hashes, retired games, the sport, the revision's music `none` exactly when the
+   class's `music_source` is `none` (a running class never saves `none`), the connection, the
+   unresolved-write rule and the plan. Only a revision that passes them all is written with
+   `PlaylistID: -1` (`NO_PLAYLIST`, no link read), and an Update writes `-1` again. A class whose
+   music is undecided has no draft to save (its current revision is a sketch, `not_ready`), and a
+   music revision without a link is not a shape Save reads (`SAVED_MUSIC`), so removing the switch
+   opens no save without a playlist other than a soundless revision's.
+6. **The owner's live check stays, as a pre-deploy item.** What real MOWL returns for a program saved
+   and updated with `PlaylistID: -1` (read back once each) is still unverified; it is an item for
+   the owner before the next deploy (`docs/status.md`, "Waiting for the owner"), not a code gate.
+
+**Alternatives.** Keep the switch default on (rejected: a switch that can turn off a choice the owner
+says always exists invites exactly the dead end it caused); keep refusing an uncovered model for a
+real no-music class (rejected by the issue: other stages are served on a stale route with a warning,
+and the refusal would hide "No music" again wherever an eval was not recorded); drop the sketch's
+coverage gate too (not in this decision: the sketch is the composer's availability, ADR 0038's
+amendment of 2026-11-24, and changing it changes who gets the composer).
+
+**Consequences.** A soundless class can be designed and saved on any deployment, before the owner's
+live eval; until it, the worker logs the stale-route warning for each route key once per process.
+The guards pin the new rule: `backend/tests/test_soundless_no_switch.py` (the retired names appear
+nowhere in `backend/src` but one allowlisted history line; `serve_model`) and
+`backend/tests/test_sketch_gate_guard.py` (no switch name in any module, the two `serve_model` call
+sites pinned with their `sketch` argument). The e2e stack no longer sets the switch.

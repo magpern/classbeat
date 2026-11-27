@@ -54,7 +54,7 @@ export function ComposerScreen({ source, example = null }: { source: ReadySource
       exampleWords: usedExample === null ? null : t(exampleKey(usedExample, 'prompt')),
       offered,
       runningEnabled: source.runningEnabled,
-      noMusicOffered: source.soundlessEnabled,
+      noMusicOffered: true, // "No music" is always a choice (#1543); running drops it below
     }),
   )
   const [request, setRequest] = useState(draft.request)
@@ -64,7 +64,7 @@ export function ComposerScreen({ source, example = null }: { source: ReadySource
   // The server refused for want of Spotify: the same prompt as the gate's, instead of an error.
   const [refusedForSpotify, setRefusedForSpotify] = useState<SpotifyGate['need'] | null>(null)
   const running = sport === 'running'
-  const noMusicOffered = source.soundlessEnabled && !running
+  const noMusicOffered = !running
   const promptRef = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
     if (usedExample === null) return

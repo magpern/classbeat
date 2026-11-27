@@ -129,20 +129,20 @@ describe('the start screen', () => {
 
 describe('a class with music and song picking', () => {
   const featureOff = { 'GET /api/connections/spotify': () => reason(404, 'feature_off') }
-  const soundless = (on: boolean, connections = connectionsBody(true)) => ({ ...connections, soundless_enabled: on })
   const start = async () => {
     fireEvent.change(await prompt(), { target: { value: 'An easy ride' } })
     return screen.getByRole('button', { name: 'Design my class' })
   }
 
   it('explains, before anything is sent and with no link, that song picking is not available', async () => {
-    const api = fakeApi(routes(featureOff, soundless(false)))
+    // Since #1543 "No music" is always offered, so the note always points to it (before, not while the flag was off).
+    const api = fakeApi(routes(featureOff, connectionsBody(true)))
     renderAt('/classes/new')
     const button = await start()
     const note = await screen.findByTestId('spotify-prompt')
     expect(note).toHaveAttribute('data-need', 'unavailable')
     expect(note).toHaveTextContent('Choosing songs is not available on your account')
-    expect(note).not.toHaveTextContent('No music')
+    expect(note).toHaveTextContent('choose "No music" in the music list')
     expect(within(note).queryByRole('link')).toBeNull()
     expect(button).toBeDisabled()
     fireEvent.click(button)
@@ -150,7 +150,7 @@ describe('a class with music and song picking', () => {
   })
 
   it('points to "No music" when it is offered, and sends that class', async () => {
-    const api = fakeApi(routes(featureOff, soundless(true)))
+    const api = fakeApi(routes(featureOff, { ...connectionsBody(true), soundless_enabled: false })) // a stale flag is ignored
     renderAt('/classes/new')
     const button = await start()
     expect(await screen.findByTestId('spotify-prompt')).toHaveTextContent('choose "No music" in the music list')
@@ -165,7 +165,7 @@ describe('a class with music and song picking', () => {
   })
 
   it('still connects Spotify when song picking is available but no account is connected', async () => {
-    fakeApi(routes(withSpotify(), soundless(false, connectionsBody(false))))
+    fakeApi(routes(withSpotify(), connectionsBody(false)))
     renderAt('/classes/new')
     await start()
     const note = await screen.findByTestId('spotify-prompt')
@@ -174,7 +174,7 @@ describe('a class with music and song picking', () => {
   })
 
   it('lets the server answer when the song picking status could not be read', async () => {
-    const api = fakeApi(routes({ 'GET /api/connections/spotify': () => reason(500, 'internal') }, soundless(false)))
+    const api = fakeApi(routes({ 'GET /api/connections/spotify': () => reason(500, 'internal') }, connectionsBody(true)))
     renderAt('/classes/new')
     const button = await start()
     expect(screen.queryByTestId('spotify-prompt')).toBeNull()
@@ -207,7 +207,7 @@ describe('the music picker', () => {
           ...withSpotify(),
           'GET /api/music/swedebeat-mixes': { mixes: [{ mix_id: 'mix-1', name: 'Friday mix', duration_seconds: 2700, analysed: true }] },
         },
-        { ...connectionsBody(true), swedebeat: { enabled: true, available: true, uses_swedebeat: true }, soundless_enabled: true },
+        { ...connectionsBody(true), swedebeat: { enabled: true, available: true, uses_swedebeat: true }}
       ),
     )
     renderAt('/classes/new')

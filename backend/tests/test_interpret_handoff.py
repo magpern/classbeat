@@ -127,24 +127,33 @@ async def test_the_whole_class_designs_and_its_first_revision_names_no_request(
 async def test_a_refusal_is_stored_answered_again_and_retried_only_on_request(
     ienv: InterpretEnv,
 ) -> None:
-    music_kind.configure(None)  # the soundless switch off: ``design_draft`` refuses feature_off
+    """Before #1543 the soundless switch was this test's refusal (``feature_off``); "No music" is
+    never refused now, so the month's classes used up (``RefusingLedger``) is the refusal, on the
+    same "No music" reading."""
+    music_kind.configure(None)  # nothing configured: "No music" is never refused on it
     class_id, _ = await ienv.interpreted(spotify=False, music_override={"source": "none"})
     assert ienv.interpretation(class_id)["music"] == {"source": "none"}
     before = ienv.counts()
-    refused = await ienv.handoff(class_id)
-    assert (refused.status_code, refused.json()["detail"]["reason"]) == (409, "feature_off")
+    app = ienv.renv.denv.app.app
+    app.dependency_overrides[credit_ledger] = RefusingLedger
+    try:
+        refused = await ienv.handoff(class_id)
+    finally:
+        app.dependency_overrides.pop(credit_ledger, None)
+    assert (refused.status_code, refused.json()["detail"]["reason"]) == (409, "quota")
     assert ienv.counts() == before  # no job, no credit
-    assert ienv.interpretation(class_id)["refusal"] == {"reason": "feature_off", "counts": {}}
+    stored = ienv.interpretation(class_id)["refusal"]
+    assert stored["reason"] == "quota"
     view = (await ienv.renv.browser.get(f"/api/classes/{class_id}/interpretation")).json()
-    assert view["refusal"] == {"reason": "feature_off", "counts": {}}
-    music_kind.configure(music_kind.SoundlessGate(enabled=True, fake_covers=True))
+    assert view["refusal"] == stored
     again = await ienv.handoff(class_id)  # the stored refusal, though it would pass now
-    assert again.json()["detail"]["reason"] == "feature_off"
+    assert again.json()["detail"]["reason"] == "quota"
     retried = await ienv.handoff(class_id, retry=True)
     assert retried.status_code == 201, retried.text
     assert ienv.interpretation(class_id)["refusal"] is None
     assert ienv.credits() == before[2] + 1
-    music_kind.configure(None)
+    [job] = ienv.design_jobs(class_id)
+    assert ienv.stored_input(job.id)["music"] == {"source": "none"}
 
 
 async def test_a_quota_refusal_rolls_back_the_create_and_is_stored(ienv: InterpretEnv) -> None:

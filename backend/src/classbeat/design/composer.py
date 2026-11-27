@@ -52,7 +52,7 @@ async def composer_available(db: AsyncSession, ctx: UserContext) -> bool:
     """The composer for **this user** (ADR 0038 amendment of 2026-11-24, #1484): the operator's
     switch pair (``composer_on``, unchanged) and the user's plan covering the sketch
     (``sketch_gate.admit_sketch`` admits). ``interpret_request``'s admit, ``GET /api/connections``
-    and the hand-off read it; the soundless switch is not part of it."""
+    and the hand-off read it."""
     from classbeat.design import sketch_gate  # lazy: the web's routes import this module early
 
     if not await composer_on(db):

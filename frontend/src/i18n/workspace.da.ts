@@ -86,7 +86,6 @@ export const workspaceDa: Catalogue = {
   'cw.music.playlists': 'Del playlister',
   'cw.music.later': 'Beslut senere',
   'cw.music.none': 'Fortsæt uden musik',
-  'cw.music.noneSoon': 'Ikke tilgængeligt her endnu',
   'cw.music.note.label': 'Lyden du vil have',
   'cw.music.note.placeholder': 'For eksempel: 80\'er-hits, ikke for højt',
   'cw.music.note.send': 'Brug dette',

@@ -7,9 +7,11 @@ no link, attach or playlist read; the saved row's ``playlist_id`` is NULL; the r
 context carry ``-1`` while a playlist class's are byte for byte as before; the read-back of
 ``-1``, ``null`` or a missing ``PlaylistID`` verifies and any other value does not; the
 uncertain-write path and both reconcilers; the revision's music and the class's ``music_source``
-must agree (both ways, and a running class never saves ``none``); the soundless switch (the
-environment's, no stored value since #824) at creation and in the worker, never read by a
-reconciler; every existing ``state_hash`` unchanged. **What real MOWL returns for a program
+must agree (both ways, and a running class never saves ``none``); no switch (ADR 0007 amendment
+of 2026-11-27, #1543): with nothing configured a soundless Save and Update are admitted and run,
+while the approval still refuses another user's class, a changed hash and another class's
+revision (a sketch is ``not_ready``: ``test_composer_no_save.py``); every existing ``state_hash``
+unchanged. **What real MOWL returns for a program
 saved or updated with ``-1`` is unverified** (the owner's live checks): the fake serves each of
 the three forms, and an Update that keeps a playlist attached in the app, so every case is
 decided by the same rules.
@@ -27,6 +29,7 @@ from typing import Any
 from uuid import UUID
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from classbeat import mowl_state
 from classbeat.design import music_kind
@@ -34,7 +37,7 @@ from classbeat.operations import Operation, ReconcileInput, Reconciliation
 from classbeat.operations.kinds import request_hash
 from classbeat.saving import approval, operation, update_operation
 from ctx import make_context
-from optools import TOKEN_A
+from optools import TOKEN_A, TOKEN_B
 from savetools import (
     DRAFT,
     LINKED_PLAYLIST,
@@ -70,17 +73,11 @@ GOLDEN = {
 SPECS = {"DRAFT": SPEC, "DRAFT_2": spec_of(DRAFT_2), "RUN": running_spec_of(RUNNING_DRAFT)}
 
 
-def gate(*, enabled: bool = True) -> None:
-    """The soundless switch: the environment's (``enabled``); there is no stored admin flag since
-    #824, so nothing is stored. Coverage is never consulted by Save, so the gate's
-    ``fake_covers`` stays false."""
-    music_kind.configure(music_kind.SoundlessGate(enabled=enabled, fake_covers=False))
-
-
 @pytest.fixture(autouse=True)
-def soundless_on(senv: SaveEnv) -> Iterator[None]:
-    """After ``senv``, whose app configured the gate from its settings (off)."""
-    gate()
+def nothing_configured(senv: SaveEnv) -> Iterator[None]:
+    """No soundless setting at all, as a production web and worker (#1543: there is no switch to
+    turn on, and Save never reads coverage). After ``senv``, whose app configured it."""
+    music_kind.configure(None)
     try:
         yield
     finally:
@@ -312,7 +309,6 @@ async def test_the_save_reconciler_needs_a_program_without_music(
     assert await reconcile(senv, saved.owner, op, operation.SAVE) == Reconciliation("inconclusive")
     fake_programs.delete(on_playlist)
     made = fake_programs.plant(TOKEN_A, SPEC, playlist_id=-1)
-    gate(enabled=False)  # the reconciler never reads the switch
     for shown in NO_MUSIC_READS:
         fake_programs.no_music_read = shown
         got = await reconcile(senv, saved.owner, op, operation.SAVE)
@@ -365,8 +361,7 @@ async def test_revision_and_class_music_that_disagree_are_refused(
 async def test_a_class_with_music_still_saves_its_linked_playlist(
     senv: SaveEnv, fake_programs: FakeMowlPrograms
 ) -> None:
-    """A playlist class whose ``music_source`` is stored is saved as before, flag off or on."""
-    gate(enabled=False)
+    """A playlist class whose ``music_source`` is stored is saved as before."""
     owner, connection = await senv.owner()
     saved = senv.plant(owner, connection)
     senv.sql(
@@ -383,35 +378,74 @@ async def test_a_class_with_music_still_saves_its_linked_playlist(
     assert senv.saved_rows(owner)[0].playlist_id == LINKED_PLAYLIST
 
 
-# --- the switch ------------------------------------------------------------------------------
+# --- no switch, and the approval still holds (#1543) ---------------------------------------
 
 
-async def test_save_and_update_are_feature_off_while_the_switch_is_off(
+async def test_save_and_update_need_no_switch_and_write_no_playlist(
     uenv: UpdateEnv,
     fake_programs: FakeMowlPrograms,
     save_browser: Any,
     update_browser: Any,
 ) -> None:
-    """The environment's switch off refuses both (#824: the only switch; the saves above ran with
-    it on and no ``app_settings`` row at all)."""
-    live = await uenv.soundless_live()  # saved while on
-    revision = uenv.revision(live, DRAFT_2, NO_MUSIC)
+    """ADR 0007 amendment of 2026-11-27 (#1543): before, the switch off refused both
+    ``feature_off`` at creation and in ``prepare``. With nothing configured now, a soundless Save
+    and an Update of it are admitted and run, the Save with ``PlaylistID: -1`` and the Update
+    keeping it (the owner's live check of both stays a pre-deploy item, ``docs/status.md``)."""
     other = await uenv.s.soundless_class()
-    gate(enabled=False)
-    writes, lists = fake_programs.write_count, fake_programs.lists
-    refused = await (await save_browser(other)).save()
-    assert refused.status_code == 409, refused.text
-    assert refused.json()["detail"]["reason"] == "feature_off"
-    refused = await (await update_browser(live)).update(revision, DRAFT_2)
-    assert refused.status_code == 409, refused.text
-    assert refused.json()["detail"]["reason"] == "feature_off"
-    # Queued while on, run while off: refused in ``prepare`` before the preflight.
-    for job_id in (uenv.s.job(other), uenv.job(live, revision, DRAFT_2)):
-        await uenv.run_next()
-        assert (uenv.row(job_id).state, uenv.row(job_id).error_category) == (
-            "failed", "feature_off",
-        )  # fmt: skip
-    assert (fake_programs.write_count, fake_programs.lists) == (writes, lists)
+    saved = await (await save_browser(other)).save()
+    assert saved.status_code == 201, saved.text
+    await uenv.run_next()
+    save_job = UUID(saved.json()["id"])
+    assert (uenv.row(save_job).state, uenv.row(save_job).error_category) == ("completed", None)
+    [program] = [p for p in fake_programs.programs.values() if p.token == TOKEN_A]
+    assert program.body["PlaylistID"] == -1
+    live = await uenv.soundless_live()
+    revision = uenv.revision(live, DRAFT_2, NO_MUSIC)
+    updated = await (await update_browser(live)).update(revision, DRAFT_2)
+    assert updated.status_code == 201, updated.text
+    await uenv.run_next()
+    job_id = UUID(updated.json()["id"])
+    assert (uenv.row(job_id).state, uenv.row(job_id).error_category) == ("completed", None)
+    assert fake_programs.programs[live.program_id].body["PlaylistID"] == -1
+    assert music_requests(fake_programs) == []
+
+
+async def test_a_soundless_save_still_needs_the_users_own_approved_revision(
+    senv: SaveEnv, fake_programs: FakeMowlPrograms, save_browser: Any
+) -> None:
+    """Removing the switch opens no other path: the approval runs for a soundless revision as
+    before, against the authenticated user (``owner_id`` with ``UserContext``). Another user
+    naming my class and revision is 404 ``class_not_found`` (the jobs API's own-class check), a
+    changed hash 409 ``hash_mismatch``, a revision of another class 409 ``invalid_input``; each
+    creates nothing and writes nothing."""
+    mine = await senv.soundless_class()
+    intruder, connection = await senv.owner(TOKEN_B)
+    theirs = Saved(intruder, connection, mine.class_id, mine.revision_id, mine.link_id, DRAFT)
+    other = await senv.soundless_class()
+    cases = [
+        (await save_browser(theirs), {}, (404, "class_not_found")),
+        (await save_browser(mine), {"content_hash": "0" * 64}, (409, "hash_mismatch")),
+        (await save_browser(mine), {"revision_id": str(other.revision_id)}, (409, "invalid_input")),
+    ]
+    for browser, overrides, (status, reason) in cases:
+        refused = await browser.save(**overrides)
+        assert (refused.status_code, refused.json()["detail"]["reason"]) == (status, reason)
+    assert senv.operations(mine.owner) == []
+    assert senv.operations(intruder) == []
+    assert (fake_programs.lists, fake_programs.write_count, fake_programs.programs) == (0, 0, {})
+
+
+async def test_a_soundless_job_of_another_user_cannot_even_be_stored(
+    senv: SaveEnv, fake_programs: FakeMowlPrograms
+) -> None:
+    """Past ``admit`` too: a save job of another user naming my soundless class is refused by the
+    database (``jobs_class_fkey`` keys the class on ``owner_id``), so no worker ever runs it."""
+    mine = await senv.soundless_class()
+    intruder, connection = await senv.owner(TOKEN_B)
+    theirs = Saved(intruder, connection, mine.class_id, mine.revision_id, mine.link_id, DRAFT)
+    with pytest.raises(IntegrityError, match="jobs_class_fkey"):
+        senv.job(theirs)
+    assert (fake_programs.write_count, fake_programs.programs) == (0, {})
 
 
 # --- Update ----------------------------------------------------------------------------------
@@ -531,7 +565,6 @@ async def test_the_update_reconciler_decides_a_soundless_write(
     revision = uenv.revision(live, DRAFT_2, NO_MUSIC)
     op = update_op(uenv, live, revision)
     owner = live.saved.owner
-    gate(enabled=False)  # never read by a reconciler
     # Unchanged, nothing new: provably no effect.
     assert await reconcile(uenv.s, owner, op, update_operation.UPDATE) == Reconciliation("failed")
     # Updated, but the playlist kept (the unverified case): inconclusive, never proof.

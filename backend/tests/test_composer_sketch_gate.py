@@ -2,8 +2,8 @@
 2026-11-24, #1484), against Postgres, the fake MOWL and ``FakeProvider``: the sketch's design,
 its chat edit and ``can_change`` need only the job's own plan's coverage; the composer is offered
 per plan (``composer_available``); the hand-off records its route; a ride in progress follows its
-class. A real no-music class keeps its gate (its tests are unchanged). Never the network, a real
-account or a model."""
+class. A real no-music class has no gate at all since #1543 (``test_soundless_jobs``); the sketch
+keeps this one, also in the worker. Never the network, a real account or a model."""
 
 from typing import Any
 from uuid import UUID
@@ -17,8 +17,8 @@ from test_soundless_jobs import own_key, plan_keys, route
 pytestmark = pytest.mark.usefixtures("jenv")
 
 
-def gate(*, enabled: bool, fake: bool) -> None:
-    music_kind.configure(music_kind.SoundlessGate(enabled=enabled, fake_covers=fake))
+def gate(*, fake: bool) -> None:
+    music_kind.configure(music_kind.SoundlessGate(fake_covers=fake))
 
 
 async def answers(skenv: SketchEnv, class_id: UUID) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -34,15 +34,16 @@ async def connections(skenv: SketchEnv) -> dict[str, Any]:
     return got.json()
 
 
-# --- 1. the switch off, the plan covered ------------------------------------------------------
+# --- 1. the plan covered (no soundless switch since #1543) ------------------------------------
 
 
-async def test_a_sketch_is_designed_and_edited_with_the_soundless_switch_off(
+async def test_a_sketch_is_designed_and_edited_on_the_plans_coverage_alone(
     skenv: SketchEnv,
 ) -> None:
-    gate(enabled=False, fake=True)
+    gate(fake=True)
     flags = await connections(skenv)
-    assert (flags["composer_flow"], flags["soundless_enabled"]) == (True, False)
+    assert flags["composer_flow"] is True
+    assert "soundless_enabled" not in flags  # retired (#1543)
     class_id, sketch = await skenv.sketched()
     assert skenv.ienv.interpretation(class_id)["route"] == "sketch"
     detail, history = await answers(skenv, class_id)
@@ -64,7 +65,7 @@ async def test_a_sketch_is_designed_and_edited_with_the_soundless_switch_off(
 async def test_a_plan_without_coverage_is_read_without_the_composer_and_takes_the_older_route(
     skenv: SketchEnv,
 ) -> None:
-    gate(enabled=True, fake=False)  # nothing covers soundless
+    gate(fake=False)  # nothing covers soundless
     assert (await connections(skenv))["composer_flow"] is False
     class_id, interpret_job = await skenv.ienv.interpreted()
     assert skenv.ienv.stored_input(interpret_job).get("composer") is False
@@ -81,9 +82,9 @@ async def test_a_plan_without_coverage_is_read_without_the_composer_and_takes_th
 async def test_a_class_read_as_a_composer_class_falls_back_when_coverage_lapses_before_hand_off(
     skenv: SketchEnv,
 ) -> None:
-    gate(enabled=False, fake=True)
+    gate(fake=True)
     class_id = await skenv.interpreted()
-    gate(enabled=False, fake=False)  # the plan's route is cleared before the hand-off
+    gate(fake=False)  # the plan's route is cleared before the hand-off
     made = await skenv.ienv.handoff(class_id)
     assert made.status_code == 201, made.text  # no ``feature_off``, no ``soundless_not_evaluated``
     [job] = skenv.ienv.design_jobs(class_id)
@@ -91,7 +92,7 @@ async def test_a_class_read_as_a_composer_class_falls_back_when_coverage_lapses_
     assert skenv.ienv.interpretation(class_id)["route"] == "classic"
     detail, _ = await answers(skenv, class_id)
     assert detail["composer"] is False  # a class that fell back is an ordinary class
-    gate(enabled=False, fake=True)
+    gate(fake=True)
     again = await skenv.ienv.handoff(class_id)  # a reopened tab, with coverage back: same job
     assert (again.status_code, again.json()["job_id"]) == (200, str(job.id))
     assert skenv.ienv.interpretation(class_id)["route"] == "classic"  # the route never moves
@@ -101,12 +102,13 @@ async def test_a_class_read_as_a_composer_class_falls_back_when_coverage_lapses_
 
 
 async def test_the_composer_is_offered_per_plan_not_per_every_plan(skenv: SketchEnv) -> None:
-    gate(enabled=True, fake=False)
+    gate(fake=False)
     mine = await own_key(skenv.renv)
     other = next(k for k in plan_keys(skenv.renv) if k != mine)
     route(skenv.renv, mine)  # only the user's own plan is covered
     flags = await connections(skenv)
-    assert (flags["composer_flow"], flags["soundless_enabled"]) == (True, False)
+    assert flags["composer_flow"] is True
+    assert "soundless_enabled" not in flags  # retired (#1543)
     covered = await skenv.interpreted()
     made = await skenv.ienv.handoff(covered)
     assert made.status_code == 201, made.text
@@ -130,7 +132,7 @@ async def test_a_ride_in_progress_follows_its_class_when_coverage_lapses(
     skenv: SketchEnv,
 ) -> None:
     class_id, sketch = await skenv.sketched()
-    gate(enabled=False, fake=False)  # coverage removed
+    gate(fake=False)  # coverage removed
     detail, history = await answers(skenv, class_id)
     assert detail["composer"] is True  # the class's route, not the current flag
     assert (detail["can_change"], history["can_change"]) == (False, False)
@@ -139,3 +141,29 @@ async def test_a_ride_in_progress_follows_its_class_when_coverage_lapses(
     assert refused.json()["detail"]["reason"] == "soundless_not_evaluated"
     assert len(skenv.renv.messages(class_id)) == 1  # nothing written
     assert (await connections(skenv))["composer_flow"] is False  # a new class: the older route
+
+
+# --- 5. the worker keeps the sketch's rule (#1543) --------------------------------------------
+
+
+async def test_a_sketch_on_a_model_not_covering_soundless_still_ends_model_config(
+    skenv: SketchEnv,
+) -> None:
+    """#1543 serves a real no-music class on an uncovered model with the stale-route warning; a
+    sketch keeps ``require_covered`` (``music_kind.serve_model`` with ``sketch``): ``model_config``
+    before anything is sent, and the class gets no revision."""
+    class_id = await skenv.interpreted()
+    made = await skenv.ienv.handoff(class_id)
+    assert made.status_code == 201, made.text
+    job_id = UUID(made.json()["job_id"])
+    assert skenv.ienv.stored_input(job_id).get("mode") == "sketch"
+    skenv.renv.soundless_covered = False
+    try:
+        skenv.renv.use("soundless_first_draft")
+        await skenv.renv.run("design_draft")
+    finally:
+        skenv.renv.soundless_covered = True
+    row = skenv.renv.denv.ops.row(job_id)
+    assert (row.state, row.error_category) == ("failed", "model_config")
+    assert all(p.sent == [] for p in skenv.renv.providers)
+    assert skenv.renv.current(class_id) is None

@@ -118,26 +118,10 @@ async def running_enabled(db: AsyncSession, environment_on: bool, *, fake_covers
     """The effective ``running_enabled`` (ADR 0018 amendment of 2026-11-04, #509), computed on
     every read: the switch (``running_switch``) **and** every plan's
     ``route_key`` has a ``design`` route that covers running now
-    (``models.routes.every_plan_covers``). ``fake_covers`` as for ``soundless_enabled``."""
+    (``models.routes.every_plan_covers``). ``fake_covers`` is the web's own ``fake`` model provider
+    outside prod (``design.sport.SportGate``), which counts as covering, as the worker's ``fake``
+    bypass does; it is never true in prod."""
     if not await running_switch(db, environment_on):
-        return False
-    if fake_covers:
-        return True
-    from classbeat.models.routes import every_plan_covers  # see ``soundless_enabled``
-
-    return await every_plan_covers(db, "running")
-
-
-async def soundless_enabled(db: AsyncSession, environment_on: bool, *, fake_covers: bool) -> bool:
-    """The effective ``soundless_enabled`` (ADR 0007 amendment of 2026-11-03, item 2, as amended
-    on 2026-11-08, #824), computed on every read: ``CLASSBEAT_SOUNDLESS_ENABLED`` (the kill
-    switch, ``environment_on``) **and** every plan's ``route_key`` has a ``design`` route that
-    covers soundless now (``models.routes.every_plan_covers``), so a plan added later or a route
-    cleared later turns it off without anyone storing anything. There is no stored admin value:
-    no ``app_settings`` row is read. ``fake_covers`` is the web's own ``fake`` model provider
-    outside prod (``design.music_kind.SoundlessGate``), which counts as covering, as the worker's
-    ``fake`` bypass does; it is never true in prod."""
-    if not environment_on:  # the kill switch: no read needed
         return False
     if fake_covers:
         return True
@@ -145,7 +129,7 @@ async def soundless_enabled(db: AsyncSession, environment_on: bool, *, fake_cove
     # package (a reader of this module) must not import at its own import time.
     from classbeat.models.routes import every_plan_covers
 
-    return await every_plan_covers(db, "soundless")
+    return await every_plan_covers(db, "running")
 
 
 async def trial(db: AsyncSession) -> TrialSetting | None:

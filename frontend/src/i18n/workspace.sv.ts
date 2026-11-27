@@ -86,7 +86,6 @@ export const workspaceSv: Catalogue = {
   'cw.music.playlists': 'Dela spellistor',
   'cw.music.later': 'Bestäm senare',
   'cw.music.none': 'Fortsätt utan musik',
-  'cw.music.noneSoon': 'Inte tillgängligt här ännu',
   'cw.music.note.label': 'Ljudet du vill ha',
   'cw.music.note.placeholder': 'Till exempel: 80-talshits, inget för högt',
   'cw.music.note.send': 'Använd detta',

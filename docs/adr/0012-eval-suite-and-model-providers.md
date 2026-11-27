@@ -812,4 +812,8 @@ stale (`prompt_versions`), for running coverage too.
   and coverage for every plan key. The admin refuses to store `on` without coverage (422
   `soundless_not_evaluated`). (Since ADR 0007's amendment of 2026-11-08, #824, there is no stored value:
   the effective flag is the environment switch and coverage for every plan key, and the admin key is gone.) This does not change running's rule; #509 tracks the same gap there and can
-  reuse the helper (`models.routes.covers`). Cycling keeps section 5 unchanged.
+  reuse the helper (`models.routes.covers`). Cycling keeps section 5 unchanged. *(Since ADR 0007's amendment of
+  2026-11-27, #1543, there is no switch and no flag: `admit` no longer checks coverage for a real
+  no-music class, and the worker serves it on a model that does not cover soundless with the
+  stale-route warning, reason `soundless_not_evaluated`, as section 5 serves a stale route; a
+  composer's sketch keeps the `soundless_not_evaluated` admit and the `model_config` refusal.)*

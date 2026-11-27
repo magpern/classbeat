@@ -11,8 +11,8 @@ every admitted Save and Update does are ``classbeat.saving.save_pending.guarded`
 and Update per user and hour or day (#577, ``classbeat.saving.caps``: 409 ``quota`` ``saves``),
 then the approval checks of
 ``classbeat.saving.approval``, ``running_enabled`` for a running class (``feature_off``, ADR 0018
-section 5: off, a running class is not saved, whenever it was designed), the soundless switch for
-a soundless revision (``feature_off``, ADR 0007 amendment of 2026-11-03, item 2), then the
+section 5: off, a running class is not saved, whenever it was designed; a soundless revision has
+no switch, ADR 0007 amendment of 2026-11-27, #1543), then the
 connection (the context's MOWL connection and ``connected``: ``not_connected``), the music link
 (``music_unlinked``; a soundless revision has none and writes ``PlaylistID: -1``,
 ``approval.playlist_for``) and the unresolved-write rule (``write_unresolved``), last the user's
@@ -28,7 +28,7 @@ no effect, after a lost lease or a shutdown, never resumes at ``save``):
    (another job's ``pending`` or any ``uncertain`` save/update row of the class: the job fails
    ``uncertain_write``, nothing is sent), ``hold`` share-locks the connection, the approval
    checks run again from the database (``invalid_input``, ``music_unlinked``), the flag again for
-   a running class or a soundless revision (``feature_off``) and the playlist id is read from the
+   a running class (``feature_off``) and the playlist id is read from the
    link row (``-1`` for a soundless revision, no link read). Then the
    **preflight**: My Workouts' first page through ``call_opened``, outside any operation. Its
    ProgramIDs are the **baseline**. A preflight that fails is an ordinary failure with the usual
@@ -144,8 +144,6 @@ async def _admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admit
         return Refused(found.reason)
     if await approval.running_refused(db, found):
         return Refused("feature_off")  # ADR 0018 section 5: running is off now
-    if approval.soundless_refused(found):
-        return Refused("feature_off")  # soundless is switched off now
     if ctx.connection("mowl") != parsed.mowl_connection_id:
         return Refused("not_connected")
     info = await connections.find_in(db, ctx, parsed.mowl_connection_id)
@@ -197,8 +195,6 @@ async def _approved(run: JobRun, given: SaveWorkoutInput, opened: OpenConnection
             raise JobFailure(PREPARE_CATEGORY.get(found.reason, "invalid_input"))
         if await approval.running_refused(fs.db, found):
             raise JobFailure("feature_off")  # switched off since the job was queued
-        if approval.soundless_refused(found):
-            raise JobFailure("feature_off")  # the worker's soundless switch is off
         playlist_id = await approval.playlist_for(fs.db, run.ctx, found)
         if playlist_id is None:
             raise JobFailure("music_unlinked")

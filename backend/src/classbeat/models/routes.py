@@ -46,8 +46,8 @@ row with them; nothing here commits.
   soundless); SL5 (#531) set it to 11 and #601 to 12 (the first sound music check), so a result
   recorded on an earlier suite version (11 or below, however recent its prompt versions) does not
   cover soundless. The bootstrap choice never covers it. ``covers(db, route_key, variant)`` is
-  the check without a key file (the admin, the effective flag, ``admit``),
-  ``ModelChoice.soundless_covered`` the worker's per attempt;
+  the check without a key file (the sketch's ``admit``; no switch or flag since #1543),
+  ``ModelChoice.soundless_covered`` the worker's per attempt (a soundless class: a warning);
   ``every_plan_covers`` asks it for every plan's ``route_key``.
 - "Newest" is ``recorded_at``, then the insertion order ``seq`` (``store``), so it is
   deterministic for results recorded in one transaction.

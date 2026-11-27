@@ -1,7 +1,11 @@
-"""The soundless gate's process setting (ADR 0007 amendment of 2026-11-03, item 2; #527, #824):
-``CLASSBEAT_SOUNDLESS_ENABLED`` and whether the web's own ``fake`` provider counts as covering
-soundless. Moved out of ``classbeat.design.music_kind`` unchanged (SR C5b, the repository's
-split-on-touch rule); ``music_kind`` re-exports every name.
+"""The soundless coverage setting of this process (ADR 0007 amendments of 2026-11-03, item 2, and
+2026-11-27; #527, #824, #1543): whether the web's own ``fake`` provider counts as covering
+soundless. Moved out of ``classbeat.design.music_kind`` (SR C5b, the repository's split-on-touch
+rule); ``music_kind`` re-exports every name.
+
+There is no soundless switch any more (#1543, owner 2026-11-26: "No music" is always a choice).
+Coverage decides only the composer's sketch (``sketch_gate``) and whether a real no-music design is
+served with the stale-route warning (``music_kind.serve_model``).
 """
 
 from dataclasses import dataclass
@@ -11,16 +15,12 @@ from classbeat.config import Settings
 
 @dataclass(frozen=True, slots=True)
 class SoundlessGate:
-    enabled: bool = False  # CLASSBEAT_SOUNDLESS_ENABLED
-    # The web's own ``fake`` provider outside prod (see the module); never true in prod.
+    # The web's own ``fake`` provider outside prod (see ``fake_covers``); never true in prod.
     fake_covers: bool = False
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "SoundlessGate":
-        return cls(
-            enabled=settings.soundless_enabled,
-            fake_covers=fake_covers(settings),
-        )
+        return cls(fake_covers=fake_covers(settings))
 
 
 def fake_covers(settings: Settings) -> bool:
@@ -33,7 +33,7 @@ _gate = SoundlessGate()
 
 
 def configure(gate: SoundlessGate | None) -> None:
-    """Set the process's gate (None: soundless off)."""
+    """Set the process's setting (None: nothing counts as covered without a recorded route)."""
     global _gate
     _gate = gate or SoundlessGate()
 

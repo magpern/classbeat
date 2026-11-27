@@ -345,7 +345,8 @@ async def test_a_soundless_class_can_be_changed_only_while_its_gate_is_open(
     two: tuple[Plant, Plant],
 ) -> None:
     """``can_change`` asks ``music_kind.admit_class`` with the user's context, as the revise's
-    ``admit`` does (SL2): for a soundless class it follows the soundless gate."""
+    ``admit`` does (SL2): a soundless class can always be changed (#1543: no switch, and coverage
+    is the worker's; before, the closed gate and an uncovered plan made it false)."""
     mine, _ = two
     quiet = new_class(mine.admin, mine.owner, "Quiet")
     sql(mine.admin, "UPDATE classes SET brief = CAST(:b AS jsonb), "
@@ -354,14 +355,12 @@ async def test_a_soundless_class_can_be_changed_only_while_its_gate_is_open(
     revision(mine.admin, mine.owner, quiet, 1, V1, music={"source": "none"})
     path = f"/api/classes/{quiet}/history"
     try:
-        music_kind.configure(None)  # the gate closed: the switch off
+        music_kind.configure(None)  # nothing configured, as a production web
         body = (await mine.browser.get(path)).json()
-        assert body["can_change"] is False
+        assert body["can_change"] is True
         assert [r["number"] for r in body["revisions"]] == [1]
-        music_kind.configure(music_kind.SoundlessGate(enabled=True, fake_covers=True))
+        music_kind.configure(music_kind.SoundlessGate(fake_covers=True))
         assert (await mine.browser.get(path)).json()["can_change"] is True
-        music_kind.configure(music_kind.SoundlessGate(enabled=True, fake_covers=False))
-        assert (await mine.browser.get(path)).json()["can_change"] is False  # plan not covered
     finally:
         music_kind.configure(None)
 

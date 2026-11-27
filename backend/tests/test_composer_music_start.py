@@ -218,7 +218,7 @@ async def test_a_class_read_with_the_composer_falls_back_to_needs_spotify_withou
     plan lost its coverage: the older route needs Spotify and stops ``needs_spotify``, stored,
     with no job and no credit."""
     class_id = await read_without_spotify(skenv)
-    music_kind.configure(music_kind.SoundlessGate(enabled=True, fake_covers=False))
+    music_kind.configure(music_kind.SoundlessGate(fake_covers=False))
     refused = await skenv.ienv.handoff(class_id)
     assert (refused.status_code, refused.json()["detail"]["reason"]) == (409, "needs_spotify")
     assert skenv.ienv.interpretation(class_id)["refusal"] == {
@@ -233,7 +233,7 @@ async def test_without_the_composer_a_request_with_no_spotify_is_refused_at_admi
     skenv: SketchEnv,
 ) -> None:
     """AC 6: the older flow keeps Amendment 25's early refusal (no class, no job, no credit)."""
-    music_kind.configure(music_kind.SoundlessGate(enabled=True, fake_covers=False))
+    music_kind.configure(music_kind.SoundlessGate(fake_covers=False))
     before = skenv.ienv.counts()
     refused = await skenv.ienv.start(spotify=False)
     assert (refused.status_code, refused.json()["detail"]["reason"]) == (409, "needs_spotify")

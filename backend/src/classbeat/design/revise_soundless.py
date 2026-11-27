@@ -1,7 +1,8 @@
 """The ``revise_draft`` run of a soundless class (#528), split out of ``classbeat.design.revise``.
 
-No ``music`` stage and no MOWL or Spotify call: the switch and the model's coverage are checked
-first (the worker's backstop to ``admit``), then the request's stated values are layered onto the
+No ``music`` stage and no MOWL or Spotify call: the model is checked first
+(``music_kind.serve_model``: a sketch needs soundless coverage, a soundless class is served with
+the stale-route warning without it, #1543), then the request's stated values are layered onto the
 brief (``revise_stated``, #904), then the soundless ``revise`` stage over the brief, the base draft
 and the requests, then the store with a ``NoMusicStep``. No ``songs_requested`` exit, no
 ``music_changed``, no rules section. A sketch base (ADR 0038 section 4) is revised the same way and
@@ -50,10 +51,8 @@ async def run_soundless(
         given.request_message_id,
         bytes.fromhex(given.base_revision_hash),
     )
-    if not sketch:  # a sketch is never written anywhere: no switch (ADR 0038 amendment 2026-11-24)
-        music_kind.still_on()  # the switch, before anything is called
     model = await group_model(runtime, job_run, given.route_key, "design")
-    music_kind.require_covered(model)  # a model evaluated for soundless only
+    music_kind.serve_model(model, sketch=sketch)  # before anything is called (#1543)
     step = music_kind.NoMusicStep()
     stated = await revise_stated.layered(job_run, model, brief, given.request, given.plan_gates)
     ctx = SoundlessReviseContext(

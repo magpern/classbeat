@@ -148,7 +148,7 @@ describe('the Advanced form without Spotify', () => {
     const api = fakeApi({
       ...BASE,
       ...NOT_CONNECTED,
-      'GET /api/connections': { ...connectionsBody(false), soundless_enabled: true },
+      'GET /api/connections': connectionsBody(false),
       'POST /api/jobs': () => json(DRAFT_JOB, 201),
     })
     renderAt('/classes/new/advanced')

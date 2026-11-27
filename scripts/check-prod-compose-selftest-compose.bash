@@ -46,6 +46,7 @@ for m in \
   '.services.web.environment.CLASSBEAT_ENVIRONMENT = "dev"' \
   '.services.web.environment.CLASSBEAT_RUNNING_ENABLED = "true"' \
   '.services.worker.environment.CLASSBEAT_SOUNDLESS_ENABLED = "true"' \
+  '.services.web.environment.CLASSBEAT_SOUNDLESS_ENABLED = "false"' \
   '.services.worker.environment.CLASSBEAT_SWEDEBEAT_ENABLED = "true"' \
   '.services.web.environment.CLASSBEAT_SWEDEBEAT_STUDIO = "design"' \
   'del(.services.worker.environment.CLASSBEAT_SWEDEBEAT_STUDIO)' \

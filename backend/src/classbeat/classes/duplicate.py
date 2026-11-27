@@ -23,9 +23,8 @@ every statement scoped by ``owner_id``:
    5, #509), and a class or draft on a Swedebeat mix while ``swedebeat_enabled`` is off (the
    class's current source **or** the chosen revision's music on a mix: the stricter rule, on
    purpose) is 409 ``feature_off``; a soundless class (``{source:
-   "none"}``, #526) is admitted only by ``design.music_kind.admit_soundless``, as a soundless
-   design is (``feature_off``, or ``soundless_not_evaluated`` for the user's uncovered plan), and
-   its copy stays ``none`` (source and revision music);
+   "none"}``, #526) has no gate, as a soundless design has none (#1543: "No music" is always a
+   choice), and its copy stays ``none`` (source and revision music);
 3. the user's **current** plan: the brief and the copied draft (409 ``quota`` ``length`` or
    ``feature``), then one class of the month (``MeteredLedger.take_class``, 409 ``quota``
    ``classes``). Every refusal raises or returns before anything is written, and a raised refusal

@@ -66,11 +66,9 @@ async def test_a_message_while_a_list_waits_is_a_change_with_a_new_list(cenv: Co
     assert "pool_write" in cenv.songenv.stages(change_id)  # analysed again, in the songs' order
 
 
-@pytest.mark.parametrize("switch", [True, False])  # #1484: the soundless switch is not read
-async def test_a_change_that_does_not_fit_the_songs_is_a_new_sketch(
-    cenv: ComposerEnv, switch: bool
-) -> None:
-    music_kind.configure(music_kind.SoundlessGate(enabled=switch, fake_covers=True))
+async def test_a_change_that_does_not_fit_the_songs_is_a_new_sketch(cenv: ComposerEnv) -> None:
+    # The sketch's coverage (#1484); there is no soundless switch to vary any more (#1543).
+    music_kind.configure(music_kind.SoundlessGate(fake_covers=True))
     try:
         rider = await cenv.songenv.rider()
         class_id, sketch = await cenv.sketched(rider)

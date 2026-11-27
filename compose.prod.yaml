@@ -191,8 +191,6 @@ services:
       CLASSBEAT_SWEDEBEAT_STUDIO: ${SWEDEBEAT_STUDIO:-}
       # ADR 0018: off unless the owner switches running classes on.
       CLASSBEAT_RUNNING_ENABLED: ${RUNNING_ENABLED:-false}
-      # ADR 0007 (soundless classes): off unless the owner switches them on, after the live checks.
-      CLASSBEAT_SOUNDLESS_ENABLED: ${SOUNDLESS_ENABLED:-false}
       # Pre-production testing (roadmap Amendment 36, ADR 0038; runbook "Pre-production testing"). Off
       # unless the owner sets them in .env: web admits and the worker runs a pick or a composer class,
       # so both read the same values. Song picking also needs the stored `song_picking` flag `on` or a
@@ -289,8 +287,6 @@ services:
       CLASSBEAT_SWEDEBEAT_STUDIO: ${SWEDEBEAT_STUDIO:-}
       # ADR 0018: a queued running design or revise checks the switch again; the same as web's.
       CLASSBEAT_RUNNING_ENABLED: ${RUNNING_ENABLED:-false}
-      # ADR 0007 (soundless classes): a queued soundless design checks the switch again.
-      CLASSBEAT_SOUNDLESS_ENABLED: ${SOUNDLESS_ENABLED:-false}
       # Pre-production testing (roadmap Amendment 36, ADR 0038; runbook "Pre-production testing"). Off
       # unless the owner sets them in .env: web admits and the worker runs a pick or a composer class,
       # so both read the same values. Song picking also needs the stored `song_picking` flag `on` or a

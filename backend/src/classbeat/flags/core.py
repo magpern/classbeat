@@ -17,9 +17,9 @@ The database can tighten what the environment allows, never loosen it:
   ``swedebeat_enabled`` a missing, ``null`` or invalid stored value is ``off``: only a stored
   ``on`` switches it on, so clearing the row turns it off. ``running_switch`` is that part; the
   effective flag also needs every plan's model route to cover running
-  (``classbeat.flags.effective.running_enabled``). Soundless classes have no stored key (ADR 0007
-  amendments of 2026-11-03 and 2026-11-08, #824): ``classbeat.flags.effective.soundless_enabled``
-  is the environment's switch and coverage only.
+  (``classbeat.flags.effective.running_enabled``). Soundless classes have no stored key and no
+  switch (ADR 0007 amendments of 2026-11-08, #824, and 2026-11-27, #1543): "No music" is always
+  a choice.
 - ``composer_flow`` (ADR 0038 section 2, #1185): the ``running_enabled`` switch's rule under
   ``CLASSBEAT_COMPOSER_FLOW`` (off by default): only a stored ``on`` switches it on, and no
   coverage is checked (``composer_switch``).
