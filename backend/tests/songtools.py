@@ -39,6 +39,7 @@ from agentfake import CONFIG, FactoryModels
 from authtools import ORIGIN
 from classbeat import connections, design, songs
 from classbeat.agent.providers.fake import FakeProvider, FakeScript
+from classbeat.connections.spotify_consent_policy import CONSENT_VERSION
 from classbeat.design import pool_sync
 from classbeat.design.kind import Runtime
 from classbeat.egress import WORKER_ALLOWLIST, build_allowlist_opener
@@ -337,7 +338,7 @@ class SongEnv:
         ctx = make_context(owner)
         await self.spot.seed(ctx, client_id, spotify_user)
         if consent:
-            assert await connections.give_pool_consent(self.factory, ctx, 1)
+            assert await connections.give_pool_consent(self.factory, ctx, CONSENT_VERSION)
         mowl_id = await connections.save(
             self.factory, self.ring, ctx, "mowl", {"token": mowl_token}
         )

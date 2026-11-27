@@ -27,6 +27,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from classbeat import auth, connections
 from classbeat.classes import song_views
 from classbeat.config import Settings
+from classbeat.connections.spotify_consent_policy import CONSENT_TEXT, CONSENT_VERSION
 from classbeat.context import UserContext
 from classbeat.db import system_session
 from classbeat.spotify import connect
@@ -37,16 +38,8 @@ from classbeat.spotify.http import SpotifyHttp
 PROVIDER: Final = "spotify"
 CALLBACK_PATH: Final = "/oauth/spotify/callback"
 ACCOUNT_PAGE: Final = "/account/spotify"
-# Section 9: the wording the user consents to, and its version (``spotify_pool.consent_version``).
-# Version 2 (roadmap Amendment 30, #1287): the playlist is created public; version 1 said classbeat
-# asked for private. A version-1 consent stands (it already said the playlist may be public).
-CONSENT_VERSION: Final = 2
-CONSENT_TEXT: Final = (
-    "classbeat manages one working playlist in your Spotify account, named classbeat "
-    "working copy, to ask for song candidates and have MOWL analyse them. It is public, so MOWL "
-    "can find it: it can show on your Spotify profile and in search, and anyone with its link can "
-    "open it. It is overwritten on each pick."
-)
+# Section 9: the wording the user consents to (``CONSENT_TEXT``) and its version, of which only the
+# current one stands (``classbeat.connections.spotify_consent_policy``, #1540).
 
 
 def _settings(request: Request) -> Settings:

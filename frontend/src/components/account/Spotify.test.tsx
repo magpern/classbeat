@@ -13,7 +13,7 @@ const ACCOUNT_ROUTES = {
 }
 // The wording of ADR 0009 section 9, as the server sends it.
 const CONSENT_TEXT =
-  'classbeat manages one working playlist in your Spotify account, named classbeat working copy, to ask for song candidates and have MOWL analyse them. It is public, so MOWL can find it: it can show on your Spotify profile and in search, and anyone with its link can open it. It is overwritten on each pick.'
+  'classbeat manages one working playlist in your Spotify account, named classbeat working copy, to hold the song candidates of a pick. It is public, so MOWL can find it: it can show on your Spotify profile and in search, and anyone with its link can open it. It is overwritten on each pick. classbeat links it in MOWL so your class can be timed to it. The songs are analysed by spotdown, the music-analysis service classbeat uses. For each candidate it gets the title, artists, length, the explicit-lyrics flag from Spotify and a code derived from the Spotify track id, and it analyses the same recording from a source other than Spotify.'
 const CALLBACK = 'http://127.0.0.1:8000/oauth/spotify/callback'
 const GOOD_ID = '0123456789abcdef0123456789ABCDEF'
 const AUTHORIZE = 'https://accounts.example.test/authorize?state=opaque'
@@ -441,7 +441,7 @@ describe('the pool consent', () => {
     let given = false
     const api = spotifyApi(status({ status: 'connected' }), {
       'GET /api/connections/spotify': () =>
-        status({ status: 'connected', pool_consent: given, consent_version: given ? 2 : null }),
+        status({ status: 'connected', pool_consent: given, consent_version: given ? 3 : null }),
       'PUT /api/connections/spotify/pool-consent': () => {
         given = true
         return new Response(null, { status: 204 })
@@ -460,11 +460,33 @@ describe('the pool consent', () => {
     expect(call?.headers.get('X-CSRF-Token')).toBe('csrf-session')
   })
 
+  it('asks again with the current wording when the consent was given to an older one (#1540)', async () => {
+    let given = false
+    const api = spotifyApi(status({ status: 'connected', pool_consent: false, consent_version: 2 }), {
+      'GET /api/connections/spotify': () =>
+        status({ status: 'connected', pool_consent: given, consent_version: given ? 3 : 2 }),
+      'PUT /api/connections/spotify/pool-consent': () => {
+        given = true
+        return new Response(null, { status: 204 })
+      },
+    })
+    const sp = await openSpotify('/account/spotify')
+    expect((await sp.findByTestId('spotify-consent-text')).textContent).toBe(CONSENT_TEXT)
+    expect(sp.getByTestId('spotify-consent-state')).toHaveTextContent('not allowed it yet')
+    const toggle = sp.getByRole('switch', { name: 'Allow the working playlist' })
+    expect(toggle).not.toBeChecked()
+    fireEvent.click(toggle)
+    expect(await sp.findByText(/We may use the working playlist/)).toBeInTheDocument()
+    expect(sp.getByTestId('spotify-consent-state')).toHaveTextContent('You have allowed')
+    expect(api.to('PUT', '/api/connections/spotify/pool-consent')).toHaveLength(1)
+    expect(api.to('DELETE', '/api/connections/spotify/pool-consent')).toHaveLength(0)
+  })
+
   it('revokes after saying the playlist stays in Spotify', async () => {
     let given = true
-    const api = spotifyApi(status({ status: 'connected', pool_consent: true, consent_version: 1 }), {
+    const api = spotifyApi(status({ status: 'connected', pool_consent: true, consent_version: 3 }), {
       'GET /api/connections/spotify': () =>
-        status({ status: 'connected', pool_consent: given, consent_version: given ? 1 : null }),
+        status({ status: 'connected', pool_consent: given, consent_version: given ? 3 : null }),
       'DELETE /api/connections/spotify/pool-consent': () => {
         given = false
         return new Response(null, { status: 204 })
@@ -484,7 +506,7 @@ describe('the pool consent', () => {
   })
 
   it('keeps the consent when the revoke is cancelled', async () => {
-    const api = spotifyApi(status({ status: 'connected', pool_consent: true, consent_version: 1 }))
+    const api = spotifyApi(status({ status: 'connected', pool_consent: true, consent_version: 3 }))
     const sp = await openSpotify('/account/spotify')
     fireEvent.click(await sp.findByRole('switch', { name: 'Allow the working playlist' }))
     fireEvent.click(sp.getByRole('button', { name: 'Keep my consent' }))

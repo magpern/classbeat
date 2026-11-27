@@ -15,6 +15,7 @@ import pytest
 
 from classbeat import connections
 from classbeat.classes import song_fill
+from classbeat.connections.spotify_consent_policy import CONSENT_VERSION
 from classbeat.design.music_decision import NOTE_LABEL
 from composertools import SKETCH, ComposerEnv, fill_script, swap, swap_script
 from ctx import make_context
@@ -88,7 +89,7 @@ async def test_the_shared_playlists_are_the_fills_sources_on_the_edited_sketch(
     assert (refused.status_code, refused.json()["detail"]["reason"]) == (409, "not_connected")
     ctx = make_context(rider.user_id)
     await cenv.songenv.spot.seed(ctx)
-    assert await connections.give_pool_consent(cenv.songenv.factory, ctx, 1)
+    assert await connections.give_pool_consent(cenv.songenv.factory, ctx, CONSENT_VERSION)
     made = await cenv.fill(rider, class_id)
     assert made.status_code == 201, made.text
     [job] = fill_jobs(cenv, class_id)

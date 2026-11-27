@@ -18,12 +18,14 @@ const IDS = ['AbCdEfGhIjKlMnOpQrStU1', 'AbCdEfGhIjKlMnOpQrStU2', 'AbCdEfGhIjKlMn
 const NAMES = ['Hill climbs', 'Sprint set', 'Club classics']
 const UNDECIDED = { state: 'undecided', choice: null, playlists: 0 }
 const DECIDED = { state: 'decided', choice: 'pick', playlists: 0 }
-const STATUS = { ...SPOTIFY_STATUS_OK, consent_version: 2, consent_text: 'The working playlist sentence.' }
+const STATUS = { ...SPOTIFY_STATUS_OK, consent_version: 3, consent_text: 'The working playlist sentence.' }
 
 interface Setup {
   decision?: Record<string, unknown> | null
   spotify?: boolean
   consent?: boolean
+  /** With `consent: false`: the user consented to this older wording (#1540), which the server reports as not given. */
+  olderConsent?: number
   soundless?: boolean
   /** The reading has a hint of what to play (a song the instructor named): only then "Choose it for me" is offered. */
   pinned?: boolean
@@ -57,7 +59,8 @@ function setup(over: Setup = {}) {
       // The first read is the availability check; the second one is the consent card's own status.
       statusReads += 1
       if (statusReads > 1) await over.statusGate
-      return json({ ...STATUS, status: spotify ? 'connected' : 'not_connected', pool_consent: consent })
+      const version = consent ? STATUS.consent_version : (over.olderConsent ?? null)
+      return json({ ...STATUS, status: spotify ? 'connected' : 'not_connected', pool_consent: consent, consent_version: version })
     },
     'GET /api/music/mowl-playlists': { playlists: IDS.map((id, i) => ({ spotify_playlist_id: id, name: NAMES[i] })) },
     [`GET ${CLASS_PATH}`]: () => classBody({ sport: 'cycling', composer: true, ...(decision === null ? {} : { music_decision: decision }) }),
@@ -276,12 +279,32 @@ describe('the consent before the first song search', () => {
     renderAt(PAGE)
     const consent = await screen.findByTestId('music-consent')
     expect(consent).toHaveTextContent(
-      'classbeat keeps one public working playlist in your Spotify account with candidate songs and links it in MOWL, so it can analyse them. The final playlist and the workout are created only when you approve.',
+      'classbeat keeps one public working playlist in your Spotify account with candidate songs and links it in MOWL, so your class can be timed to it. spotdown, the music-analysis service classbeat uses, gets the title, artists, length, the explicit-lyrics flag from Spotify and a code derived from the Spotify track id of each song, and analyses the same recording from a source other than Spotify. The final playlist and the workout are created only when you approve.',
     )
     expect(within(consent).getByTestId('spotify-consent-text')).toHaveTextContent('The working playlist sentence.')
     await settle()
     expect(fills(api)).toHaveLength(0)
     expect(screen.queryByTestId('music-question')).toBeNull()
+  })
+
+  it('asks again, with no song search, when the consent was given to an older wording (#1540)', async () => {
+    const api = setup({ decision: DECIDED, consent: false, olderConsent: 2 })
+    renderAt(PAGE)
+    const consent = await screen.findByTestId('music-consent')
+    expect(consent).toHaveTextContent('spotdown, the music-analysis service classbeat uses')
+    const toggle = within(consent).getByRole('switch', { name: 'Allow the working playlist' })
+    expect(toggle).not.toBeChecked()
+    await settle()
+    expect(fills(api)).toHaveLength(0)
+    expect(api.to('PUT', CONSENT)).toHaveLength(0)
+    fireEvent.click(toggle)
+    await waitFor(() => {
+      expect(fills(api)).toHaveLength(1)
+    })
+    expect(api.to('PUT', CONSENT)).toHaveLength(1)
+    await waitFor(() => {
+      expect(screen.queryByTestId('music-consent')).toBeNull()
+    })
   })
 
   it('starts the song search once the switch is on', async () => {

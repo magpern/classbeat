@@ -12,6 +12,7 @@ import httpx
 import pytest
 
 from classbeat import connections
+from classbeat.connections.spotify_consent_policy import CONSENT_VERSION
 from classbeat.design import interpret_admit, music_kind
 from classbeat.songs import config as songs_config
 from ctx import make_context
@@ -181,7 +182,7 @@ async def test_with_no_spotify_a_taste_is_kept_sketched_and_used_by_the_fill_onc
     assert song_jobs(skenv, class_id) == 0
     await skenv.ienv.connect_spotify()
     ctx = make_context(skenv.ienv.owner)
-    assert await connections.give_pool_consent(skenv.renv.denv.ops.factory, ctx, 1)
+    assert await connections.give_pool_consent(skenv.renv.denv.ops.factory, ctx, CONSENT_VERSION)
     skenv.sql(
         "INSERT INTO entitlements (owner_id, features, source) "
         "VALUES (:o, ARRAY['song_picking'], 'grant')",

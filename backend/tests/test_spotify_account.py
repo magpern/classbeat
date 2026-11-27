@@ -189,9 +189,9 @@ async def test_pool_consent_give_revoke_and_a_new_consent_never_reuses_the_old_p
     pool = spotify_admin.exec_driver_sql(
         "SELECT spotify_user_id, playlist_id, consent_version FROM spotify_pool"
     ).one()
-    assert tuple(pool) == (USER_A, None, 2)  # the public wording (Amendment 30)
+    assert tuple(pool) == (USER_A, None, 3)  # the spotdown wording (#1540)
     status = (await actor.get(STATUS)).json()
-    assert (status["pool_consent"], status["consent_version"]) == (True, 2)
+    assert (status["pool_consent"], status["consent_version"]) == (True, 3)
     assert "classbeat working copy" in status["consent_text"]
 
     # A pick happened: the pool playlist exists and its operations are recorded.

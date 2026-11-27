@@ -35,7 +35,7 @@ from classbeat.connections import OpenConnection
 from classbeat.design.kind import Runtime, group_model
 from classbeat.design.music_decision import brief_with_note
 from classbeat.jobs import AwaitApproval, JobFailure, JobRun, Outcome
-from classbeat.playlists import open_spotify
+from classbeat.playlists import current_pool, open_spotify
 from classbeat.songs import composer_design, config
 from classbeat.songs.composer_change import run_change
 from classbeat.songs.composer_common import (
@@ -74,6 +74,9 @@ async def run_composer(job_run: JobRun, given: DesignWithSongsInput, runtime: Ru
     spotify = await open_spotify(job_run, runtime.keyring, given.spotify_connection_id)
     if spotify.account is None:
         raise JobFailure("not_connected")
+    # #1540: every mode writes the pool, so its consent (current version) is checked before any
+    # MOWL, Spotify, model or spotdown call; write_pool checks it again at its decide step.
+    await current_pool(job_run, spotify)
     if given.mode == "change":
         return await run_change(job_run, given, runtime, spotify, sketch, songs)
     model = await group_model(runtime, job_run, given.route_key, "songs")

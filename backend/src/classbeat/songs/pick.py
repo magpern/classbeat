@@ -75,7 +75,7 @@ from classbeat.crypto.keks import KeyRing
 from classbeat.design.music import MusicStep, load_music
 from classbeat.jobs import AwaitApproval, FencedSession, JobFailure, JobRun
 from classbeat.operations.attach import attach_written_playlist
-from classbeat.playlists import open_spotify, write_pool
+from classbeat.playlists import current_pool, open_spotify, write_pool
 from classbeat.songs import song_list
 from classbeat.songs.config import SongConfig
 from classbeat.songs.inputs import SongJob
@@ -166,6 +166,9 @@ async def run_phase_one(
     account = spotify.account
     if account is None:  # open_spotify refuses it already
         raise JobFailure("not_connected")
+    # #1540: the pool consent, current version, before any model, Spotify or spotdown call (a job
+    # queued under an older wording contacts no one); write_pool checks it again at its decide step.
+    await current_pool(run, spotify)
     seeded = await load_seeded(run, seed)
     plan = (
         PickPlan.build(brief, replace=seeded.roles, kept=seeded.kept)

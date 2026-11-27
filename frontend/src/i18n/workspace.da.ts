@@ -94,6 +94,6 @@ export const workspaceDa: Catalogue = {
   'cw.music.error.fixed': 'Sangene er allerede ved at blive valgt, så musikken kan ikke længere ændres her.',
   'cw.music.error.refused': 'Svaret kunne ikke gemmes for dette hold.',
   'cw.music.consent.title': 'Før sangsøgningen',
-  'cw.music.consent.body': 'classbeat holder én offentlig arbejdsplaylist i din Spotify-konto med kandidatsange og linker den i MOWL, så den kan analysere dem. Den endelige playliste og holdet oprettes først, når du godkender.',
+  'cw.music.consent.body': 'classbeat holder én offentlig arbejdsplaylist i din Spotify-konto med kandidatsange og linker den i MOWL, så holdet kan afstemmes efter den. spotdown, den musikanalysetjeneste classbeat bruger, får hver sangs titel, kunstnere, længde, Spotifys markering af eksplicit tekst og en kode afledt af Spotifys sang-id, og analyserer den samme indspilning fra en anden kilde end Spotify. Den endelige playliste og holdet oprettes først, når du godkender.',
   'composer.spotify.later': 'Sange kræver Spotify. Du kan tilslutte det efter skitsen.',
 }

@@ -27,6 +27,7 @@ from pydantic import SecretStr
 
 from authtools import ORIGIN as WEB_ORIGIN
 from classbeat import connections, swedebeat_match
+from classbeat.connections.spotify_consent_policy import CONSENT_VERSION
 from classbeat.jobs import KindRegistry, queue
 from classbeat.jobs.runner import Execution, RunConfig, execute
 from classbeat.swedebeat_match import config as match_config
@@ -171,7 +172,7 @@ class StudioEnv:
         )
         ctx = make_context(owner)
         await self.songs.spot.seed(ctx, CLIENT_A, USER_A)
-        assert await connections.give_pool_consent(self.songs.factory, ctx, 1)
+        assert await connections.give_pool_consent(self.songs.factory, ctx, CONSENT_VERSION)
         await store_bearer(self.songs.factory, self.songs.ring, ctx, self.gateway)
         await use_swedebeat(self.songs.factory, owner)
         issued = await env.login(owner)

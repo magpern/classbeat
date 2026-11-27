@@ -10,8 +10,8 @@ sections 5, 7 and 9; issue OP1, #178). Fakes only.
   still be running blocks the next pool replace until ``actionable_at``; the supersede rule then
   marks the older uncertain pool replace ``failed``.
 - **Between the job's start and the decide step**: a disconnect, reconnect, Client ID or account
-  change or a revoked consent ends the job ``not_connected`` / ``consent_missing`` with no
-  request to Spotify.
+  change, a revoked consent or a consent to an older wording (#1540) ends the job
+  ``not_connected`` / ``consent_missing`` with no request to Spotify.
 - **The class rule** for pool and final rows, and the row's ``ref`` handed to the call.
 """
 
@@ -23,6 +23,7 @@ from mowl import spotify_web
 
 from classbeat import connections
 from classbeat.connections import ConnectionFailure, open_connection
+from classbeat.connections.spotify_consent_policy import CONSENT_VERSION
 from classbeat.operations import OperationRequest, request_hash
 from classbeat.operations.kinds import ref_of
 from classbeat.playlists import common, replace
@@ -95,7 +96,7 @@ async def test_after_a_revoke_and_a_new_consent_no_request_goes_to_the_old_pool(
     assert revoked.status_code in (200, 204), revoked.text
     assert penv.operations(owner) == []
     assert penv.pool(owner) is None
-    assert await connections.give_pool_consent(penv.factory, ctx, 1)
+    assert await connections.give_pool_consent(penv.factory, ctx, CONSENT_VERSION)
     penv.fake.seen.clear()
     job_id = penv.job(owner)
     assert (await penv.run(job_id)).state == "completed"
@@ -123,7 +124,7 @@ async def test_a_client_id_change_forgets_the_pool_rows_and_keeps_the_final_ones
     assert [o.id for o in penv.operations(owner)] == [final_row.id]
     assert penv.pool(owner) is None
     assert len(penv.class_playlists(owner)) == 1
-    assert await connections.give_pool_consent(penv.factory, ctx, 1)
+    assert await connections.give_pool_consent(penv.factory, ctx, CONSENT_VERSION)
     penv.fake.seen.clear()
     assert (await penv.run(penv.job(owner))).state == "completed"
     assert penv.pool(owner).playlist_id != old
@@ -288,12 +289,24 @@ async def revoke(penv: PlayEnv, owner: Any) -> None:
     assert await connections.revoke_pool_consent(penv.factory, make_context(owner))
 
 
+async def older_wording(penv: PlayEnv, owner: Any) -> None:
+    """The consent row stays, but for a wording before ``CONSENT_VERSION`` (#1540: a consent
+    given before the deploy of a new wording, the job queued meanwhile)."""
+    changed = penv.sql(
+        "UPDATE spotify_pool SET consent_version = :v WHERE owner_id = :o RETURNING id",
+        v=CONSENT_VERSION - 1,
+        o=owner,
+    )
+    assert changed.first() is not None
+
+
 CHANGES = [
     (disconnect, "consent_missing"),  # the consent row goes with the connection
     (reconnect, "not_connected"),  # the decide step's hold: another generation
     (other_client, "consent_missing"),
     (other_account, "consent_missing"),
     (revoke, "consent_missing"),
+    (older_wording, "consent_missing"),  # an older wording is no consent (#1540)
 ]
 
 
@@ -316,7 +329,7 @@ async def test_a_change_before_the_pool_write_ends_the_job_with_no_request(
     assert penv.entries(playlist_id) == [f"spotify:track:{t}" for t in TRACKS]
 
 
-@pytest.mark.parametrize(("change", "category"), [*CHANGES[:4], (revoke, "consent_missing")])
+@pytest.mark.parametrize(("change", "category"), CHANGES)
 async def test_a_change_after_the_pool_read_is_caught_by_the_decide_step(
     penv: PlayEnv, monkeypatch: pytest.MonkeyPatch, change: Any, category: str
 ) -> None:
@@ -336,7 +349,7 @@ async def test_a_change_after_the_pool_read_is_caught_by_the_decide_step(
     row = await penv.run(penv.job(owner))
     assert row.state == "failed"
     assert row.error_category in ("not_connected", "consent_missing")
-    if change is revoke:
+    if change in (revoke, older_wording):
         assert row.error_category == "consent_missing"
     if change in (reconnect, disconnect, other_client, other_account):
         assert row.error_category == "not_connected"  # the hold fails first

@@ -16,6 +16,7 @@ import pytest
 from agentfake import provider
 from classbeat import connections, design
 from classbeat.classes import reread as reread_module
+from classbeat.connections.spotify_consent_policy import CONSENT_VERSION
 from classbeat.design import composer, interpret_admit, interpretation_row, limits, music_kind
 from classbeat.design.interpretation_row import handoff_key
 from classbeat.jobs.credits import QuotaRefused
@@ -620,7 +621,7 @@ async def test_a_pick_with_a_hint_is_designed_and_asks_nothing(
     class_id = await pick_class(ienv, TASTE, **more)
     assert music_questions(ienv, class_id) == []
     assert await connections.give_pool_consent(
-        ienv.renv.denv.ops.factory, make_context(ienv.owner), 1
+        ienv.renv.denv.ops.factory, make_context(ienv.owner), CONSENT_VERSION
     )
     ienv.sql(
         "INSERT INTO entitlements (owner_id, features, source) "

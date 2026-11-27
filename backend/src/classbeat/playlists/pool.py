@@ -13,8 +13,9 @@ is written):
    user id (``not_connected`` otherwise). Every path that forgets the pool (a consent revoke, a
    Client ID change, Disconnect, an account change) takes that row's lock first, so none of them
    can interleave with the decide step.
-2. Re-read ``spotify_pool``: the consent present, the same ``spotify_pool.id`` and Spotify user id
-   (``consent_missing`` otherwise), and the same ``playlist_id`` the write is for (NULL for the
+2. Re-read ``spotify_pool``: the consent present and given for the current wording
+   (``CONSENT_VERSION``; an older one reads as none), the same ``spotify_pool.id`` and Spotify user
+   id (``consent_missing`` otherwise), and the same ``playlist_id`` the write is for (NULL for the
    create; ``pool_missing`` otherwise, retried, so the next attempt reads the pool again).
 3. **Supersede** (the user is never asked to resolve a pool write): every other ``uncertain`` or
    orphaned ``pending`` pool row of the same kind (for a replace: of the same playlist) is marked
@@ -42,6 +43,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.connections import OpenConnection, hold, open_connection
+from classbeat.connections.spotify_consent_policy import CONSENT_VERSION
 from classbeat.connections.spotify_data import pool_missing
 from classbeat.crypto.keks import KeyRing
 from classbeat.jobs import JobFailure, JobRun
@@ -73,7 +75,11 @@ class PoolWrite:
     key: str  # the ``spotify_replace_items`` key of this write (a MOWL attach is keyed by it)
 
 
-_POOL = text("SELECT id, playlist_id, spotify_user_id FROM spotify_pool WHERE owner_id = :owner_id")
+# A consent to an older wording is no consent (``spotify_consent_policy``): no row, no write.
+_POOL = text(
+    "SELECT id, playlist_id, spotify_user_id FROM spotify_pool "
+    "WHERE owner_id = :owner_id AND consent_version >= :version"
+)
 # The other pool rows of a kind that may still need resolving (``pending`` or ``uncertain``),
 # locked: the supersede rule decides each.
 _OTHERS = text(
@@ -102,7 +108,7 @@ _SUPERSEDE = text(
 
 
 async def read_pool(db: AsyncSession, owner_id: UUID) -> Pool | None:
-    row = (await db.execute(_POOL, {"owner_id": owner_id})).first()
+    row = (await db.execute(_POOL, {"owner_id": owner_id, "version": CONSENT_VERSION})).first()
     if row is None:
         return None
     return Pool(row.id, row.playlist_id, row.spotify_user_id)
