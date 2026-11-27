@@ -57,7 +57,7 @@ describe('HandoffStatus', () => {
 
   it.each([
     ['sv', /Ett pass är antingen cykling eller löpning/, 'Ändra min begäran'],
-    ['da', /Et hold er enten cykling eller løb/, 'Ret min anmodning'],
+    ['da', /Et hold er enten cykling eller løb/, 'Ret min forespørgsel'],
   ] as const)('says it in %s too', async (language, text, link) => {
     show('two_sports', language)
     expect(await screen.findByText(text)).toBeInTheDocument()

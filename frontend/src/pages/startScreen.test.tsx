@@ -148,15 +148,41 @@ describe('the sport toggle (#1544: running is always available)', () => {
     expect(pressed('Cycling')).toBe('true')
   })
 
-  it('sends Running when the words chose it, and nothing for Cycling the words chose', async () => {
+  it('sends nothing when the words flipped the toggle, Running or Cycling: the reading decides (#1558)', async () => {
     const api = fakeApi(routes(withSpotify(), connectionsBody(true)))
     renderAt('/classes/new')
     fireEvent.change(await prompt(), { target: { value: 'A 45 min run with intervals' } })
+    expect(pressed('Running')).toBe('true') // the toggle flips on screen
     fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
     await waitFor(() => {
       expect(api.to('POST', '/api/jobs')).toHaveLength(1)
     })
-    expect((api.to('POST', '/api/jobs')[0]?.body as { input: Record<string, unknown> }).input.sport_override).toBe('running')
+    expect((api.to('POST', '/api/jobs')[0]?.body as { input: Record<string, unknown> }).input).not.toHaveProperty('sport_override')
+  })
+
+  it('flips on the verb "run" and still sends no sport: only a hand choice is sent (#1558)', async () => {
+    const api = fakeApi(routes(withSpotify(), connectionsBody(true)))
+    renderAt('/classes/new')
+    fireEvent.change(await prompt(), { target: { value: 'A 45 min class we run on Tuesdays' } })
+    expect(pressed('Running')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
+    await waitFor(() => {
+      expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+    })
+    expect((api.to('POST', '/api/jobs')[0]?.body as { input: Record<string, unknown> }).input).not.toHaveProperty('sport_override')
+  })
+
+  it('sends Running when the instructor picked it by hand', async () => {
+    const api = fakeApi(routes(withSpotify(), connectionsBody(true)))
+    renderAt('/classes/new')
+    fireEvent.change(await prompt(), { target: { value: 'Three climbs, 45 minutes' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Running' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
+    await waitFor(() => {
+      expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+    })
+    const input = (api.to('POST', '/api/jobs')[0]?.body as { input: Record<string, unknown> }).input
+    expect(input).toMatchObject({ sport_override: 'running' })
   })
 
   it('keeps a choice by hand while typing, and sends it as sport_override', async () => {

@@ -2004,7 +2004,7 @@ const da: Catalogue = {
   'start.handoff.failed': 'Din anmodning kunne ikke læses.',
   'start.handoff.error': 'Designet kunne ikke startes.',
   'start.handoff.tryAgain': 'Prøv igen med den samme anmodning',
-  'start.handoff.changeRequest': 'Ret min anmodning',
+  'start.handoff.changeRequest': 'Ret min forespørgsel',
   'interp.title': 'Sådan læste vi din anmodning',
   'interp.asked': 'Som du bad om',
   'interp.notAsked': 'Ikke som du bad om',

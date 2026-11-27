@@ -59,13 +59,16 @@ export function ComposerScreen({ source, example = null }: { source: ReadySource
     }),
   )
   const [request, setRequest] = useState(draft.request)
-  const [tags, setTags] = useState(draft.tags)
+  // What the instructor picked. A running class has playlists only, so "No music" is hidden while it is running
+  // but kept here: a flip back to cycling, by the words or by hand, brings it back (#1558).
+  const [picked, setPicked] = useState(draft.tags)
   const [toggle, setToggle] = useState(draft.sport)
   const sport: Sport = toggle.sport
   const [problem, setProblem] = useState<string | null>(null)
   // The server refused for want of Spotify: the same prompt as the gate's, instead of an error.
   const [refusedForSpotify, setRefusedForSpotify] = useState<SpotifyGate['need'] | null>(null)
   const running = sport === 'running'
+  const tags = forSport(picked, running)
   const noMusicOffered = !running
   const promptRef = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
@@ -126,7 +129,6 @@ export function ComposerScreen({ source, example = null }: { source: ReadySource
     const next = followText(toggle, text)
     if (next === toggle) return
     setToggle(next)
-    setTags(forSport(tags, next.sport === 'running'))
   }
 
   const shown = problem ?? (refusedForSpotify !== null ? null : action.error)
@@ -168,7 +170,6 @@ export function ComposerScreen({ source, example = null }: { source: ReadySource
             onChange={(e) => {
               const next: Sport = e.target.value === 'running' ? 'running' : 'cycling'
               setToggle(chooseSport(next))
-              setTags(forSport(tags, next === 'running'))
             }}
             className="min-h-11 cursor-pointer self-start rounded-full border border-line bg-raised px-4 text-[0.9375rem] text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
           >
@@ -182,10 +183,10 @@ export function ComposerScreen({ source, example = null }: { source: ReadySource
             tags={tags}
             noMusicOffered={noMusicOffered}
             onTogglePlaylist={(tag) => {
-              setTags(togglePlaylist(tags, tag))
+              setPicked(togglePlaylist(tags, tag))
             }}
             onToggleNone={() => {
-              setTags(toggleNone(tags))
+              setPicked(toggleNone(tags))
             }}
           />
           {gate !== null ? (

@@ -171,6 +171,8 @@ def spec_of(content: object, sport: str = class_sport.CYCLING) -> dict[str, Any]
         draft = draft_model(sport).model_validate_json(json.dumps(content))
         spec = draft.to_spec()
         workout.validate(spec)
+        # Defence in depth: ``draft_model(sport)`` already fixes the spec's sport; reached only if
+        # that mapping drifts (tests/test_approval_spec_sport.py simulates it).
         if workout.sport_of(spec) != sport:
             return None
     except (ValidationError, ValueError, TypeError, KeyError):

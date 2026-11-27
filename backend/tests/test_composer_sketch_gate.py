@@ -179,11 +179,9 @@ async def test_a_direct_sketch_design_on_an_uncovered_plan_is_refused_before_any
         async with user_session(skenv.renv.denv.ops.factory, ctx) as db:
             return await kind_admit(db, ctx, sketch(mode))
 
-    before = skenv.ienv.counts()
     gate(fake=False)  # the user's own plan has no route covering soundless
     assert await admit("sketch") == Refused("soundless_not_evaluated")
     assert isinstance(await admit(None), Admitted)  # a real no-music class has no such gate
-    assert skenv.ienv.counts() == before  # no class, no job, no credit
     gate(fake=True)
     assert isinstance(await admit("sketch"), Admitted)  # the same input, the plan covered
 

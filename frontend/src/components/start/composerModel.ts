@@ -20,7 +20,7 @@ export interface ComposerRequest {
 
 /**
  * What `POST /api/jobs` takes for `interpret_request`: the music as `music_sources` or `music_override`, never
- * both; the sport as `sport_override` when it was chosen by hand or is Running (`sportOverride`, #1544).
+ * both; the sport as `sport_override` only when it was chosen by hand (`sportOverride`, #1544, #1558).
  */
 export function composerInput(request: ComposerRequest): InterpretInput {
   const sport = sportOverride({ sport: request.sport, manual: request.sportByHand === true })

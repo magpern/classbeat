@@ -7,9 +7,10 @@
 // - The toggle state is `{ sport, manual }`. While `manual` is false, `followText` sets the sport
 //   from the hint on every change, so it flips back to Cycling when the running words are gone. A
 //   choice by hand (`chooseSport`) sets `manual` and always wins: typing never moves it again.
-// - `sportOverride(state)`: what the request sends as `sport_override`. A choice by hand is sent
-//   as it is, and the toggle on Running is sent too, as it always was; the reading has the final
-//   say and asks when the sent sport and the words disagree (backend `which_sport`).
+// - `sportOverride(state)`: what the request sends as `sport_override`: only a choice by hand (#1558).
+//   A flip by the words stays on the screen and is not sent ("a class we run on Tuesdays" names no
+//   run), so the reading decides the sport, and the instructor confirms it. When a sent sport and
+//   the words disagree the reading asks (backend `which_sport`).
 // - `initialToggle(text, kept)`: a kept request ("Try again") restores its sport; it counts as
 //   chosen by hand when it differs from what the words say, so the hint never undoes it.
 
@@ -39,12 +40,21 @@ const RUNNING_WORDS: ReadonlySet<string> = new Set([
   'springa',
   'jogga',
   'joggning',
+  'löprunda',
+  'löprundor',
+  'löpträning',
+  'löpband',
+  'springpass',
+  'intervallöpning',
   // da
   'løb',
   'løbe',
   'løbetur',
   'løbehold',
   'jogge',
+  'løbetræning',
+  'løbebånd',
+  'intervalløb',
 ])
 
 const CYCLING_WORDS: ReadonlySet<string> = new Set([
@@ -97,9 +107,9 @@ export function chooseSport(sport: Sport): SportToggle {
   return { sport, manual: true }
 }
 
-/** The `sport_override` the request sends (see the module), or undefined for none. */
+/** The `sport_override` the request sends (see the module): a choice by hand only, else undefined. */
 export function sportOverride(state: SportToggle): Sport | undefined {
-  return state.manual || state.sport === 'running' ? state.sport : undefined
+  return state.manual ? state.sport : undefined
 }
 
 /** The first state: the words' hint, or a kept request's sport (by hand when the words differ). */
