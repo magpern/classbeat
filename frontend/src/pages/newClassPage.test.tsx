@@ -233,10 +233,12 @@ describe('the new-class form', () => {
     expect(await screen.findByLabelText('Class name')).toBeInTheDocument()
   })
 
-  it('says so when MOWL lists no playlists', async () => {
+  it('keeps the form with No music when MOWL lists no playlists (#1543: before, the No playlists card)', async () => {
     fakeApi({ ...READY, 'GET /api/music/mowl-playlists': { playlists: [] } })
     renderAt('/classes/new/advanced')
-    expect(await screen.findByRole('heading', { name: 'No playlists found' })).toBeInTheDocument()
+    await screen.findByLabelText('Class name')
+    expect(screen.queryByRole('heading', { name: 'No playlists found' })).toBeNull()
+    expect(screen.getByRole('radio', { name: 'No music' })).toBeInTheDocument()
   })
 
   it('has segmented controls, one per choice, and steppers that stop at their limits', async () => {

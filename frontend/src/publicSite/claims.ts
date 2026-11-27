@@ -102,7 +102,7 @@ export const FEATURE_GROUPS: readonly ClaimGroup[] = [
         title: 'feat.noMusic.title',
         text: 'feat.noMusic.text',
         ...MOWL,
-        evidence: 'Music source none, always offered for a cycling class: no switch (ADR 0007 amendment of 2026-11-27, #1543)',
+        evidence: 'Music source none, always offered for a cycling class: no switch (ADR 0007 amendment of 2026-11-27, issue 1543)',
       },
     ],
   },
