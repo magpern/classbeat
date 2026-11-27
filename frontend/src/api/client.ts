@@ -61,8 +61,37 @@ function retryAfterOf(response: Response): number | null {
 const SESSION_BUSY_RETRIES = 2
 const SESSION_BUSY_MAX_WAIT_SECONDS = 5
 
+// Reads can overlap and answer out of order, and a read that was repeated finishes late: only the
+// read that started last may set the remembered token, so an older answer never replaces a newer one.
+let sessionReads = 0
+let tokenReadNumber = 0
+
+function abortReason(signal: AbortSignal): Error {
+  return signal.reason instanceof Error ? signal.reason : new DOMException('Aborted', 'AbortError')
+}
+
+/** Waits, or rejects with the signal's reason at once when it aborts. */
+function pause(seconds: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortReason(signal))
+      return
+    }
+    const onAbort = () => {
+      clearTimeout(timer)
+      if (signal) reject(abortReason(signal))
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, seconds * 1000)
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
 /** GET /api/auth/session raw; also refreshes the remembered CSRF token. */
 export async function fetchSessionJson(signal?: AbortSignal): Promise<JsonObject> {
+  const mine = ++sessionReads
   for (let attempt = 0; ; attempt += 1) {
     const response = await fetch('/api/auth/session', {
       headers: { Accept: 'application/json' },
@@ -71,13 +100,15 @@ export async function fetchSessionJson(signal?: AbortSignal): Promise<JsonObject
     const body = await readBody(response)
     if (response.ok) {
       const session = object(body, 'session')
-      csrfToken = typeof session.csrf_token === 'string' ? session.csrf_token : null
+      if (mine > tokenReadNumber) {
+        tokenReadNumber = mine
+        csrfToken = typeof session.csrf_token === 'string' ? session.csrf_token : null
+      }
       return session
     }
     const why = reasonOf(body)
-    if (response.status === 503 && why === 'busy' && attempt < SESSION_BUSY_RETRIES && !signal?.aborted) {
-      const wait = Math.min(retryAfterOf(response) ?? 1, SESSION_BUSY_MAX_WAIT_SECONDS)
-      await new Promise((resolve) => setTimeout(resolve, wait * 1000))
+    if (response.status === 503 && why === 'busy' && attempt < SESSION_BUSY_RETRIES) {
+      await pause(Math.min(retryAfterOf(response) ?? 1, SESSION_BUSY_MAX_WAIT_SECONDS), signal)
       continue
     }
     throw new ApiError(response.status, why, null, body)

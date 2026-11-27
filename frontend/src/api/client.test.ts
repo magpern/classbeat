@@ -62,42 +62,110 @@ describe('API client', () => {
   })
 
   describe('a busy answer to the session read (#998, #1567)', () => {
+    const busy = (retryAfter?: string) =>
+      json({ detail: { reason: 'busy' } }, 503, retryAfter === undefined ? {} : { 'Retry-After': retryAfter })
+    const OK = { authenticated: false, csrf_token: 'csrf-after-busy' }
+    const reads = (api: ReturnType<typeof fakeApi>) => api.to('GET', '/api/auth/session').length
+
     afterEach(() => {
       vi.useRealTimers()
     })
 
     it('waits for Retry-After and reads the session again', async () => {
       vi.useFakeTimers()
-      let reads = 0
-      const api = fakeApi({
-        'GET /api/auth/session': () =>
-          ++reads === 1
-            ? json({ detail: { reason: 'busy' } }, 503, { 'Retry-After': '2' })
-            : { authenticated: false, csrf_token: 'csrf-after-busy' },
-      })
+      let n = 0
+      const api = fakeApi({ 'GET /api/auth/session': () => (++n === 1 ? busy('2') : OK) })
       const done = fetchSessionJson()
       await vi.advanceTimersByTimeAsync(1999)
-      expect(api.to('GET', '/api/auth/session')).toHaveLength(1)
+      expect(reads(api)).toBe(1)
       await vi.advanceTimersByTimeAsync(1)
       expect(await done).toMatchObject({ csrf_token: 'csrf-after-busy' })
-      expect(api.to('GET', '/api/auth/session')).toHaveLength(2)
+      expect(reads(api)).toBe(2)
+    })
+
+    it('caps the wait at 5 seconds however large Retry-After is', async () => {
+      vi.useFakeTimers()
+      let n = 0
+      const api = fakeApi({ 'GET /api/auth/session': () => (++n === 1 ? busy('3600') : OK) })
+      const done = fetchSessionJson()
+      await vi.advanceTimersByTimeAsync(4999)
+      expect(reads(api)).toBe(1)
+      await vi.advanceTimersByTimeAsync(1)
+      await done
+      expect(reads(api)).toBe(2)
+    })
+
+    it.each([
+      ['absent', undefined],
+      ['garbage', 'soon'],
+    ])('waits 1 second when Retry-After is %s', async (_name, header) => {
+      vi.useFakeTimers()
+      let n = 0
+      const api = fakeApi({ 'GET /api/auth/session': () => (++n === 1 ? busy(header) : OK) })
+      const done = fetchSessionJson()
+      await vi.advanceTimersByTimeAsync(999)
+      expect(reads(api)).toBe(1)
+      await vi.advanceTimersByTimeAsync(1)
+      await done
+      expect(reads(api)).toBe(2)
     })
 
     it('gives up after two repeats and reports the 503', async () => {
       vi.useFakeTimers()
-      const api = fakeApi({
-        'GET /api/auth/session': json({ detail: { reason: 'busy' } }, 503, { 'Retry-After': '1' }),
-      })
+      const api = fakeApi({ 'GET /api/auth/session': busy('1') })
       const done = fetchSessionJson().catch((e: unknown) => e)
       await vi.advanceTimersByTimeAsync(2000)
       expect(await done).toMatchObject({ status: 503, reason: 'busy' })
-      expect(api.to('GET', '/api/auth/session')).toHaveLength(3)
+      expect(reads(api)).toBe(3)
     })
 
-    it('does not repeat another 503', async () => {
-      const api = fakeApi({ 'GET /api/auth/session': reason(503, 'down') })
-      await expect(fetchSessionJson()).rejects.toMatchObject({ status: 503, reason: 'down' })
-      expect(api.to('GET', '/api/auth/session')).toHaveLength(1)
+    it.each([
+      ['another 503', reason(503, 'down'), 503, 'down'],
+      ['a 401', reason(401, 'not_authenticated'), 401, 'not_authenticated'],
+      ['a 403', reason(403, 'forbidden'), 403, 'forbidden'],
+    ])('does not repeat %s', async (_name, answer, status, why) => {
+      const api = fakeApi({ 'GET /api/auth/session': answer })
+      await expect(fetchSessionJson()).rejects.toMatchObject({ status, reason: why })
+      expect(reads(api)).toBe(1)
+    })
+
+    it('does not repeat a network error', async () => {
+      const api = fakeApi({ 'GET /api/auth/session': () => Promise.reject(new TypeError('Failed to fetch')) })
+      await expect(fetchSessionJson()).rejects.toThrow('Failed to fetch')
+      expect(reads(api)).toBe(1)
+    })
+
+    it('ends the wait at once when the signal aborts, and reads no more', async () => {
+      vi.useFakeTimers()
+      const api = fakeApi({ 'GET /api/auth/session': busy('5') })
+      const controller = new AbortController()
+      const done = fetchSessionJson(controller.signal).catch((e: unknown) => e)
+      await vi.advanceTimersByTimeAsync(0)
+      controller.abort()
+      expect(await done).toMatchObject({ name: 'AbortError' })
+      expect(reads(api)).toBe(1)
+      expect(vi.getTimerCount()).toBe(0)
+    })
+
+    it('does not let a slower, repeated read replace the token of a newer one', async () => {
+      vi.useFakeTimers()
+      let n = 0
+      const api = fakeApi({
+        'GET /api/auth/session': () => {
+          n += 1
+          if (n === 1) return busy('1') // read A, repeated after a second
+          if (n === 2) return { authenticated: false, csrf_token: 'csrf-newer' } // read B
+          return { authenticated: false, csrf_token: 'csrf-older' } // A's repeat
+        },
+        'POST /api/x': { ok: true },
+      })
+      const a = fetchSessionJson()
+      await vi.advanceTimersByTimeAsync(0)
+      await fetchSessionJson()
+      await vi.advanceTimersByTimeAsync(1000)
+      await a
+      await post('/api/x')
+      expect(api.to('POST', '/api/x')[0]?.headers.get('X-CSRF-Token')).toBe('csrf-newer')
     })
   })
 
