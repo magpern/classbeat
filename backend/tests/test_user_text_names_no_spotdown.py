@@ -6,6 +6,12 @@ the backend's words in the account mail (``emails.locales``, every language), th
 ``spotify.errors``); API errors are reason codes, never prose. Code, logs, docs and ADRs keep the
 name. The frontend catalogues have their own guard (``noSpotdownInCatalogues.test.ts``).
 
+The text classbeat writes into the user's own accounts is user text too (#1575): the Spotify
+playlist description and name, the SwedeBeat playlist and mix names, and the notes about what stays
+in the accounts. Those modules are named in ``ACCOUNT_TEXT_FILES`` (nothing in a file name says
+they hold text), and a test fails if one is renamed or moved. The workout text saved to MOWL is
+the class's own (the instructor's and the model's words), not a classbeat constant.
+
 The list of what is read is found, not written out (#1573): every language ``emails.catalogue``
 carries, and every module under ``classbeat`` whose file name says it holds user text (a
 ``sentence``, ``errors``, ``consent``, ``message`` or ``wording`` module, or any module of
@@ -29,16 +35,22 @@ from classbeat.jobs import sentences
 
 SRC = Path(classbeat.__file__).parent
 USER_TEXT_FILE = re.compile(r"sentence|errors?\.py|consent|messages?\.py|wording")
+ACCOUNT_TEXT_FILES = (
+    "playlists/common.py",  # the Spotify playlist's description and the pool's name
+    "songs/phase2.py",  # the final playlist's name fallback
+    "studio/output_body_policy.py",  # the SwedeBeat playlist and mix names
+    "classes/removal.py",  # what stays in the user's accounts after a removal
+)
 
 
 def user_text_files() -> list[Path]:
-    found = [
+    found = {
         path
         for path in SRC.rglob("*.py")
         if USER_TEXT_FILE.search(path.name)
         or (path.parent.name == "locales" and path.parent.parent.name == "emails")
-    ]
-    return sorted(found)
+    }
+    return sorted(found | {SRC / name for name in ACCOUNT_TEXT_FILES})
 
 
 def literals(source: str, where: str) -> Iterator[tuple[str, str]]:
@@ -98,6 +110,10 @@ def test_every_language_the_mail_carries_is_read() -> None:
     assert locale_files <= set(MAIL)
 
 
+def test_the_modules_that_write_text_into_user_accounts_exist() -> None:
+    assert [name for name in ACCOUNT_TEXT_FILES if not (SRC / name).is_file()] == []
+
+
 def test_the_user_text_modules_are_found() -> None:
     names = {path.relative_to(SRC).as_posix() for path in user_text_files()}
     assert {
@@ -105,6 +121,7 @@ def test_the_user_text_modules_are_found() -> None:
         "spotify/errors.py",
         "connections/spotify_consent_policy.py",
         "emails/locales/da.py",
+        *ACCOUNT_TEXT_FILES,
     } <= names
 
 

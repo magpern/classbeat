@@ -18,6 +18,14 @@ const CLASSBEAT_ANALYSES: Record<string, RegExp> = {
   da: /classbeat analyserer musikken\./,
 }
 const TIMING_DATA: Record<string, RegExp> = { en: /timing data MOWL holds/, sv: /tidsdata MOWL har/, da: /tidsdata, MOWL har/ }
+// #1575: each item of the list of requests reads on its own: the timing data is one item, separated by
+// commas from the playlists before it and from the searches after it ("playlists and timing data ... for
+// searches and mixes" read as one object). da also says MOWL "styrer tiden" (times), not "holder tiden".
+const SEPARATE_ITEMS: Record<string, RegExp> = {
+  en: /\(your playlists, the timing data MOWL holds for their songs, searches for songs, and mixes\)/,
+  sv: /\(dina spellistor, den tidsdata MOWL har för låtarna i dem, sökningar efter låtar och mixar\)/,
+  da: /\(dine afspilningslister, de tidsdata, MOWL har for sangene på dem, søgninger efter sange og mixes\)/,
+}
 const NEVER = /^$/ // a locale without a rule fails its test: nothing matches an empty text
 const LEGAL = /^(privacy\.|draft\.privacy\.|draft\.subprocessors\.)/
 
@@ -36,6 +44,7 @@ describe('the privacy pages on who analyses the music', () => {
       expect(ANALYSE[lang], lang).toBeDefined()
       expect(CLASSBEAT_ANALYSES[lang], lang).toBeDefined()
       expect(TIMING_DATA[lang], lang).toBeDefined()
+      expect(SEPARATE_ITEMS[lang], lang).toBeDefined()
     }
   })
 
@@ -60,10 +69,20 @@ describe('the privacy pages on who analyses the music', () => {
       expect(li2).toMatch(CLASSBEAT_ANALYSES[lang] ?? NEVER)
     })
 
+    it(`${lang}: the list of requests separates its items`, () => {
+      expect(catalogue['privacy.processors.li2']).toMatch(SEPARATE_ITEMS[lang] ?? NEVER)
+    })
+
     it(`${lang}: the processor list names the timing data classbeat reads from MOWL`, () => {
       expect(catalogue['privacy.processors.li2']).toMatch(TIMING_DATA[lang] ?? NEVER)
     })
   }
+
+  it('da: MOWL "styrer tiden på" the class, it does not "holde tiden"', () => {
+    const li2 = String((da as Record<string, unknown>)['privacy.processors.li2'])
+    expect(li2).toMatch(/MOWL afspiller dit hold og styrer tiden på det;/)
+    expect(li2).not.toMatch(/holder tiden/)
+  })
 
   it('the check allows the timing-data read and refuses a claim that MOWL analyses or listens', () => {
     const ok = { 'privacy.processors.li2': 'MOWL holds timing data for the songs, which classbeat reads. MOWL plays and times your class.' }

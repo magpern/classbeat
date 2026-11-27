@@ -64,7 +64,7 @@ export const legalDa: Catalogue = {
   'privacy.processors.li1':
     'En udbyder af AI-modeller (Anthropic) får holdteksten og sangresuméet ovenfor for at udforme dit hold. Den er uden for EU, så det er en overførsel til et tredjeland.',
   'privacy.processors.li2':
-    'MOWL, Spotify og Swedebeat får forespørgsler via din forbindelse, når du tilslutter en konto, når classbeat læser din musik for at udforme et hold (dine afspilningslister og de tidsdata, MOWL har for deres sange, søgninger efter sange og mixes), og når det gemmer det, du har godkendt. MOWL afspiller dit hold og holder tiden; classbeat analyserer musikken. De har deres egne privatlivspolitikker.',
+    'MOWL, Spotify og Swedebeat får forespørgsler via din forbindelse, når du tilslutter en konto, når classbeat læser din musik for at udforme et hold (dine afspilningslister, de tidsdata, MOWL har for sangene på dem, søgninger efter sange og mixes), og når det gemmer det, du har godkendt. MOWL afspiller dit hold og styrer tiden på det; classbeat analyserer musikken. De har deres egne privatlivspolitikker.',
   'privacy.processors.li3':
     'Hvis du vælger at logge ind med Google, GitHub eller Microsoft, fortæller den udbyder os din bekræftede e-mailadresse og dit konto-id.',
   'privacy.processors.li4':
