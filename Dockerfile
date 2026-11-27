@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # One image for the web server and the worker. Base images are pinned by exact tag.
 
-FROM ghcr.io/astral-sh/uv:0.13.9 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.10 AS uv
 
 # --- frontend build ---------------------------------------------------------------------
 FROM node:24.22.3-bookworm-slim AS frontend
