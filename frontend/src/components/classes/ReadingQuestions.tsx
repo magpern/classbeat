@@ -110,8 +110,8 @@ function QuestionBlock({
 export function ReadingQuestions({ questions, confirm }: { questions: readonly ReadingQuestion[]; confirm: Confirmation }) {
   const t = useT()
   const [answers, setAnswers] = useState<ConfirmAnswers>(() => initialAnswers(questions))
-  // The same answer the server's re-read admit uses (`composer_available`): `GET /api/connections`' `composer_flow`.
-  const playlists = useComposerFlag(true) === true
+  // The same answer the server's re-read admit uses (`composer_available`): `GET /api/connections`' `composer_flow`; a failed read hides the option.
+  const playlists = useComposerFlag(true, false) === true
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const dirty = changed(questions, answers)

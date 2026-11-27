@@ -19,10 +19,10 @@ function questionsOf(...raw: object[]): ReadingQuestion[] {
   return decodeReadingExtras({ questions: raw }).questions
 }
 
-function show(questions: ReadingQuestion[], more: Partial<Confirmation> = {}, composer = true) {
+function show(questions: ReadingQuestion[], more: Partial<Confirmation> = {}, composer: boolean | 'fails' = true) {
   // The composer is available to the user (`GET /api/connections`' `composer_flow`) unless the test says the classic flow.
   const api = fakeApi({
-    'GET /api/connections': { connections: [], composer_flow: composer },
+    'GET /api/connections': composer === 'fails' ? () => new Response('', { status: 500 }) : { connections: [], composer_flow: composer },
     'GET /api/music/mowl-playlists': { playlists: [{ spotify_playlist_id: PLAYLIST, name: 'Tuesday ride' }] },
   })
   const confirm: Confirmation = {
@@ -151,6 +151,16 @@ describe('the confirm screen', () => {
     expect(screen.queryByTestId('reading-playlists')).toBeNull()
     expect(screen.getByRole('radio', { name: 'No music' })).toBeInTheDocument()
     expect(screen.getByLabelText('Or type your own answer')).toBeInTheDocument()
+  })
+
+  it('offers no playlist option when the connections read fails, and keeps "No music"', async () => {
+    const { api } = show(questionsOf(CLOSED), {}, 'fails')
+    await waitFor(() => {
+      expect(api.to('GET', '/api/connections').length).toBeGreaterThan(0)
+    })
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(screen.queryByRole('radio', { name: 'Use one of my playlists' })).toBeNull()
+    expect(screen.getByRole('radio', { name: 'No music' })).toBeInTheDocument()
   })
 
   it('says why a re-read was refused and keeps the answers', async () => {
