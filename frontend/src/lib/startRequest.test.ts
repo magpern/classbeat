@@ -33,4 +33,11 @@ describe('the kept request', () => {
     rememberRequest('c4', { request: 'Old', music: null, sport: 'cycling' })
     expect(recallRequest('c4')).not.toHaveProperty('playlists')
   })
+
+  it('keeps that the sport was picked by hand, and only when it was (#1562)', () => {
+    rememberRequest('c5', { request: 'A run', music: null, sport: 'running', manual: true })
+    expect(recallRequest('c5')?.manual).toBe(true)
+    rememberRequest('c6', { request: 'A run', music: null, sport: 'running' })
+    expect(recallRequest('c6')).not.toHaveProperty('manual')
+  })
 })

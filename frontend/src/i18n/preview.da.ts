@@ -53,7 +53,7 @@ export const previewDa: Catalogue = {
     'Spotify afviste at afspille. Afspilningskontrol kræver Spotify Premium, og så længe din Spotify-app er i udviklingstilstand, skal dit navn og din e-mail stå under dens brugeradministration.',
   'preview.err.no_device':
     'Der er ingen åben Spotify-app at afspille på. Åbn Spotify på din telefon eller computer, og tryk derefter på Afspil igen.',
-  'preview.err.rate_limited': 'Spotify beder dig vente lidt før næste forespørgsel. Prøv igen om lidt.',
+  'preview.err.rate_limited': 'Spotify beder dig vente lidt før næste anmodning. Prøv igen om lidt.',
   'preview.err.rate_limited_for': 'Spotify beder dig vente. Prøv igen om {seconds} sekunder.',
   'preview.err.upstream_unavailable': 'Spotify svarer ikke lige nu. Prøv igen om lidt.',
   'preview.err.invalid_response': 'Spotify gav et svar, der ikke kunne bruges. Prøv igen om lidt.',

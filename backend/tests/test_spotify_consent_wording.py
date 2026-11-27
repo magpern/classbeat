@@ -27,7 +27,7 @@ SHARED_FACTS = (
     "spotdown",
     "title, artists, length",
     "the explicit-lyrics flag from Spotify",
-    "a code derived from the Spotify track id",
+    "a code derived from its Spotify track id",
     "source other than Spotify",
     "public",
 )
@@ -68,7 +68,7 @@ def test_consent_text_names_the_mowl_link_and_what_spotdown_gets() -> None:
     assert "links it in MOWL so your class can be timed to it" in CONSENT_TEXT
     assert "analysed by spotdown" in CONSENT_TEXT
     assert "title, artists, length, the explicit-lyrics flag from Spotify" in CONSENT_TEXT
-    assert "a code derived from the Spotify track id" in CONSENT_TEXT
+    assert "a code derived from its Spotify track id" in CONSENT_TEXT
     assert "source other than Spotify" in CONSENT_TEXT
 
 

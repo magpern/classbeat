@@ -11,8 +11,9 @@
 //   A flip by the words stays on the screen and is not sent ("a class we run on Tuesdays" names no
 //   run), so the reading decides the sport, and the instructor confirms it. When a sent sport and
 //   the words disagree the reading asks (backend `which_sport`).
-// - `initialToggle(text, kept)`: a kept request ("Try again") restores its sport; it counts as
-//   chosen by hand when it differs from what the words say, so the hint never undoes it.
+// - `initialToggle(text, kept, manual)`: a kept request ("Try again") restores its sport; it counts as
+//   chosen by hand when it was (`manual`, kept with the request) or differs from what the words say,
+//   so the hint never undoes it and a hand-picked sport that matches the words is sent again.
 
 export type Sport = 'cycling' | 'running'
 
@@ -44,6 +45,7 @@ const RUNNING_WORDS: ReadonlySet<string> = new Set([
   'löprundor',
   'löpträning',
   'löpband',
+  'löpbandet',
   'springpass',
   'intervallöpning',
   // da
@@ -54,6 +56,7 @@ const RUNNING_WORDS: ReadonlySet<string> = new Set([
   'jogge',
   'løbetræning',
   'løbebånd',
+  'løbebåndet',
   'intervalløb',
 ])
 
@@ -112,9 +115,9 @@ export function sportOverride(state: SportToggle): Sport | undefined {
   return state.manual ? state.sport : undefined
 }
 
-/** The first state: the words' hint, or a kept request's sport (by hand when the words differ). */
-export function initialToggle(text: string, kept: Sport | null = null): SportToggle {
+/** The first state: the words' hint, or a kept request's sport (by hand when it was, or the words differ). */
+export function initialToggle(text: string, kept: Sport | null = null, manual = false): SportToggle {
   const hinted = sportHint(text)
-  if (kept === null || kept === hinted) return { sport: hinted, manual: false }
+  if (kept === null || (kept === hinted && !manual)) return { sport: hinted, manual: false }
   return chooseSport(kept)
 }

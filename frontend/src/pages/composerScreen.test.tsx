@@ -570,6 +570,25 @@ describe('Try again and examples', () => {
     expect(tagNames()).toEqual(['Sprint setSpotify', 'Walk-in-musikSpotify'])
   })
 
+  it('sends the sport again on Try again when it was picked by hand and the words say the same (#1562)', async () => {
+    const api = fakeApi(routes())
+    const first = renderAt('/classes/new')
+    fireEvent.change(await prompt(), { target: { value: 'A 5k run' } })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Sport' }), { target: { value: 'running' } })
+    fireEvent.click(screen.getByRole('button', { name: /^Start/ }))
+    await waitFor(() => {
+      expect(window.location.pathname).toBe(`/en/classes/${CLASS_ID}`)
+    })
+    first.unmount()
+    renderAt(`/classes/new?from=${CLASS_ID}`)
+    expect(await prompt()).toHaveValue('A 5k run')
+    fireEvent.click(screen.getByRole('button', { name: /^Start/ }))
+    await waitFor(() => {
+      expect(api.to('POST', '/api/jobs')).toHaveLength(2)
+    })
+    expect((api.to('POST', '/api/jobs')[1]?.body as { input: Record<string, unknown> }).input).toMatchObject({ sport_override: 'running' })
+  })
+
   it('fills the words of an example, and sends nothing until Start', async () => {
     const api = fakeApi(routes())
     renderAt('/classes/new?example=hill-challenge')

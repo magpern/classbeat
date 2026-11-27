@@ -27,9 +27,9 @@ CONSENT_TEXT: Final = (
     "on your Spotify profile and in search, and anyone with its link can open it. It is "
     "overwritten on each pick. classbeat links it in MOWL so your class can be timed to it. The "
     "songs are analysed by spotdown, the music-analysis service classbeat uses. For each "
-    "candidate it gets the title, artists, length, the explicit-lyrics flag from Spotify and a "
-    "code derived from the Spotify track id, and it analyses the same recording from a source "
-    "other than Spotify."
+    "candidate song it gets the following: the title, artists, length, the explicit-lyrics flag "
+    "from Spotify and a code derived from its Spotify track id. It analyses the same recording "
+    "from a source other than Spotify."
 )
 
 

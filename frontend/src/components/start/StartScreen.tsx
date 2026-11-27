@@ -48,7 +48,7 @@ export function StartScreen({ source, example = null }: { source: ReadySource; e
   const usedExample = kept === null ? example : null
   const [request, setRequest] = useState(kept?.request ?? (example === null ? '' : t(exampleKey(example, 'prompt'))))
   const [musicKey, setMusicKey] = useState<string | null>(kept?.music ?? null)
-  const [toggle, setToggle] = useState(() => initialToggle(request, kept?.sport ?? null))
+  const [toggle, setToggle] = useState(() => initialToggle(request, kept?.sport ?? null, kept?.manual === true))
   const sport = toggle.sport
   const [problem, setProblem] = useState<string | null>(null)
   // The server refused for want of Spotify (`needs_spotify`, or `song_picking_unavailable`: nothing to
@@ -88,7 +88,7 @@ export function StartScreen({ source, example = null }: { source: ReadySource; e
     if (gate?.blocking) return
     setProblem(null)
     setRefusedForSpotify(null)
-    const override = sportOverride(toggle) // a choice by hand, or Running (#1544)
+    const override = sportOverride(toggle) // a choice by hand only (#1558)
     const input: InterpretInput = {
       request: words,
       mowl_connection_id: source.connection.id,
@@ -102,7 +102,7 @@ export function StartScreen({ source, example = null }: { source: ReadySource; e
     void action.run(
       async () => {
         const job = await createInterpretJob(input, key)
-        rememberRequest(job.classId, { request: words, music: chosen?.key ?? null, sport })
+        rememberRequest(job.classId, { request: words, music: chosen?.key ?? null, sport, ...(toggle.manual ? { manual: true } : {}) })
         navigate(`/classes/${job.classId}`)
       },
       (error) => {
