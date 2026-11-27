@@ -32,7 +32,7 @@ const DEVICES = [
   },
 ]
 const CONSENT_TEXT =
-  'classbeat manages one working playlist in your Spotify account, named classbeat working copy, to ask for song candidates and have MOWL analyse them. It is public, so MOWL can find it: it can show on your Spotify profile and in search, and anyone with its link can open it. It is overwritten on each pick.'
+  'classbeat manages one working playlist in your Spotify account, named classbeat working copy, to hold the song candidates of a pick. It is public, so MOWL can find it: it can show on your Spotify profile and in search, and anyone with its link can open it. It is overwritten on each pick. classbeat links it in MOWL so your class can be timed to it. The songs are analysed by spotdown, the music-analysis service classbeat uses: classbeat sends it the title, artists and length of each candidate, and spotdown analyses the same recording from a source other than Spotify.'
 
 const base = {
   'GET /api/auth/session': SIGNED_IN,
@@ -214,7 +214,7 @@ describe('the consent switch', () => {
       last_error_message: null,
       callback_url: 'http://127.0.0.1:8000/oauth/spotify/callback',
       pool_consent: given,
-      consent_version: given ? 1 : null,
+      consent_version: given ? 3 : null,
       consent_text: CONSENT_TEXT,
       song_picking_enabled: true,
     })

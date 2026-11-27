@@ -25,6 +25,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
 from classbeat import connections, playlists
+from classbeat.connections.spotify_consent_policy import CONSENT_VERSION
 from classbeat.jobs import Complete, JobKind, JobRun, KindRegistry, queue
 from classbeat.jobs.runner import Execution, RunConfig, execute
 from classbeat.playlists import common
@@ -80,7 +81,7 @@ class PlayEnv:
         owner = await self.spot.env.user(f"pick-{uuid.uuid4().hex[:10]}@example.com")
         ctx = make_context(owner)
         await self.spot.seed(ctx, client_id, spotify_user)
-        assert await connections.give_pool_consent(self.factory, ctx, 1)
+        assert await connections.give_pool_consent(self.factory, ctx, CONSENT_VERSION)
         return owner
 
     def connection_id(self, owner: UUID) -> UUID:
