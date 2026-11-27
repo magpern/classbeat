@@ -28,7 +28,8 @@ class GroupModel:
     provider: ModelProvider
     agent: AgentConfig
     # The choice may serve a running job (``routes.ModelChoice.running_covered``; the worker's
-    # ``fake`` bypass, dev and CI only, says yes). Running kinds refuse ``False`` (ADR 0018).
+    # ``fake`` bypass, dev and CI only, says yes). A running job on ``False`` is served with the
+    # stale-route warning (``design.sport.serve_model``, ADR 0018 Amendment 6, #1544).
     running_covered: bool = False
     # The same for a soundless job (``routes.ModelChoice.soundless_covered``: also a soundless
     # suite version; the ``fake`` bypass says yes). A sketch refuses ``False``; a soundless class

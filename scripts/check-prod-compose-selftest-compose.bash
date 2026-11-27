@@ -45,6 +45,7 @@ for m in \
   '.services.web.environment.CLASSBEAT_PUBLIC_BASE_URL = "http://classbeat.example.test"' \
   '.services.web.environment.CLASSBEAT_ENVIRONMENT = "dev"' \
   '.services.web.environment.CLASSBEAT_RUNNING_ENABLED = "true"' \
+  '.services.worker.environment.CLASSBEAT_RUNNING_ENABLED = "false"' \
   '.services.worker.environment.CLASSBEAT_SOUNDLESS_ENABLED = "true"' \
   '.services.web.environment.CLASSBEAT_SOUNDLESS_ENABLED = "false"' \
   '.services.worker.environment.CLASSBEAT_SWEDEBEAT_ENABLED = "true"' \

@@ -10,9 +10,9 @@ of 2026-11-24). It takes no credit and counts toward the class's revise limit
 like any chat revision (``chat.create_state``).
 
 Any other base keeps its gates in their order: ``not_changeable`` for a class without a music
-source (a duplicate of a class on picked songs, #536), the running gate (``sport.admit_class``,
-ADR 0018, #509), the kind check of ``music_kind.admit_class`` (a studio class; a soundless class
-has no gate since #1543).
+source (a duplicate of a class on picked songs, #536), the kind check of ``music_kind.admit_class``
+(a studio class; a soundless class has no gate since #1543, a running class none since ADR 0018
+Amendment 6, #1544).
 """
 
 from typing import Any
@@ -22,7 +22,7 @@ from pydantic import BaseModel, SerializerFunctionWrapHandler, model_serializer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.context import UserContext
-from classbeat.design import music_kind, sketch_gate, sport
+from classbeat.design import music_kind, sketch_gate
 from classbeat.design.kind_music import has_music_source
 from classbeat.design.revision_ready import is_sketch
 from classbeat.jobs.kinds import Refused
@@ -52,9 +52,6 @@ async def admit_base(
         return True, await sketch_gate.admit_sketch(db, ctx)
     if not await has_music_source(db, ctx.user_id, class_id):
         return False, Refused("not_changeable")
-    running = await sport.admit_class(db, ctx, class_id)
-    if running is not None:
-        return False, running
     return False, await music_kind.admit_class(db, ctx, class_id)
 
 

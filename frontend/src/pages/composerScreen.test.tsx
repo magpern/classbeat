@@ -9,7 +9,7 @@ import { CLASS_ID, SESSION_ROUTES, jobBody } from '../test/jobFixtures'
 import { renderAt } from '../test/render'
 
 // ADR 0038 section 10.1 (#1190): the composer at /classes/new with `composer_flow` on. The API is faked; nothing
-// here reaches a network. The flag comes with the connections answer, as `running_enabled` does.
+// here reaches a network. The flag comes with the connections answer.
 
 const IDS = ['AbCdEfGhIjKlMnOpQrStU1', 'AbCdEfGhIjKlMnOpQrStU2', 'AbCdEfGhIjKlMnOpQrStU3', 'AbCdEfGhIjKlMnOpQrStU4', 'AbCdEfGhIjKlMnOpQrStU5', 'AbCdEfGhIjKlMnOpQrStU6']
 const NAMES = ['Hill climbs', 'Sprint set', 'Walk-in-musik', 'Club classics', 'Run 3', 'Cool down']
@@ -314,21 +314,42 @@ describe('starting from the composer', () => {
 })
 
 describe('the sport select', () => {
-  it('is there only when running is enabled', async () => {
+  // #1544 (ADR 0018 Amendment 6): running is always available, so the select always shows; it
+  // follows the words while the instructor types, and a sport picked by hand sticks and is sent.
+  it('is always there, on Cycling at first', async () => {
     fakeApi(routes())
-    const view = renderAt('/classes/new')
-    await prompt()
-    expect(screen.queryByRole('combobox', { name: 'Sport' })).toBeNull()
-    view.unmount()
-    fakeApi(routes({}, { running_enabled: true }))
     renderAt('/classes/new')
-    expect(await screen.findByRole('combobox', { name: 'Sport' })).toHaveValue('cycling')
+    await prompt()
+    expect(screen.getByRole('combobox', { name: 'Sport' })).toHaveValue('cycling')
+  })
+
+  it('flips to Running while the words name a run, and back when they are gone', async () => {
+    fakeApi(routes())
+    renderAt('/classes/new')
+    fireEvent.change(await prompt(), { target: { value: 'A 5k run' } })
+    expect(screen.getByRole('combobox', { name: 'Sport' })).toHaveValue('running')
+    fireEvent.change(await prompt(), { target: { value: 'A 5k ride' } })
+    expect(screen.getByRole('combobox', { name: 'Sport' })).toHaveValue('cycling')
+  })
+
+  it('keeps a sport picked by hand while typing and sends it as sport_override', async () => {
+    const api = fakeApi(routes())
+    renderAt('/classes/new')
+    fireEvent.change(await prompt(), { target: { value: 'A 5k run' } })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Sport' }), { target: { value: 'cycling' } })
+    fireEvent.change(await prompt(), { target: { value: 'A 5k run with strides' } })
+    expect(screen.getByRole('combobox', { name: 'Sport' })).toHaveValue('cycling')
+    fireEvent.click(screen.getByRole('button', { name: /^Start/ }))
+    await waitFor(() => {
+      expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+    })
+    expect(sent(api)).toMatchObject({ input: { request: 'A 5k run with strides', sport_override: 'cycling' } })
   })
 
   it('sends running, and drops "No music", which a running class does not have', async () => {
-    const api = fakeApi(routes({}, { running_enabled: true }))
+    const api = fakeApi(routes())
     renderAt('/classes/new')
-    fireEvent.change(await prompt(), { target: { value: 'A 5k run' } })
+    fireEvent.change(await prompt(), { target: { value: '45 minutes of intervals' } })
     fireEvent.click(screen.getByRole('button', { name: /Add music/ }))
     choose('No music')
     fireEvent.change(screen.getByRole('combobox', { name: 'Sport' }), { target: { value: 'running' } })
@@ -377,7 +398,7 @@ describe('Surprise me', () => {
   })
 
   it('gives a running class a running description, never a ride', async () => {
-    const api = fakeApi(routes({}, { running_enabled: true }))
+    const api = fakeApi(routes())
     renderAt('/classes/new')
     fireEvent.change(await screen.findByRole('combobox', { name: 'Sport' }), { target: { value: 'running' } })
     fireEvent.click(screen.getByRole('button', { name: /Surprise me/ }))
@@ -495,7 +516,7 @@ describe('the Spotify gate in the composer', () => {
 
 describe('Try again and examples', () => {
   it('opens again with the same words, playlists and sport after Try again', async () => {
-    fakeApi(routes({}, { running_enabled: true }))
+    fakeApi(routes())
     const first = renderAt('/classes/new')
     fireEvent.change(await prompt(), { target: { value: 'Hard hills for Thursday' } })
     fireEvent.click(screen.getByRole('button', { name: /Add music/ }))

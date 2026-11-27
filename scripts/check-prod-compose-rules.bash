@@ -59,10 +59,6 @@ check_common() {
     || fail "Swedebeat must be off by default" || return 1
   q '.services.worker.environment.CLASSBEAT_SWEDEBEAT_ENABLED == "false"' \
     || fail "Swedebeat must be off by default on the worker too" || return 1
-  q '.services.web.environment.CLASSBEAT_RUNNING_ENABLED == "false"' \
-    || fail "running classes must be off by default" || return 1
-  q '.services.worker.environment.CLASSBEAT_RUNNING_ENABLED == "false"' \
-    || fail "running classes must be off by default on the worker too" || return 1
   # Pre-production switches (roadmap Amendment 36, ADR 0038 section 2, #1498): the default render is
   # off on web and the worker (the owner turns them on in .env, never the shipped default), the lags
   # are unset and the worker's concurrency is 2 (worker only).
@@ -201,7 +197,7 @@ check_keys() {
       "CLASSBEAT_DEEPSEEK_ENABLED","CLASSBEAT_ENVIRONMENT","CLASSBEAT_LOG_LEVEL","CLASSBEAT_MAIL_SUPPORT_ADDRESS","CLASSBEAT_PUBLIC_BASE_URL",
       "CLASSBEAT_SIGNUP_MODE","CLASSBEAT_SMTP_HOST","CLASSBEAT_SMTP_PORT","CLASSBEAT_SMTP_SENDER",
       "CLASSBEAT_SMTP_TLS","CLASSBEAT_SMTP_USERNAME"];
-    def flags: ["CLASSBEAT_RUNNING_ENABLED","CLASSBEAT_SWEDEBEAT_ENABLED",
+    def flags: ["CLASSBEAT_SWEDEBEAT_ENABLED",
       "CLASSBEAT_SWEDEBEAT_GATEWAY_URL","CLASSBEAT_SWEDEBEAT_STUDIO","CLASSBEAT_SONG_PICKING",
       "CLASSBEAT_COMPOSER_FLOW","CLASSBEAT_MOWL_LISTING_LAG_SECONDS","CLASSBEAT_SPOTIFY_LISTING_LAG_SECONDS"];
     def allowed_env: {

@@ -37,15 +37,12 @@ export function AdvancedForm({
   songs,
   swedebeat,
   mixes,
-  runningEnabled,
 }: {
   connection: Connection
   playlists: Playlist[]
   songs: SongsAvailability
   swedebeat: SwedebeatMixAvailability
   mixes: SwedebeatMix[]
-  /** The effective `running_enabled` flag: without it the form has no Running at all. */
-  runningEnabled: boolean
 }) {
   const t = useT()
   const { navigate } = useRouter()
@@ -58,8 +55,8 @@ export function AdvancedForm({
   const [mixId, setMixId] = useState('')
   const [music, setMusic] = useState<Music>('playlist')
   const [sport, setSport] = useState<'cycling' | 'running'>('cycling')
-  // Running is never on the form while the flag is off, whatever the state says.
-  const running = runningEnabled && sport === 'running'
+  // Running is always offered (#1544): no flag hides it.
+  const running = sport === 'running'
   // "No music" is cycling only; no flag hides it (#1543).
   const noMusic = !running && music === 'none'
   const [length, setLength] = useState(preset.length)
@@ -176,22 +173,20 @@ export function AdvancedForm({
           <PlanNudge trigger="low" plan={plan} />
         </div>
         <FieldCard title={t('newclass.basics')} className={section}>
-          {runningEnabled ? (
-            <Choice
-              label={t('newclass.sport')}
-              options={[
-                { value: 'cycling', label: t('newclass.sport.cycling') },
-                { value: 'running', label: t('newclass.sport.running') },
-              ]}
-              value={running ? 'running' : 'cycling'}
-              onValueChange={(next) => {
-                setSport(next)
-                if (next === 'running') setMusic('playlist')
-              }}
-            >
-              {running ? <p className="m-0 text-[0.9375rem] text-muted">{t('newclass.sport.runningHint')}</p> : null}
-            </Choice>
-          ) : null}
+          <Choice
+            label={t('newclass.sport')}
+            options={[
+              { value: 'cycling', label: t('newclass.sport.cycling') },
+              { value: 'running', label: t('newclass.sport.running') },
+            ]}
+            value={running ? 'running' : 'cycling'}
+            onValueChange={(next) => {
+              setSport(next)
+              if (next === 'running') setMusic('playlist')
+            }}
+          >
+            {running ? <p className="m-0 text-[0.9375rem] text-muted">{t('newclass.sport.runningHint')}</p> : null}
+          </Choice>
           <TextInput
             label={t('newclass.className')}
             value={title}

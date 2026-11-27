@@ -3,14 +3,14 @@ ADR 0007 sections 5 to 8): the class's sport is its stored brief's, the library 
 program (its ``ActivityTypeID`` 1, segments 0, running interval bodies with a float ``Gradient``)
 on the playlist of the class's existing link and never attaches music; the reconcilers, the
 read-back and ``state_hash`` handle running programs while every cycling hash and request stays
-as it was; Update never crosses sports, ``overwrite`` included; and ``running_enabled`` off is
-``feature_off``. The in-process fake MOWL (``savetools``); never the network.
+as it was; Update never crosses sports, ``overwrite`` included. Since #1544 (ADR 0018 Amendment 6)
+there is no switch: nothing stored and no gate configured, a running class is saved and updated,
+and every other approval check still refuses (the hash, the user's own class and revision, the
+sport, the music). The in-process fake MOWL (``savetools``); never the network.
 """
 
 import copy
-import json
 import uuid
-from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -20,7 +20,6 @@ from mowl import workout
 
 from classbeat import mowl_state
 from classbeat.db import user_session
-from classbeat.design import sport
 from classbeat.operations import Operation, ReconcileInput, Reconciliation
 from classbeat.saving import approval, operation, update_operation
 from ctx import make_context
@@ -51,35 +50,9 @@ CYCLING_HASHES = {
 
 
 @pytest.fixture(autouse=True)
-def running_on(senv: SaveEnv) -> Iterator[None]:
-    """The environment's switch on (after ``senv``, whose app set it from its settings, off) and
-    the admin flag stored ``on`` (#509: nothing stored is off). Save reads the switch only, so no
-    route is needed."""
-    sport.configure(sport.SportGate(running_enabled=True))
-    admin_flag(senv, "on")  # app_settings outlives a test: the fixture removes the row after
-    try:
-        yield
-    finally:
-        admin_flag(senv, None)
-        sport.configure(None)
-
-
-def admin_flag(senv: SaveEnv, value: str | None) -> None:
-    senv.sql("DELETE FROM app_settings WHERE key = 'running_enabled'")
-    if value is not None:
-        senv.sql(
-            "INSERT INTO app_settings (key, value) VALUES ('running_enabled', CAST(:v AS jsonb))",
-            v=json.dumps(value),
-        )
-
-
-def switch_off(senv: SaveEnv, how: str) -> None:
-    if how == "environment":
-        sport.configure(sport.SportGate(running_enabled=False))
-    elif how == "cleared":
-        admin_flag(senv, None)  # #509: nothing stored is off, as the admin's DELETE leaves it
-    else:
-        admin_flag(senv, "off")
+def nothing_stored(senv: SaveEnv) -> None:
+    """No switch to turn on (#1544): no ``app_settings`` row, no gate configured."""
+    assert senv.sql("SELECT count(*) FROM app_settings").scalar_one() == 0
 
 
 def writes_sent(fake: FakeMowlPrograms, since: int = 0) -> list[str]:
@@ -223,8 +196,7 @@ async def test_a_cycling_save_still_sends_exactly_the_cycling_requests(
 ) -> None:
     """The golden cycling save: a legacy class (no brief) and a class whose brief says cycling
     write the same program, header ``ActivityTypeID`` 0, the cycling interval bodies with an int
-    ``Gradient`` 0, and the same requests; neither reads the running flag."""
-    admin_flag(senv, "off")  # running off changes nothing for a ride
+    ``Gradient`` 0, and the same requests (no running flag exists to read since #1544)."""
     results = []
     for token, brief in ((TOKEN_A, None), (TOKEN_B, {"length_min": 45, "sport": "cycling"})):
         owner, connection = await senv.owner(token)
@@ -499,10 +471,8 @@ async def test_the_update_reconciler_decides_a_running_write_both_ways(
     check = ReconcileInput(
         uenv.s.ops.factory, uenv.s.ops.keyring, make_context(live.saved.owner), op
     )
-    # Unchanged, nothing new in the listing: provably no effect, even with the flag off now.
-    admin_flag(uenv.s, "off")
+    # Unchanged, nothing new in the listing: provably no effect (the reconciler never read a flag).
     assert await update_operation.UPDATE.reconcile(check) == Reconciliation("failed")
-    admin_flag(uenv.s, "on")
     fresh = fake_programs.plant(
         TOKEN_A, running_spec_of(RUNNING_DRAFT_2), playlist_id=LINKED_PLAYLIST
     )
@@ -599,46 +569,48 @@ async def test_the_revision_check_reads_the_sport_and_rebuilds_the_running_spec(
     assert (found.sport, found.running, found.spec) == ("running", True, RUN_SPEC)
 
 
-@pytest.mark.parametrize("off", ["environment", "database", "cleared"])
-async def test_save_and_update_of_a_running_class_are_feature_off_while_running_is_off(
-    uenv: UpdateEnv, fake_programs: FakeMowlPrograms, update_browser: Any, off: str
+async def test_save_and_update_of_a_running_class_need_no_switch(
+    uenv: UpdateEnv, fake_programs: FakeMowlPrograms, update_browser: Any
 ) -> None:
-    """ADR 0018 section 5: off means ``feature_off``, also for a class designed while it was
-    on; at creation (409, no job) and in the worker for a job queued before it went off
-    (nothing sent, not even the preflight listing)."""
+    """#1544 replaces "off is ``feature_off``" (ADR 0018 section 5): with nothing stored, a running
+    class is admitted for Save and Update and its Update is written in place, still running."""
     live = await uenv.running_live()
     revision = uenv.revision(live, RUNNING_DRAFT_2)
     browser = await update_browser(live)
-    try:
-        switch_off(uenv.s, off)
-        for answer in (await browser.save(), await browser.update(revision, RUNNING_DRAFT_2)):
-            assert answer.status_code == 409, answer.text
-            assert answer.json()["detail"]["reason"] == "feature_off"
-        for queue in (
-            lambda: uenv.s.job(live.saved),
-            lambda: uenv.job(live, revision, RUNNING_DRAFT_2),
-        ):
-            sport.configure(sport.SportGate(running_enabled=True))
-            admin_flag(uenv.s, "on")
-            job_id = queue()  # queued while running was on
-            switch_off(uenv.s, off)
-            since, lists = len(fake_programs.requests), fake_programs.lists
-            await uenv.run_next()
-            row = uenv.row(job_id)
-            assert (row.state, row.error_category) == ("failed", "feature_off")
-            assert (fake_programs.requests[since:], fake_programs.lists) == ([], lists)
-        # A cycling class is saved and updated as ever (it never reads the flag).
-        ride = await uenv.live(TOKEN_B)
-        ride_job = uenv.job(ride, uenv.revision(ride), DRAFT_2)
-        await uenv.run_next()
-        assert uenv.row(ride_job).state == "completed"
-    finally:
-        sport.configure(sport.SportGate(running_enabled=True))
-        admin_flag(uenv.s, "on")
-    [program] = fake_programs.owned(TOKEN_A)  # the running program, unchanged
-    assert mowl_state.matches(
-        RUN_SPEC, fake_programs.read_program(program), playlist_id=LINKED_PLAYLIST
-    )
+    answer = await browser.update(revision, RUNNING_DRAFT_2)
+    assert answer.status_code == 201, answer.text
+    await uenv.run_next()
+    row = uenv.row(UUID(answer.json()["id"]))
+    assert (row.state, row.error_category) == ("completed", None)
+    [program] = fake_programs.owned(TOKEN_A)
+    assert program.body["ActivityTypeID"] == workout.RUNNING_ACTIVITY_TYPE
+
+
+async def test_a_running_save_keeps_every_other_approval_check(
+    senv: SaveEnv, fake_programs: FakeMowlPrograms, save_browser: Any
+) -> None:
+    """With the switch gone the approval still runs against the authenticated user: a hash that
+    is not the stored one, another user's running class and a revision of another class are
+    refused at creation (no job), and nothing reaches MOWL."""
+    mine = await senv.running_class()
+    theirs = await senv.running_class(TOKEN_B)
+    other = await senv.running_class()  # a second class of the same user
+    browser = await save_browser(mine)
+    cases = [
+        ({"content_hash": "00" * 32}, "hash_mismatch"),
+        # Another user's class answers as an unknown one (RLS and ``owner_id``).
+        (
+            {"class_id": str(theirs.class_id), "revision_id": str(theirs.revision_id)},
+            "class_not_found",
+        ),
+        ({"revision_id": str(other.revision_id)}, "invalid_input"),  # another class's revision
+    ]
+    for overrides, reason in cases:
+        refused = await browser.save(**overrides)
+        assert refused.status_code in (404, 409), refused.text
+        assert refused.json()["detail"]["reason"] == reason, overrides
+    assert senv.sql("SELECT count(*) FROM jobs WHERE kind = 'save_workout'").scalar_one() == 0
+    assert (fake_programs.lists, fake_programs.write_count, fake_programs.programs) == (0, 0, {})
 
 
 async def test_the_class_api_names_every_classs_sport_legacy_rows_cycling(

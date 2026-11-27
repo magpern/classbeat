@@ -36,7 +36,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0081_drop_map_analyser"]
+    assert script.get_heads() == ["0082_retire_running_flag"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -57,7 +57,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0081_drop_map_analyser"]
+        assert applied_revisions(database_url) == ["0082_retire_running_flag"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -891,7 +891,7 @@ def test_0059_admits_the_composer_flag_and_the_downgrade_removes_it(
         with pytest.raises(IntegrityError):
             put("composer_flow")
         command.upgrade(config, "head")
-        assert keys() == ["running_enabled"]
+        assert keys() == []  # 0082 (#1544) retires the running_enabled row too
     finally:
         with admin.begin() as connection:
             connection.execute(text("DELETE FROM app_settings"))
@@ -935,7 +935,7 @@ def test_0043_retires_the_soundless_flag_and_the_downgrade_widens_the_check(
         assert keys() == ["banner", "running_enabled"]
         put("soundless_enabled", "null")  # the widened check takes it again (a cleared row)
         command.upgrade(config, "head")
-        assert keys() == ["banner", "running_enabled"]
+        assert keys() == ["banner"]  # 0082 (#1544) retires the running_enabled row too
     finally:
         with admin.begin() as connection:
             connection.execute(text("DELETE FROM app_settings"))
@@ -1602,5 +1602,49 @@ def test_0081_drops_the_map_analyser_and_the_downgrade_restores_it(
         with pytest.raises(IntegrityError, match="provenance_spotdown"):
             put(owner, "bare", None, analyser=True)
     finally:
+        admin.dispose()
+        command.downgrade(config, "base")
+
+
+def test_0082_retires_the_running_flag_and_the_downgrade_widens_the_check(
+    owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1544 (ADR 0018 Amendment 6): on a database that still holds a ``running_enabled`` row
+    (``on``, as an admin left it), the upgrade deletes it and leaves every other row, and the
+    narrowed check refuses the key afterwards; the downgrade widens the check back (it restores
+    no row: the older code reads a missing row as off) and the upgrade runs again."""
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    admin = create_engine(database_url)
+
+    def put(key: str, value: str = '"on"') -> None:
+        with admin.begin() as connection:
+            connection.execute(
+                text("INSERT INTO app_settings (key, value) VALUES (:k, CAST(:v AS jsonb))"),
+                {"k": key, "v": value},
+            )
+
+    def keys() -> list[str]:
+        with admin.connect() as connection:
+            rows = connection.execute(text("SELECT key FROM app_settings ORDER BY key")).all()
+        return [row[0] for row in rows]
+
+    try:
+        command.upgrade(config, "0081_drop_map_analyser")
+        put("running_enabled")
+        put("composer_flow")
+        put("banner", '{"text": "kept", "level": "info"}')
+        command.upgrade(config, "0082_retire_running_flag")
+        assert keys() == ["banner", "composer_flow"]  # only the running row is gone
+        with pytest.raises(IntegrityError):
+            put("running_enabled")
+        command.downgrade(config, "0081_drop_map_analyser")
+        assert keys() == ["banner", "composer_flow"]
+        put("running_enabled", "null")  # the widened check takes it again (a cleared row)
+        command.upgrade(config, "head")
+        assert keys() == ["banner", "composer_flow"]
+    finally:
+        with admin.begin() as connection:
+            connection.execute(text("DELETE FROM app_settings"))
         admin.dispose()
         command.downgrade(config, "base")

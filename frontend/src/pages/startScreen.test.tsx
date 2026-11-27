@@ -127,6 +127,54 @@ describe('the start screen', () => {
   })
 })
 
+describe('the sport toggle (#1544: running is always available)', () => {
+  const pressed = (name: string) => screen.getByRole('button', { name }).getAttribute('aria-pressed')
+
+  it('always shows, on Cycling at first', async () => {
+    fakeApi(routes())
+    renderAt('/classes/new')
+    await prompt()
+    const group = screen.getByRole('group', { name: 'Sport' })
+    expect(within(group).getByRole('button', { name: 'Running' })).toBeInTheDocument()
+    expect(pressed('Cycling')).toBe('true')
+  })
+
+  it('flips to Running while the words name a run, and back when they are gone', async () => {
+    fakeApi(routes())
+    renderAt('/classes/new')
+    fireEvent.change(await prompt(), { target: { value: 'En löpning på 40 minuter' } })
+    expect(pressed('Running')).toBe('true')
+    fireEvent.change(await prompt(), { target: { value: 'Ett pass på 40 minuter' } })
+    expect(pressed('Cycling')).toBe('true')
+  })
+
+  it('sends Running when the words chose it, and nothing for Cycling the words chose', async () => {
+    const api = fakeApi(routes(withSpotify(), connectionsBody(true)))
+    renderAt('/classes/new')
+    fireEvent.change(await prompt(), { target: { value: 'A 45 min run with intervals' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
+    await waitFor(() => {
+      expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+    })
+    expect((api.to('POST', '/api/jobs')[0]?.body as { input: Record<string, unknown> }).input.sport_override).toBe('running')
+  })
+
+  it('keeps a choice by hand while typing, and sends it as sport_override', async () => {
+    const api = fakeApi(routes(withSpotify(), connectionsBody(true)))
+    renderAt('/classes/new')
+    fireEvent.change(await prompt(), { target: { value: 'A 45 min run' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Cycling' }))
+    fireEvent.change(await prompt(), { target: { value: 'A 45 min run with intervals' } })
+    expect(pressed('Cycling')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
+    await waitFor(() => {
+      expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+    })
+    const input = (api.to('POST', '/api/jobs')[0]?.body as { input: Record<string, unknown> }).input
+    expect(input).toMatchObject({ request: 'A 45 min run with intervals', sport_override: 'cycling' })
+  })
+})
+
 describe('a class with music and song picking', () => {
   const featureOff = { 'GET /api/connections/spotify': () => reason(404, 'feature_off') }
   const start = async () => {
@@ -336,7 +384,7 @@ describe('Ideas for your class', () => {
   })
 
   it('has no Games for a running class', async () => {
-    fakeApi(routes({ ...plan(true) }, { ...connectionsBody(false), running_enabled: true }))
+    fakeApi(routes({ ...plan(true) }, connectionsBody(false)))
     renderAt('/classes/new')
     await openIdeas()
     expect(await screen.findByRole('button', { name: 'Games' })).toBeInTheDocument()

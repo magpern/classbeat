@@ -10,8 +10,8 @@ the interpreter may be offered (and refuses ``needs_spotify``, or ``song_picking
 song picking is off for the user, before any model call and with no credit, a request that has no
 Spotify connection and can only end without music: roadmap Amendment 25,
 ``interpret_music_policy.without_spotify_is_refused``; never with the composer available, whose
-sketch needs no Spotify, ADR 0038 amendment of 2026-11-24): ``sports`` (running only when the
-running gate admits the user, ``sport.admit_running``), ``pick_ready`` (a Spotify connection is
+sketch needs no Spotify, ADR 0038 amendment of 2026-11-24): ``sports`` (both, always: running
+has no gate since ADR 0018 Amendment 6, #1544), ``pick_ready`` (a Spotify connection is
 named and song picking admits the user), ``song_picking`` (song picking admits the user),
 ``swedebeat_mixes`` (the Swedebeat flag is on and the user uses Swedebeat) and ``composer``
 (``design.composer``; ADR 0038 section 2). Without the composer a request with ``music_sources``
@@ -40,12 +40,12 @@ from classbeat.design import (
     limits,
     mixadmit,
     revision,
-    sport,
 )
 from classbeat.design.interpret_music_policy import no_music_reason, without_spotify_is_refused
 from classbeat.design.kind import NoMusicChoice, SpotifyMusicChoice, SwedebeatMusicChoice
 from classbeat.design.kind_music import song_picking
 from classbeat.design.music_sources import MusicSources, check_sources
+from classbeat.design.request_policy import ALL_SPORTS
 from classbeat.design.revise import Request
 from classbeat.jobs.inputs import ModelJobInput, Title, jsonb_size
 from classbeat.jobs.kinds import Admitted, Refused
@@ -128,8 +128,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     if parsed.music_sources is not None and not composing:
         return Refused("feature_off")
     await quota.check_cost(db, ctx)  # QuotaRefused ``cost``: 409 ``quota`` (ADR 0011 section 4)
-    running = await sport.admit_running(db, ctx) is None
-    sports = ["cycling", "running"] if running else ["cycling"]
+    sports = list(ALL_SPORTS)  # running is always available (ADR 0018 Amendment 6, #1544)
     picking = await song_picking(db, ctx)
     pick_ready = spotify is not None and picking
     mixes = await mixadmit.flag_on(db, mixadmit.current().enabled) and await _uses_swedebeat(
@@ -139,7 +138,6 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     if spotify is None and without_spotify_is_refused(
         music_source=None if override is None else override.source,
         sport_override=parsed.sport_override,
-        running_offered=running,
         mixes=mixes,
         composer=composing,
     ):  # Amendment 25: no model call and no credit; with song picking off, nothing to connect

@@ -21,7 +21,7 @@ from classbeat.account.export import build_export
 from classbeat.agent import Provenance
 from classbeat.classes import duplicate as dup
 from classbeat.classes import duplicate_music as dm
-from classbeat.design import music_kind, sport
+from classbeat.design import music_kind
 from ctx import make_context
 from jobapi import Browser, new_key, owner_lock_key, until_waiting_on_the_owner_lock
 from jobcore import JobsEnv
@@ -357,10 +357,7 @@ async def test_refusals_create_nothing(browsers: Any, jobs_admin: Connection) ->
     browser: Browser = await browsers(mowl=False)
     mine = Source(jobs_admin, browser)
     unready = Source(jobs_admin, browser, brief=None)
-    running_music = {**MUSIC, "link_id": LINK}
-    running = Source(
-        jobs_admin, browser, brief=RUNNING_BRIEF, content=RUNNING_DRAFT, music=running_music
-    )
+    # No running case: a running copy has no switch since #1544 (``..._duplicated_with_no_switch``).
     mix = Source(
         jobs_admin, browser, music_source={"source": "mowl_swedebeat_mix", "mix_id": "mix-1"}
     )
@@ -368,7 +365,6 @@ async def test_refusals_create_nothing(browsers: Any, jobs_admin: Connection) ->
     expected = [
         (await mine.duplicate(content_hash="0" * 64), 409, "hash_mismatch"),
         (await unready.duplicate(), 409, "not_ready"),
-        (await running.duplicate(), 409, "feature_off"),  # running off in the test app
         (await mix.duplicate(), 409, "feature_off"),  # Swedebeat off in the test app
         (await mine.duplicate(title=" \u0000 "), 422, "invalid_input"),
         (await mine.duplicate(content_hash="XYZ"), 422, "invalid_input"),
@@ -481,12 +477,12 @@ async def test_the_idempotency_key_is_required(two: tuple[Source, Source]) -> No
     assert mine.ledger() == []
 
 
-async def test_a_running_class_is_admitted_only_through_the_running_gate(
+async def test_a_running_class_is_duplicated_with_no_switch(
     browsers: Any, jobs_admin: Connection
 ) -> None:
-    """#509 (ADR 0018 Amendment 5): a running copy goes through ``sport.admit_running``, as a
-    running design does: the switch, a stored ``on`` (nothing stored is off) and the user's own
-    plan covered (``running_not_evaluated``), before anything is written."""
+    """#1544 (ADR 0018 Amendment 6) replaces the copy's running gate of #509 (``feature_off``,
+    ``running_not_evaluated``): with nothing stored and no route covering running, a running class
+    is copied like any other, one class credit, its brief still running."""
     mine = Source(
         jobs_admin,
         await browsers(mowl=False),
@@ -494,32 +490,12 @@ async def test_a_running_class_is_admitted_only_through_the_running_gate(
         content=RUNNING_DRAFT,
         music={**MUSIC, "link_id": LINK},
     )
-    classes = mine.classes()
-
-    def gate(*, enabled: bool = True, fake: bool = True, stored: bool = True) -> None:
-        sport.configure(sport.SportGate(running_enabled=enabled, fake_covers=fake))
-        sql(jobs_admin, "DELETE FROM app_settings WHERE key = 'running_enabled'")
-        if stored:
-            sql(jobs_admin, "INSERT INTO app_settings (key, value) "
-                "VALUES ('running_enabled', '\"on\"'::jsonb)")  # fmt: skip
-
-    try:
-        for setting, reason in (
-            ({"enabled": False}, "feature_off"),  # the environment's switch
-            ({"stored": False}, "feature_off"),  # nothing stored: off since #509
-            ({"fake": False}, "running_not_evaluated"),  # the user's own plan has no route
-        ):
-            gate(**setting)
-            got = await mine.duplicate()
-            assert (got.status_code, got.json()["detail"]["reason"]) == (409, reason), setting
-        assert mine.classes() == classes
-        assert mine.ledger() == []
-        gate()  # all three hold
-        made = await mine.duplicate()
-        assert made.status_code == 201, made.text
-    finally:
-        sport.configure(None)
-        sql(jobs_admin, "DELETE FROM app_settings WHERE key = 'running_enabled'")
+    assert sql(jobs_admin, "SELECT count(*) FROM app_settings").scalar_one() == 0
+    made = await mine.duplicate()
+    assert made.status_code == 201, made.text
+    copy = UUID(made.json()["class_id"])
+    brief = sql(jobs_admin, "SELECT brief FROM classes WHERE id = :c", c=copy).scalar_one()
+    assert brief["sport"] == "running"
 
 
 NONE: dict[str, str] = {"source": "none"}

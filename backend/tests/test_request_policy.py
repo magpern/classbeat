@@ -67,10 +67,12 @@ def test_limits_from_the_plan_gates() -> None:
     assert rp.Limits.from_gates(None) == rp.Limits()
 
 
-def test_allowed_sports() -> None:
-    assert rp.allowed_sports(running_enabled=True, plan_runs=True) == ("cycling", "running")
-    assert rp.allowed_sports(running_enabled=True, plan_runs=False) == ("cycling",)
-    assert rp.allowed_sports(running_enabled=False, plan_runs=True) == ("cycling",)
+def test_both_sports_are_always_offered() -> None:
+    # #1544 (ADR 0018 Amendment 6): running has no switch, so ``allowed_sports`` (the switch and
+    # a plan's running) is gone and every limit offers both sports.
+    assert rp.ALL_SPORTS == ("cycling", "running")
+    assert not hasattr(rp, "allowed_sports")
+    assert rp.Limits().sports == rp.ALL_SPORTS
 
 
 def test_music_order_per_sport() -> None:

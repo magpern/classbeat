@@ -780,7 +780,11 @@ the version bump below invalidates nothing in practice.
   `route_key` has such a route (`routes.covers_running`). `CLASSBEAT_RUNNING_ENABLED` stays the kill switch;
   with it on and nothing stored the flag is on, and the worker's check still refuses running jobs on a
   model that is not evaluated for running. Cycling keeps section 5 unchanged: a stale route keeps working
-  for cycling, flagged.
+  for cycling, flagged. *(Since ADR 0018 Amendment 6, 2026-11-27, #1544, there is no running switch and no
+  admin key: `admit` checks no running coverage, and the worker serves a running job on a model that does
+  not cover running with the stale-route warning, reason `running_not_evaluated`, as section 5 serves a
+  stale route; the coverage rule itself, the bootstrap rule and the `fake` bypass are unchanged. Suite
+  version 35 adds four interpret sport cases and `two_sports` to the interpret schema.)*
 - **Alternatives.** A third stage group `running` (a migration of `model_routes`, `model_eval_results`,
   the admin and the CLI for a group that runs the same tools on the same route keys); letting the bootstrap
   serve running after an owner override (no recorded evidence behind it, and the override would be one

@@ -1,0 +1,17 @@
+{
+ "kind": "interpret",
+ "name": "interpret_sport_running",
+ "about": "A run is read as running, and as one sport (#1544).",
+ "request": "A 45 min run with intervals",
+ "sports": [
+  "cycling",
+  "running"
+ ],
+ "expect": {
+  "values": {
+   "sport": "running",
+   "length_min": 45
+  },
+  "two_sports": false
+ }
+}

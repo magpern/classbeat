@@ -74,7 +74,6 @@ function view(
       flagRow('swedebeat_enabled', { effective: 'off', environment: overrides.swedebeat ?? 'off' }),
       flagRow('trial', { environment: { plan: null, days: 0 } }),
       flagRow('composer_flow', { effective: 'off', environment: 'off', ...overrides.flags?.composer_flow }),
-      flagRow('running_enabled', { effective: 'off', environment: 'on', ...overrides.flags?.running_enabled }),
       flagRow(
         'banner',
         overrides.banner
@@ -581,11 +580,14 @@ describe('admin refund', () => {
   })
 })
 
-describe('admin settings: composer_flow and running_enabled switches', () => {
+// #1544 (ADR 0018 Amendment 6): running classes have no switch any more, so the Running classes
+// switch, its "switched off on the server" reason and its coverage refusal are gone; only
+// composer_flow keeps the on/off form. The last test pins that no Running switch is drawn.
+describe('admin settings: the composer_flow switch', () => {
   const stored = (key: string, value: string, environment: string) =>
     flagRow(key, { source: 'database', effective: value, environment, stored: value, updated_at: '2026-11-19T09:00:00Z', updated_by: ANN })
 
-  it('saves on and off for both keys and shows the new value after the reload', async () => {
+  it('saves on and shows the new value after the reload', async () => {
     let composer = false
     const api = adminApi({
       [`GET ${SETTINGS}`]: () => view({ flags: { composer_flow: composer ? { source: 'database', effective: 'on', environment: 'on', stored: 'on' } : { environment: 'on' } } }),
@@ -593,7 +595,6 @@ describe('admin settings: composer_flow and running_enabled switches', () => {
         composer = true
         return stored('composer_flow', 'on', 'on')
       },
-      'PUT /api/admin/settings/running_enabled': stored('running_enabled', 'on', 'on'),
     })
     renderAt('/admin/settings')
     const composerSwitch = await screen.findByRole('switch', { name: 'Composer flow' })
@@ -602,22 +603,19 @@ describe('admin settings: composer_flow and running_enabled switches', () => {
     await waitFor(() => { expect(screen.getByRole('switch', { name: 'Composer flow' })).toBeChecked() })
     expect(api.to('PUT', '/api/admin/settings/composer_flow')[0]?.body).toEqual({ value: 'on' })
     expect(within(card('Composer flow')).getByText('set here')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('switch', { name: 'Running classes' }))
-    await waitFor(() => { expect(api.to('PUT', '/api/admin/settings/running_enabled')).toHaveLength(1) })
-    expect(api.to('PUT', '/api/admin/settings/running_enabled')[0]?.body).toEqual({ value: 'on' })
   })
 
   it('stores off when the stored value is on', async () => {
     const api = adminApi({
-      [`GET ${SETTINGS}`]: view({ flags: { running_enabled: { source: 'database', effective: 'on', stored: 'on' } } }),
-      'PUT /api/admin/settings/running_enabled': stored('running_enabled', 'off', 'on'),
+      [`GET ${SETTINGS}`]: view({ flags: { composer_flow: { source: 'database', effective: 'on', environment: 'on', stored: 'on' } } }),
+      'PUT /api/admin/settings/composer_flow': stored('composer_flow', 'off', 'on'),
     })
     renderAt('/admin/settings')
-    const toggle = await screen.findByRole('switch', { name: 'Running classes' })
+    const toggle = await screen.findByRole('switch', { name: 'Composer flow' })
     expect(toggle).toBeChecked()
     fireEvent.click(toggle)
-    await waitFor(() => { expect(api.to('PUT', '/api/admin/settings/running_enabled')).toHaveLength(1) })
-    expect(api.to('PUT', '/api/admin/settings/running_enabled')[0]?.body).toEqual({ value: 'off' })
+    await waitFor(() => { expect(api.to('PUT', '/api/admin/settings/composer_flow')).toHaveLength(1) })
+    expect(api.to('PUT', '/api/admin/settings/composer_flow')[0]?.body).toEqual({ value: 'off' })
   })
 
   it('says the server variable is needed first while the environment is off, and still allows saving', async () => {
@@ -627,12 +625,10 @@ describe('admin settings: composer_flow and running_enabled switches', () => {
     expect(toggle).toBeEnabled()
     expect(toggle).toHaveAccessibleDescription(REASONS.composerFlowOff)
     expect(REASONS.composerFlowOff).toContain('CLASSBEAT_COMPOSER_FLOW')
-    expect(screen.getByRole('switch', { name: 'Running classes' })).not.toHaveAccessibleDescription(REASONS.runningOff)
   })
 
   it.each([
     ['composer_flow', 'Composer flow', REASONS.composerFlowOff],
-    ['running_enabled', 'Running classes', REASONS.runningOff],
   ])('shows %s as on, not in effect, with why, when stored on meets an off environment', async (key, label, why) => {
     adminApi({
       [`GET ${SETTINGS}`]: view({
@@ -666,14 +662,11 @@ describe('admin settings: composer_flow and running_enabled switches', () => {
     await waitFor(() => { expect(api.to('DELETE', '/api/admin/settings/composer_flow')).toHaveLength(1) })
   })
 
-  it('shows the reason when running_enabled is refused for missing model-route coverage', async () => {
-    adminApi({
-      [`GET ${SETTINGS}`]: view(),
-      'PUT /api/admin/settings/running_enabled': reason(422, 'running_not_evaluated'),
-    })
+  it('draws no Running classes card or switch (#1544)', async () => {
+    adminApi({ [`GET ${SETTINGS}`]: view() })
     renderAt('/admin/settings')
-    fireEvent.click(await screen.findByRole('switch', { name: 'Running classes' }))
-    expect(await within(card('Running classes')).findByText(/no model route that covers them/)).toBeInTheDocument()
-    expect(screen.getByRole('switch', { name: 'Running classes' })).not.toBeChecked()
+    await screen.findByRole('switch', { name: 'Composer flow' })
+    expect(screen.queryByRole('switch', { name: 'Running classes' })).toBeNull()
+    expect(screen.queryByText(/Running classes/)).toBeNull()
   })
 })

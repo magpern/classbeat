@@ -19,7 +19,7 @@
 #   PROXY_NETWORK      the external Docker network web shares with swag (classbeat-proxy) optional
 #   SMTP_HOST, SMTP_SENDER                                                                required
 #   SMTP_PORT, SMTP_TLS, SMTP_USERNAME, ADMIN_EMAILS, SIGNUP_MODE, CONNECTION_KEK_ID,
-#   MODEL_PROVIDER, DEEPSEEK_ENABLED, SWEDEBEAT_ENABLED, RUNNING_ENABLED, SMTP_CA_FILE    optional
+#   MODEL_PROVIDER, DEEPSEEK_ENABLED, SWEDEBEAT_ENABLED, SMTP_CA_FILE                     optional
 #   SWEDEBEAT_STUDIO (ADR 0036 section 10, default empty: the studio off)               optional
 #   SONG_PICKING, COMPOSER_FLOW (true or false, default false: pre-production testing, runbook),
 #   MOWL_LISTING_LAG_SECONDS, SPOTIFY_LISTING_LAG_SECONDS (default empty: unset),
@@ -189,8 +189,6 @@ services:
       # ADR 0036 section 10: the SwedeBeat studio, a comma list (design, swedebeat_playlist,
       # swedebeat_mix, mowl); empty is off. Each value's gates are the owner's.
       CLASSBEAT_SWEDEBEAT_STUDIO: ${SWEDEBEAT_STUDIO:-}
-      # ADR 0018: off unless the owner switches running classes on.
-      CLASSBEAT_RUNNING_ENABLED: ${RUNNING_ENABLED:-false}
       # Pre-production testing (roadmap Amendment 36, ADR 0038; runbook "Pre-production testing"). Off
       # unless the owner sets them in .env: web admits and the worker runs a pick or a composer class,
       # so both read the same values. Song picking also needs the stored `song_picking` flag `on` or a
@@ -285,8 +283,6 @@ services:
       CLASSBEAT_SWEDEBEAT_GATEWAY_URL: ${SWEDEBEAT_GATEWAY_URL:-}
       # ADR 0036 section 10: the studio, the same value as web's (a queued studio job checks it).
       CLASSBEAT_SWEDEBEAT_STUDIO: ${SWEDEBEAT_STUDIO:-}
-      # ADR 0018: a queued running design or revise checks the switch again; the same as web's.
-      CLASSBEAT_RUNNING_ENABLED: ${RUNNING_ENABLED:-false}
       # Pre-production testing (roadmap Amendment 36, ADR 0038; runbook "Pre-production testing"). Off
       # unless the owner sets them in .env: web admits and the worker runs a pick or a composer class,
       # so both read the same values. Song picking also needs the stored `song_picking` flag `on` or a

@@ -4,6 +4,7 @@ import { ApiError } from '../../api/client'
 import { createInterpretJob } from '../../api/interpret'
 import { useLocale, useT } from '../../i18n/I18n'
 import { forgetExample } from '../../lib/exampleHandoff'
+import { chooseSport, followText } from '../../lib/sportHint'
 import { newIdempotencyKey } from '../../lib/submittedInput'
 import { MAX_REQUEST, recallRequest, rememberRequest } from '../../lib/startRequest'
 import { exampleKey, type ExampleSlug } from '../../publicSite/examples'
@@ -30,7 +31,8 @@ import { pickSurprise } from './surprise'
 
 /**
  * `/classes/new` with the `composer_flow` flag on (ADR 0038 section 10.1): one card with the words and the
- * attached-music tags, a sport select where running is enabled, Surprise me and Start. Start sends an
+ * attached-music tags, the sport select (always: running is always available, #1544; it follows the words
+ * until the instructor picks a sport, `lib/sportHint`), Surprise me and Start. Start sends an
  * `interpret_request` job and goes to the class. Nothing here is required but the words. The flag off keeps
  * `StartScreen`.
  */
@@ -53,13 +55,13 @@ export function ComposerScreen({ source, example = null }: { source: ReadySource
       kept,
       exampleWords: usedExample === null ? null : t(exampleKey(usedExample, 'prompt')),
       offered,
-      runningEnabled: source.runningEnabled,
       noMusicOffered: true, // "No music" is always a choice (#1543); running drops it below
     }),
   )
   const [request, setRequest] = useState(draft.request)
   const [tags, setTags] = useState(draft.tags)
-  const [sport, setSport] = useState<Sport>(draft.sport)
+  const [toggle, setToggle] = useState(draft.sport)
+  const sport: Sport = toggle.sport
   const [problem, setProblem] = useState<string | null>(null)
   // The server refused for want of Spotify: the same prompt as the gate's, instead of an error.
   const [refusedForSpotify, setRefusedForSpotify] = useState<SpotifyGate['need'] | null>(null)
@@ -87,7 +89,14 @@ export function ComposerScreen({ source, example = null }: { source: ReadySource
     if (gate?.blocking) return
     setProblem(null)
     setRefusedForSpotify(null)
-    const sent: ComposerRequest = { words, mowlConnectionId: source.connection.id, spotifyConnectionId: spotify, tags, sport }
+    const sent: ComposerRequest = {
+      words,
+      mowlConnectionId: source.connection.id,
+      spotifyConnectionId: spotify,
+      tags,
+      sport,
+      sportByHand: toggle.manual,
+    }
     const input = composerInput(sent)
     const fingerprint = JSON.stringify(input)
     if (attempt.current?.fingerprint !== fingerprint) attempt.current = { fingerprint, key: newIdempotencyKey() }
@@ -110,6 +119,14 @@ export function ComposerScreen({ source, example = null }: { source: ReadySource
     const words = pickSurprise(locale, allowed?.maxMinutes ?? null, sport)
     setRequest(words)
     start(words)
+  }
+  // While the instructor types, the select follows the words; a sport picked by hand stays (#1544).
+  const typed = (text: string) => {
+    setRequest(text)
+    const next = followText(toggle, text)
+    if (next === toggle) return
+    setToggle(next)
+    setTags(forSport(tags, next.sport === 'running'))
   }
 
   const shown = problem ?? (refusedForSpotify !== null ? null : action.error)
@@ -138,28 +155,26 @@ export function ComposerScreen({ source, example = null }: { source: ReadySource
           value={request}
           className={BRIEF_AREA}
           onChange={(e) => {
-            setRequest(e.target.value)
+            typed(e.target.value)
           }}
         />
       </BriefFrame>
       <div className="grid gap-3.5 sm:grid-cols-2">
         <FieldCard title={t('start.length.title')}>
           <PlanLength allowed={allowed} settled={settled} />
-          {source.runningEnabled ? (
-            <select
-              aria-label={t('newclass.sport')}
-              value={sport}
-              onChange={(e) => {
-                const next: Sport = e.target.value === 'running' ? 'running' : 'cycling'
-                setSport(next)
-                setTags(forSport(tags, next === 'running'))
-              }}
-              className="min-h-11 cursor-pointer self-start rounded-full border border-line bg-raised px-4 text-[0.9375rem] text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-            >
-              <option value="cycling">{t('newclass.sport.cycling')}</option>
-              <option value="running">{t('newclass.sport.running')}</option>
-            </select>
-          ) : null}
+          <select
+            aria-label={t('newclass.sport')}
+            value={sport}
+            onChange={(e) => {
+              const next: Sport = e.target.value === 'running' ? 'running' : 'cycling'
+              setToggle(chooseSport(next))
+              setTags(forSport(tags, next === 'running'))
+            }}
+            className="min-h-11 cursor-pointer self-start rounded-full border border-line bg-raised px-4 text-[0.9375rem] text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+          >
+            <option value="cycling">{t('newclass.sport.cycling')}</option>
+            <option value="running">{t('newclass.sport.running')}</option>
+          </select>
         </FieldCard>
         <FieldCard title={t('start.music.from')} className="overflow-visible">
           <MusicTagRow

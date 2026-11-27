@@ -232,9 +232,11 @@ async def test_a_class_read_with_the_composer_falls_back_to_needs_spotify_withou
 async def test_without_the_composer_a_request_with_no_spotify_is_refused_at_admit(
     skenv: SketchEnv,
 ) -> None:
-    """AC 6: the older flow keeps Amendment 25's early refusal (no class, no job, no credit)."""
+    """AC 6: the older flow keeps Amendment 25's early refusal (no class, no job, no credit) for a
+    class chosen as cycling (#1544: with no sport chosen the request may be read as a run, which
+    needs no Spotify, so only a cycling choice is refused before the reading)."""
     music_kind.configure(music_kind.SoundlessGate(fake_covers=False))
     before = skenv.ienv.counts()
-    refused = await skenv.ienv.start(spotify=False)
+    refused = await skenv.ienv.start(spotify=False, sport_override="cycling")
     assert (refused.status_code, refused.json()["detail"]["reason"]) == (409, "needs_spotify")
     assert skenv.ienv.counts() == before

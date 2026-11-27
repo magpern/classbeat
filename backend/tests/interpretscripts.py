@@ -33,6 +33,8 @@ def submission(case: InterpretCase) -> dict[str, Any]:
         ]
     if e.remove_games:
         out["remove_games"] = True
+    if e.two_sports:  # a request for both sports (#1544)
+        out["two_sports"] = True
     if e.taste is not None:
         out["music_taste"] = _taste(e.taste)
     if e.pinned:

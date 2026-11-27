@@ -1,0 +1,16 @@
+{
+ "kind": "interpret",
+ "name": "interpret_sport_context",
+ "about": "Running named only as context is no request for both sports: the class is cycling (#1544).",
+ "request": "Cycling class for triathletes who run",
+ "sports": [
+  "cycling",
+  "running"
+ ],
+ "expect": {
+  "values": {
+   "sport": "cycling"
+  },
+  "two_sports": false
+ }
+}

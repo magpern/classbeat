@@ -76,6 +76,7 @@ export function HandoffStatus({ classId, handoff }: { classId: string; handoff: 
     account: <Link key="account" to="/account">{t('class.goToAccount')}</Link>,
     spotify: <Link key="spotify" to="/account/spotify">{t('music.connectSpotify')}</Link>,
     startAgain: <Link key="startAgain" to={startAgainPath(classId)}>{t('start.handoff.tryAgain')}</Link>,
+    changeRequest: <Link key="changeRequest" to={startAgainPath(classId)}>{t('start.handoff.changeRequest')}</Link>,
     classes: <Link key="classes" to="/classes">{t('class.list.title')}</Link>,
   }
   return (

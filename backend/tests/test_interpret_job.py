@@ -35,7 +35,7 @@ async def test_admit_creates_the_class_and_the_first_message_and_takes_no_credit
     messages = ienv.renv.messages(class_id)
     assert [(m.seq, m.role, m.body, m.job_id) for m in messages] == [(1, "user", REQUEST, job_id)]
     stored = ienv.stored_input(job_id)
-    assert stored["sports"] == ["cycling"]
+    assert stored["sports"] == ["cycling", "running"]  # always both since #1544
     assert stored["swedebeat_mixes"] is False
     assert stored["route_key"]
     assert stored["plan_gates"]["max_class_minutes"] >= 10
@@ -80,9 +80,19 @@ async def test_a_spotify_connection_that_is_not_the_users_is_refused(ienv: Inter
 
 
 NO_SPOTIFY: list[tuple[dict[str, Any], str]] = [
-    ({}, "refused"),  # free text, no music choice
+    # #1544: running is always offered, so with no sport chosen the request may be read as a run
+    # (MOWL playlists only): it is read, and a cycling reading ends ``needs_spotify`` at the
+    # hand-off, still with no credit. Only a sport chosen as cycling is refused before the model.
+    ({}, "admitted"),  # free text, no music choice
     (
         {"music_override": {"source": "mowl_spotify_playlist", "spotify_playlist_id": PLAYLIST}},
+        "admitted",
+    ),
+    (
+        {
+            "sport_override": "cycling",
+            "music_override": {"source": "mowl_spotify_playlist", "spotify_playlist_id": PLAYLIST},
+        },
         "refused",
     ),
     ({"music_override": {"source": "none"}}, "admitted"),  # "No music"
@@ -126,7 +136,7 @@ async def test_without_spotify_only_a_class_that_can_do_without_it_is_admitted(
 async def test_a_refusal_for_no_spotify_calls_no_model(ienv: InterpretEnv) -> None:
     fake = interpreter()
     ienv.models(fake)
-    refused = await ienv.start(spotify=False)
+    refused = await ienv.start(spotify=False, sport_override="cycling")  # #1544: a cycling class
     assert refused.status_code == 409
     assert fake.sent == []
     assert ienv.queue_ == [fake]  # nothing took the provider

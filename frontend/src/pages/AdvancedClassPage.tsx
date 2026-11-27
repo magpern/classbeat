@@ -23,7 +23,6 @@ export function AdvancedClassPage() {
               songs={source.songs}
               swedebeat={source.swedebeat}
               mixes={source.mixes}
-              runningEnabled={source.runningEnabled}
             />
           )}
         </SourceGate>

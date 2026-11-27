@@ -45,17 +45,25 @@ describe('the composer request payload', () => {
     expect(input).not.toHaveProperty('spotify_connection_id')
     expect(composerInput(request())).not.toHaveProperty('sport_override')
   })
+
+  it('sends a sport chosen by hand, Cycling included (#1544: a manual choice always wins)', () => {
+    expect(composerInput(request({ sport: 'cycling', sportByHand: true })).sport_override).toBe('cycling')
+    expect(composerInput(request({ sport: 'running', sportByHand: true })).sport_override).toBe('running')
+    expect(composerInput(request({ sport: 'cycling', sportByHand: false }))).not.toHaveProperty('sport_override')
+  })
 })
 
 describe('the composer first state', () => {
-  const base = { exampleWords: null, offered: [A, B], runningEnabled: true, noMusicOffered: true }
+  const base = { exampleWords: null, offered: [A, B], noMusicOffered: true }
+  const auto = (sport: 'cycling' | 'running') => ({ sport, manual: false })
 
   it('is empty without a kept request or an example', () => {
-    expect(initialDraft({ ...base, kept: null })).toEqual({ request: '', tags: NO_TAGS, sport: 'cycling' })
+    expect(initialDraft({ ...base, kept: null })).toEqual({ request: '', tags: NO_TAGS, sport: auto('cycling') })
   })
 
-  it('starts from an example\'s words', () => {
+  it('starts from an example\'s words, the sport following them', () => {
     expect(initialDraft({ ...base, kept: null, exampleWords: 'An example.' }).request).toBe('An example.')
+    expect(initialDraft({ ...base, kept: null, exampleWords: 'A 30 minute run' }).sport).toEqual(auto('running'))
   })
 
   it('restores a kept request with its playlists still on offer, and drops the others', () => {
@@ -70,14 +78,15 @@ describe('the composer first state', () => {
     expect(draft.tags).toEqual({ kind: 'playlists', tags: [A] })
   })
 
-  it('keeps "No music" only where it is offered, and running only where it is enabled', () => {
+  it('keeps "No music" only where it is offered, and a kept Running always (no flag since #1544)', () => {
     const kept = { request: 'Quiet', music: 'none', sport: 'running' as const }
     expect(initialDraft({ ...base, kept: { ...kept, sport: 'cycling' } }).tags).toEqual({ kind: 'none' })
     expect(initialDraft({ ...base, kept: { ...kept, sport: 'cycling' }, noMusicOffered: false }).tags).toEqual(NO_TAGS)
     const running = initialDraft({ ...base, kept })
-    expect(running.sport).toBe('running')
+    // The words name no run, so the kept Running was chosen by hand: it stays so.
+    expect(running.sport).toEqual({ sport: 'running', manual: true })
     expect(running.tags).toEqual(NO_TAGS)
-    expect(initialDraft({ ...base, kept, runningEnabled: false }).sport).toBe('cycling')
+    expect(initialDraft({ ...base, kept: { ...kept, request: 'A quiet run' } }).sport).toEqual(auto('running'))
   })
 
   it('keeps a request in a form it restores from', () => {

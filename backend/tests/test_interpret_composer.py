@@ -40,7 +40,7 @@ def parsed(**more: Any) -> InterpretRequestInput:
     return InterpretRequestInput.model_validate(values | more)
 
 
-# --- the switch (ADR 0038 section 2: the running_enabled pattern) ------------------------------
+# --- the switch (ADR 0038 section 2: a stored on under the environment) -----------------------
 
 
 @pytest.mark.parametrize(

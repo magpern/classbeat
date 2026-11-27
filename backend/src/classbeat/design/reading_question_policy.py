@@ -30,6 +30,15 @@ is dropped: "No music" is the instructor's choice, never an assumption) is dropp
 by adding an option. For a hint-less pick ``WHICH_MUSIC`` then takes its place; with a hint
 nothing does, since a required closed question would stop "accept them all" for music that is
 already said. ``Question`` refuses such a question, and a stored list drops one when read.
+
+**The sport chosen in the form and the request disagree** (#1544, ADR 0018 Amendment 6): the
+reading has the final say, so it asks instead of choosing silently. ``which_sport`` gives the
+closed ``WHICH_SPORT`` question (``code`` ``which_sport``, the closed options
+``SPORT_OPTIONS``, no model text) when the form sent a sport (``sport_override``) and the request
+names the other one, on a first reading only (a re-read already carries the instructor's answer
+as its ``sport_override``). Its assumed answer is the form's sport: a manual choice wins until the
+instructor answers otherwise. It goes first; the model's own sport question is dropped, as for
+any topic chosen in the form.
 """
 
 from collections.abc import Collection
@@ -54,8 +63,9 @@ TOPIC_PATHS: Final[dict[str, str]] = {
     "intensity": "intensity",
     "music": "music",
 }
-QuestionCode = Literal["which_music"]
+QuestionCode = Literal["which_music", "which_sport"]
 WHICH_MUSIC_OPTIONS: Final = ("my_playlists", "no_music")
+SPORT_OPTIONS: Final = ("cycling", "running")
 
 
 class Question(BaseModel):
@@ -86,6 +96,11 @@ class Question(BaseModel):
                 raise ValueError('a music question offers "No music" (no_music_index)')
             return self
         closed = (self.topic, self.text, tuple(self.options), self.assumed_index)
+        if self.code == "which_sport":
+            sport = ("sport", None, SPORT_OPTIONS)
+            if closed[:3] != sport or self.assumed_index not in (0, 1) or self.no_music_index:
+                raise ValueError("a closed sport question is exactly WHICH_SPORT")
+            return self
         if closed != ("music", None, WHICH_MUSIC_OPTIONS, None) or self.no_music_index != 1:
             raise ValueError("a closed question is exactly WHICH_MUSIC")
         return self
@@ -129,13 +144,29 @@ QuestionList = Annotated[
 ]
 
 
+def which_sport(read: InterpretedRequest, override: str | None, *, reread: bool) -> Question | None:
+    """``WHICH_SPORT`` with the form's sport assumed, when the form's sport and the sport the
+    request names disagree on a first reading (the module's rules); else ``None``."""
+    named = None if read.sport is None else read.sport.value
+    if reread or override not in SPORT_OPTIONS or named is None or named == override:
+        return None
+    return Question(
+        topic="sport",
+        code="which_sport",
+        options=list(SPORT_OPTIONS),
+        assumed_index=SPORT_OPTIONS.index(override),
+    )
+
+
 def questions(
     read: InterpretedRequest,
     skip: Collection[str] = (),
     *,
     hintless: bool = False,
+    sport: Question | None = None,
 ) -> list[Question]:
-    """The questions to store (the module's rules), in the interpreter's order."""
+    """The questions to store (the module's rules), in the interpreter's order; ``sport`` (a
+    ``which_sport`` question) first."""
     explicit = {r.path for r in read.readings() if r.origin == "explicit"}
     out: list[Question] = []
     for asked in read.questions:
@@ -170,6 +201,8 @@ def questions(
             break
     if hintless and not any(q.topic == "music" for q in out):
         out = [WHICH_MUSIC, *out][:MAX_QUESTIONS]
+    if sport is not None:
+        out = [sport, *(q for q in out if q.topic != "sport")][:MAX_QUESTIONS]
     return out
 
 

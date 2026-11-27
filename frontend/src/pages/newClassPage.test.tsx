@@ -402,7 +402,7 @@ describe('the new-class form', () => {
     })
 
     const NONE = { games: false, races: false, ftp_tests: false }
-    const RUNNING = { ...READY, 'GET /api/connections': { connections: [MOWL], running_enabled: true } }
+    const RUNNING = { ...READY, 'GET /api/connections': { connections: [MOWL] } }
 
     it('caps a running class by the plan and sends the running body with no bike fields', async () => {
       const api = fakeApi({ ...RUNNING, ...CREATED, 'GET /api/account/plan': plan(45, NONE) })

@@ -187,7 +187,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     check here reads only: the jobs API reserves the credit after."""
     if not isinstance(parsed, DesignDraftInput):
         return Refused("invalid_input")
-    # ADR 0018 (#509): the running gate and the class's fixed sport, before anything else is read.
+    # ADR 0018 section 1: the class's fixed sport, before anything else is read (no switch, #1544).
     refused = await sport.admit_brief(db, ctx, parsed.brief, parsed.class_id)
     if refused is not None:
         return refused
@@ -215,13 +215,11 @@ async def run(job_run: JobRun) -> Complete:
     given = job_run.input
     if not isinstance(given, DesignDraftInput) or job_run.approved:
         raise JobFailure("internal")
-    if given.brief.sport == sport.RUNNING:
-        await sport.still_on(job_run)  # ADR 0018 section 5: before anything is called
     if isinstance(given.music, SwedebeatMusicChoice):
         await mixadmit.still_on(job_run, runtime.swedebeat_enabled, new_design=True)
     model = await group_model(runtime, job_run, given.route_key, "design")  # before any MOWL call
     if given.brief.sport == sport.RUNNING:
-        sport.require_evaluated(model)  # an evaluated model only (ADR 0012, issue #465)
+        sport.serve_model(model)  # served, or with the stale-route warning (ADR 0012, #1544)
     if isinstance(given.music, NoMusicChoice):
         music_kind.serve_model(model, sketch=given.mode == "sketch")  # #527, #1543
         return await run_no_music(job_run, given, model)  # soundless, or a sketch (ADR 0038)

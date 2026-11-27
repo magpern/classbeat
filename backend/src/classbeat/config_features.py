@@ -75,10 +75,8 @@ class FeatureSettings(BaseSettings):
     # output); empty (the default) is off.
     # ``swedebeat_studio.config_policy`` refuses anything else at startup.
     swedebeat_studio: str = ""
-    # ADR 0018 section 5: running classes. The environment's kill switch (off by default; the
-    # admin flag ``running_enabled`` can only tighten it), read by the web (admit) and the worker
-    # (a queued running job checks it again).
-    running_enabled: bool = False
+    # Running classes have no switch (ADR 0018 Amendment 6, #1544): running is always available.
+    # An environment that still sets the retired variable is ignored (``extra="ignore"``).
     # ADR 0038 section 2 (#1185): the composer flow. The environment's switch (off by default);
     # only a stored admin flag ``composer_flow`` of ``on`` turns it on under it. Not set in
     # ``compose.prod.yaml`` until the owner's live check (``scripts/check-prod-compose.sh``).

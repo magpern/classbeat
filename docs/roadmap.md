@@ -1,5 +1,34 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 39 (2026-11-26, owner decision: running is always available, the sport toggle follows the request, two sports are refused politely; issue #1544)
+
+The owner, 2026-11-26: "If user says it is a running class, switch to running." "Maybe a switch in UI user
+can select would be nice too. This switch toggles [if] running is mentioned." "Cycling and running in same
+prompt rejects politely." Running stops depending on a switch, as "No music" did (Amendment 38).
+
+1. **No switch.** `CLASSBEAT_RUNNING_ENABLED`, the admin flag `running_enabled` and the effective flag (ADR
+   0018 section 5 and Amendment 5) are retired as a product gate: from the backend, the web, the compose
+   files, `.env.example`, `scripts/check-prod-compose.sh` (its allow-list refuses the variable) and the docs.
+   Migration 0082 removes a stored row. Nothing hides or refuses running on a switch or a flag.
+2. **The toggle follows the request.** The Cycling/Running toggle always shows (the start screen, the
+   composer, the Advanced form) and flips while the instructor types when the words name a run (en, sv, da),
+   back when they are gone, until the instructor sets it by hand. A manual choice always wins and is sent as
+   `sport_override`. The reading has the final say: when the toggle and the words disagree it asks a
+   `which_sport` question instead of choosing silently.
+3. **Two sports are refused politely.** A request for both a cycling and a running class ends its reading
+   with the closed reason `two_sports`: no design job and no credit; the page says that a class is either
+   cycling or running and offers "Change my request". The other sport named only as context is no refusal.
+   The interpret prompt changed: suite version 35, with four sport cases.
+4. **Model coverage.** A running job on a route with no recorded running eval is served with the stale-route
+   warning (ADR 0012 section 5), not refused; no route rule is widened. A running class still designs on a
+   MOWL playlist (`needs_mowl_playlist` without one); "running with a new mix" stays refused.
+5. **Save.** Save and Update no longer refuse a running class on the switch; every other approval check
+   stands (owner, hash, revision, sport agreement, the user's own playlist link). The owner's live check of
+   one running save and one update, each read back once, stays as a **pre-deploy** item in
+   `docs/status.md`, not as a code gate.
+
+The design is ADR 0018's Amendment 6.
+
 ## Amendment 38 (2026-11-26, owner decision: there is no soundless switch, "No music" is always a choice; issue #1543)
 
 The owner, 2026-11-26: "There should be no such thing [as soundless off]. Sound is always on, but user

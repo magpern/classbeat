@@ -6,8 +6,12 @@ checks each answer against the stored question it names and turns the answers in
 sentences; the new request is the request that made the reading, then those sentences. Only the
 instructor's own words (a typed answer, the note) and the stored question text (cleaned model text)
 and the chosen option are put into it, never an index or markup: the interpreter reads them as
-the instructor's words, as it read the first request. The closed ``which_music`` question
-(``reading_question_policy.WHICH_MUSIC``) is put in the app's own words.
+the instructor's words, as it read the first request. The closed ``which_music`` and
+``which_sport`` questions (``reading_question_policy``) are put in the app's own words.
+
+``chosen_sport`` reports the sport picked on the closed ``which_sport`` question (#1544): the
+re-read's ``sport_override`` becomes it (``browser_fields``), a closed field like "No music", so
+the instructor's answer is what the new reading designs (never read from typed words).
 
 ``wants_no_music`` reports "No music" (the route then sets ``music_override`` ``none``): an answer
 that picked the marked "No music" option (``chose_no_music``), or the body's closed ``no_music:
@@ -117,8 +121,16 @@ def sentences(questions: Sequence[Question], body: RereadIn) -> str | None:
 
 
 # The closed question's words for the interpreter (``WHICH_MUSIC``): the app's, never the model's.
-_CLOSED_TEXT: Final = {"which_music": "What music should the class have?"}
-_CLOSED_OPTIONS: Final = {"my_playlists": "Use one of my playlists", "no_music": "No music"}
+_CLOSED_TEXT: Final = {
+    "which_music": "What music should the class have?",
+    "which_sport": "Is the class cycling or running?",
+}
+_CLOSED_OPTIONS: Final = {
+    "my_playlists": "Use one of my playlists",
+    "no_music": "No music",
+    "cycling": "Cycling",
+    "running": "Running",
+}
 _MY_PLAYLISTS: Final = "my_playlists"
 # Sentences of the closed fields, in the app's own words (the page's catalogue has its own).
 _NO_MUSIC_SENTENCE: Final = "No music for this class."
@@ -148,17 +160,34 @@ def chose_no_music(questions: Sequence[Question], body: RereadIn) -> bool:
     return False
 
 
+def chosen_sport(questions: Sequence[Question], body: RereadIn) -> str | None:
+    """The sport an answer picked on the closed ``which_sport`` question (its closed option, never
+    the words); ``None`` when no answer did."""
+    for given in body.answers:
+        if given.option_index is None or given.question_index >= len(questions):
+            continue
+        asked = questions[given.question_index]
+        if asked.code == "which_sport" and given.option_index < len(asked.options):
+            return asked.options[given.option_index]
+    return None
+
+
 def wants_no_music(questions: Sequence[Question], body: RereadIn) -> bool:
     """ "No music": the closed ``no_music`` field, or the marked option of a ``music`` question."""
     return body.no_music is True or chose_no_music(questions, body)
 
 
-def browser_fields(kept: dict[str, Any], body: RereadIn, *, no_music: bool) -> dict[str, Any]:
-    """The re-read's browser fields (``kept``: those of the reading's own job): "No music" is the
-    override ``none`` with no attached playlists; picked playlists are added to the attached ones
-    (each once; over ``MAX_SOURCES`` the input is refused ``invalid_input``) and replace a form
-    "No music", which they contradict."""
+def browser_fields(
+    kept: dict[str, Any], body: RereadIn, *, no_music: bool, sport: str | None = None
+) -> dict[str, Any]:
+    """The re-read's browser fields (``kept``: those of the reading's own job): the sport the
+    instructor picked on ``which_sport`` (``sport``) is the new ``sport_override``; "No music" is
+    the override ``none`` with no attached playlists; picked playlists are added to the attached
+    ones (each once; over ``MAX_SOURCES`` the input is refused ``invalid_input``) and replace a
+    form "No music", which they contradict."""
     out = dict(kept)
+    if sport is not None:
+        out["sport_override"] = sport
     if no_music:
         out.pop("music_sources", None)
         out["music_override"] = {"source": "none"}

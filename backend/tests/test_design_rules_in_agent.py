@@ -62,7 +62,9 @@ PINNED = {
     # ride's shape in the interpret prompt, and the design prompts' sentence on what a brief holds.
     # #1536 changed interpret once more, on purpose (suite version 34): the model-chosen questions,
     # and an unmatched playlist or mix name is no hint of the music.
-    "interpret": "473f91d79df745e14e688f5693ad467cbf9aad5be32eb1bb2880c43aa5d32b56",
+    # #1544 changed interpret once more, on purpose (suite version 35): the sport words and the
+    # ``two_sports`` flag for a request that asks for both sports.
+    "interpret": "0a41bc8faa4ab1fcbf4c06dac5909d7212444e2e7a497ced6c6cadc319cd8c1b",
 }
 PLANTED = "Zq9 planted brief text"
 PLANTED_STYLE = "Zq9 planted style"

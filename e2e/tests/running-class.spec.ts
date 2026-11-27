@@ -14,22 +14,17 @@ import {
   savedState,
   setProgramSport,
   signedInWithMowl,
-  storeRunning,
   zonesOf,
   type FakeProgram,
 } from './class-helpers'
 
-// M8 F1 (ADR 0018, issue #466): a running class designed, saved and updated on the fakes. The stack
-// turns running on for web and worker (compose.e2e.yaml); the worker replays the recorded running
+// M8 F1 (ADR 0018, issue #466): a running class designed, saved and updated on the fakes. Running
+// has no switch since #1544 (ADR 0018 Amendment 6): nothing is stored or set; the worker replays the recorded running
 // scripts (model-script.ts) and the fake MOWL stores the program the way the library writes it
 // (ActivityTypeID 1, segments 0, an incline per interval). The tests share the fake's program store
 // and the worker's script, so they run one after the other.
 test.describe.configure({ mode: 'serial' })
 test.setTimeout(180_000)
-
-test.beforeAll(() => {
-  storeRunning('on') // #509: nothing stored is off
-})
 
 test.beforeEach(() => {
   fakeMowl('arm', PLAYLISTS.draft.id)
@@ -39,7 +34,6 @@ test.beforeEach(() => {
 test.afterAll(() => {
   saveArm('', true)
   useModelScript('good_first_draft')
-  storeRunning(null)
 })
 
 /** The program holds the running content of the script's draft, private, on the linked playlist,
@@ -164,31 +158,15 @@ test('a running class is not updated onto a program of another sport', async ({ 
   )
 })
 
-test('with the admin switch off the form has no Running control', async ({
-  page,
-}) => {
-  await signedInWithMowl(page, 'run-off')
+test('the form always has a Running control, with nothing stored (#1544)', async ({ page }) => {
+  await signedInWithMowl(page, 'run-always')
   await page.getByRole('link', { name: 'New class' }).click()
+  // The start screen's toggle always shows, and follows the words until a sport is chosen by hand.
+  await expect(page.getByRole('group', { name: 'Sport' })).toBeVisible()
+  await page.getByLabel('Describe your class').fill('A 45 min run with intervals')
+  await expect(page.getByRole('button', { name: 'Running', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await page.getByRole('link', { name: /^Advanced/ }).click()
   const form = page.getByRole('form', { name: 'New class' })
   await expect(form.getByRole('radio', { name: 'Running', exact: true })).toBeVisible()
-
-  // The stored admin flag can only tighten the environment's (ADR 0018 section 5).
-  storeRunning('off')
-  try {
-    await page.reload()
-    const off = page.getByRole('form', { name: 'New class' })
-    await expect(off.getByLabel('Class name')).toBeVisible()
-    await expect(off.getByRole('radio', { name: 'Running', exact: true })).toHaveCount(0)
-    await expect(off.getByText('Sport', { exact: true })).toHaveCount(0)
-    await expect(off.getByLabel('Climbs', { exact: true })).toBeVisible()
-    // #509: the admin's DELETE (nothing stored) is off too, not on as before.
-    storeRunning(null)
-    await page.reload()
-    const cleared = page.getByRole('form', { name: 'New class' })
-    await expect(cleared.getByLabel('Class name')).toBeVisible()
-    await expect(cleared.getByRole('radio', { name: 'Running', exact: true })).toHaveCount(0)
-  } finally {
-    storeRunning('on')
-  }
+  await expect(form.getByRole('radio', { name: 'Cycling', exact: true })).toBeChecked()
 })

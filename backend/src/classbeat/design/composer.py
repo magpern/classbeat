@@ -1,5 +1,5 @@
-"""The ``composer_flow`` gate (ADR 0038 section 2, #1185; the ``running_enabled`` pattern of ADR
-0018 section 5).
+"""The ``composer_flow`` gate (ADR 0038 section 2, #1185; the switch pattern of ADR 0018 section 5,
+which running itself no longer has since its Amendment 6, #1544).
 
 ``CLASSBEAT_COMPOSER_FLOW`` is the environment's switch (``ComposerGate.enabled``, set by the web
 app at start). The flow is on only when that switch is on **and** the stored ``composer_flow``

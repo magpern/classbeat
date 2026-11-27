@@ -7,9 +7,9 @@ credit (a class is one credit however often it is revised) and writes nothing ou
 **Create time** (``admit``, in the create transaction under the owner lock, the class row locked):
 ``invalid_input`` unless the base is a ``draft`` of the class; ``stale_base`` unless it is the
 class's current revision; ``not_changeable`` for a class without a music source (a duplicate of
-a class on picked songs, #536); then the running gate of a running class (``sport.admit_class``,
-ADR 0018, #509: ``feature_off``, ``running_not_evaluated``) and the kind check of
-``music_kind.admit_class`` (a studio class, below), each before anything is written;
+a class on picked songs, #536); then the kind check of ``music_kind.admit_class`` (a studio
+class, below; a running class has no gate since ADR 0018 Amendment 6, #1544), before anything is
+written;
 ``revision_limit`` (``classbeat.design.limits``), then the month's model cost cap
 (``classbeat.quota.check_cost``: 409 ``quota`` ``cost``), then ``chat_full``, then
 for a class designed on a Swedebeat mix ``feature_off`` and ``analysis_limit``
@@ -110,8 +110,8 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         return Refused("invalid_input")  # a foreign or unknown id answers like any other
     if state.current != given.base_revision_id:
         return Refused("stale_base")
-    # A sketch base (ADR 0038), or the music source (#536), running (#509) and soundless (#528)
-    # gates, before anything is written (no message, no job).
+    # A sketch base (ADR 0038), or the music source (#536) and kind (#528) gates, before anything
+    # is written (no message, no job). A running class has no gate (#1544).
     sketch, refused = await admit_base(db, ctx, class_id, given.base_revision_id)
     if refused is not None:
         return refused
@@ -169,15 +169,13 @@ async def run(job_run: JobRun) -> Complete:
     base_draft = loaded.draft  # strict, a retired game already a regular interval (ADR 0029)
     if isinstance(music, NoMusicChoice):
         return await run_soundless(job_run, given, loaded, runtime, sketch=sketch)
-    if brief.sport == sport.RUNNING:
-        if isinstance(music, SwedebeatMusicChoice):
-            raise JobFailure("internal")  # running v1 has no mix (ADR 0018)
-        await sport.still_on(job_run)  # ADR 0018 section 5: before anything is called
+    if brief.sport == sport.RUNNING and isinstance(music, SwedebeatMusicChoice):
+        raise JobFailure("internal")  # running v1 has no mix (ADR 0018)
     if isinstance(music, SwedebeatMusicChoice):
         await mixadmit.still_on(job_run, runtime.swedebeat_enabled)  # before anything is called
     model = await group_model(runtime, job_run, given.route_key, "design")  # before any MOWL call
     if brief.sport == sport.RUNNING:
-        sport.require_evaluated(model)  # an evaluated model only (ADR 0012, issue #465)
+        sport.serve_model(model)  # served, or with the stale-route warning (ADR 0012, #1544)
     await job_run.stage("music")
     carry = await base_sections(job_run, base_id, mix=isinstance(music, SwedebeatMusicChoice))
     step, timing = await music_step(

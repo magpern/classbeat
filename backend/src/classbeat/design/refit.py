@@ -12,8 +12,9 @@ or ``admit_music``, whose answers follow the soundless gate, so a refit can neve
 step on a class with no music); ``not_changeable`` for a class with no ``music_source`` (a #550
 copy of a class on picked songs); ``invalid_input`` unless the base is a ``draft`` of the class;
 ``stale_base`` unless it is the class's current revision; ``game_retired`` for a base with a
-game MOWL no longer offers (ADR 0029 section 3, ``chat.CreateState.base_retired``); the running gate
-(``sport.admit_class``); ``refit_limit`` (``MAX_REFITS`` refit revisions per class);
+game MOWL no longer offers (ADR 0029 section 3, ``chat.CreateState.base_retired``; a running
+class has no gate since ADR 0018 Amendment 6, #1544); ``refit_limit`` (``MAX_REFITS`` refit
+revisions per class);
 ``nothing_pending`` when the corrections for the base's fingerprint already equal its
 ``music.beat_one``; for a class on a Swedebeat mix, its flag and analysis limit
 (``mixadmit.admit_class_mix``). The one open job per class and the plan's concurrent jobs are the
@@ -149,9 +150,6 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         return Refused("stale_base")
     if state.base_retired:
         return Refused(RETIRED)  # ADR 0029: a retired game is never fitted or stored again
-    running = await sport.admit_class(db, ctx, class_id)  # ADR 0018 (#509): the running gate
-    if running is not None:
-        return running
     done = (await db.execute(_REFITS, {"owner_id": ctx.user_id, "class_id": class_id})).scalar_one()
     if done >= MAX_REFITS:
         return Refused("refit_limit", {"limit": MAX_REFITS, "count": int(done)})
@@ -226,10 +224,8 @@ async def run(job_run: JobRun) -> Complete:
         raise JobFailure("invalid_input")  # defence in depth: admit refuses it ``game_retired``
     if music_kind.is_none(row.music_source) or isinstance(music, NoMusicChoice):
         raise JobFailure("invalid_input")  # defence in depth: admit refuses a soundless class
-    if brief.sport == sport.RUNNING:
-        if isinstance(music, SwedebeatMusicChoice):
-            raise JobFailure("internal")  # running v1 has no mix (ADR 0018)
-        await sport.still_on(job_run)  # before anything is called
+    if brief.sport == sport.RUNNING and isinstance(music, SwedebeatMusicChoice):
+        raise JobFailure("internal")  # running v1 has no mix (ADR 0018)
     if isinstance(music, SwedebeatMusicChoice):
         await mixadmit.still_on(job_run, runtime.swedebeat_enabled)  # before anything is called
     await job_run.stage("music")

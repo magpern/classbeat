@@ -14,6 +14,8 @@ const PLAYLIST = '0123456789abcdefABCDEF'
 const LENGTH = { topic: 'length', text: 'How long should it be?', options: ['30 minutes', '45 minutes', '60 minutes'], assumed_index: 1 }
 const MUSIC = { topic: 'music', text: 'What about the music?', options: ['80s hits', 'Rock', 'No music'], no_music_index: 2 }
 const CLOSED = { topic: 'music', code: 'which_music', options: ['my_playlists', 'no_music'], no_music_index: 1 }
+// #1544: the form's sport (running, assumed) and the request's (a spin class) disagree.
+const SPORT = { topic: 'sport', code: 'which_sport', options: ['cycling', 'running'], assumed_index: 1 }
 
 function questionsOf(...raw: object[]): ReadingQuestion[] {
   return decodeReadingExtras({ questions: raw }).questions
@@ -74,6 +76,27 @@ describe('the confirm screen', () => {
     await userEvent.click(update())
     expect(confirm.onReread).toHaveBeenCalledWith({ interpretJobId: READING, answers: [{ questionIndex: 0, optionIndex: 2 }] })
     expect(confirm.onDesign).not.toHaveBeenCalled()
+  })
+
+  it('asks which sport in the page\'s words with the form\'s sport assumed, and re-reads with the other (#1544)', async () => {
+    const confirm = show(questionsOf(SPORT))
+    const group = screen.getByRole('group', { name: 'Is this a cycling class or a running class?' })
+    expect(within(group).getByRole('radio', { name: /Running/ })).toBeChecked()
+    expect(within(group).getByText('(assumed)')).toBeInTheDocument()
+    expect(screen.queryByText(/which_sport|^cycling$|^running$/)).toBeNull()
+    await userEvent.click(within(group).getByRole('radio', { name: /Cycling/ }))
+    await userEvent.click(update())
+    expect(confirm.onReread).toHaveBeenCalledWith({ interpretJobId: READING, answers: [{ questionIndex: 0, optionIndex: 0 }] })
+  })
+
+  it('drops a which_sport question that is not exactly the backend\'s', () => {
+    expect(questionsOf({ ...SPORT, assumed_index: null })).toEqual([])
+    expect(questionsOf({ ...SPORT, options: ['running', 'cycling'] })).toEqual([])
+    expect(questionsOf({ ...SPORT, topic: 'music' })).toEqual([])
+    expect(questionsOf({ ...SPORT, text: 'Which?' })).toEqual([])
+    expect(questionsOf(SPORT)).toEqual([
+      { topic: 'sport', code: 'which_sport', text: '', options: ['cycling', 'running'], assumedIndex: 1, noMusicIndex: null },
+    ])
   })
 
   it('re-reads with the words typed under "Anything to correct?"', async () => {

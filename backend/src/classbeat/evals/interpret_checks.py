@@ -23,6 +23,10 @@ On the sanitised ``InterpretedRequest`` (what the stage hands back), never on mo
 - ``shape`` (#1485): the sections in order, each of the expected kind and with every modifier the
   case gives (``trend``, ``effort``, ``count``, ``length``, ``load``, ``minutes``); a section the
   case names in full (``effort``, ``count``, ``length`` and ``load``) has no other modifier;
+- ``two_sports`` (#1544): the request for both sports is marked, or one that names the other sport
+  only as context is not;
+- ``sport_question`` (#1544): with the case's ``sport_override``, the policy's ``which_sport``
+  question is asked exactly when the case says (the reading's sport disagrees with the form's);
 - ``forbidden_text``: none of the case's strings is anywhere in what came back, the name included.
 """
 
@@ -34,7 +38,7 @@ from classbeat.agent.interpret_input import clean_request
 from classbeat.agent.interpreted import InterpretedRequest
 from classbeat.agent.ride_shape import SectionFields
 from classbeat.class_title_policy import proposed_name
-from classbeat.design.reading_question_policy import TOPIC_PATHS
+from classbeat.design.reading_question_policy import TOPIC_PATHS, which_sport
 from classbeat.evals.checks import Check
 from classbeat.evals.interpret_cases import InterpretCase, PinExpect, TasteExpect
 
@@ -87,6 +91,20 @@ def check_interpretation(case: InterpretCase, got: InterpretedRequest) -> list[C
     )
     if expect.music_required:
         checks.append(_music_required(got))
+    if expect.two_sports is not None:
+        marked = got.two_sports is True
+        checks.append(
+            Check("two_sports", marked == expect.two_sports, f"both sports marked: {marked}")
+        )
+    if expect.sport_question is not None:
+        asked_sport = which_sport(got, case.sport_override, reread=False) is not None
+        checks.append(
+            Check(
+                "sport_question",
+                asked_sport == expect.sport_question,
+                f"the form's sport asked about: {asked_sport}",
+            )
+        )
     if expect.named or got.name is not None:
         kept = got.name is not None and proposed_name(got.name) == got.name
         checks.append(Check("name", kept, "a short name that survives the cleaning: given or not"))

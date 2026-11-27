@@ -110,8 +110,6 @@ export async function cancelMowlQr(ticketId: string): Promise<void> {
 export async function getConnectionsView(): Promise<{
   connections: Connection[]
   swedebeat: SwedebeatAccess
-  /** The effective `running_enabled` flag (ADR 0018 section 5); an answer without it means off. */
-  runningEnabled: boolean
   /** Whether the page may offer "Scan with the MOWL app" (ADR 0024); an answer without it means off. */
   mowlQrEnabled: boolean
   /** The effective `composer_flow` flag (ADR 0038 section 2); an answer without it means off. */
@@ -121,7 +119,6 @@ export async function getConnectionsView(): Promise<{
   const access = body.swedebeat === undefined ? null : object(body.swedebeat, 'swedebeat')
   return {
     connections: list(body, 'connections').map(decodeConnection),
-    runningEnabled: body.running_enabled === true,
     mowlQrEnabled: body.mowl_qr_enabled === true,
     composerFlow: body.composer_flow === true,
     swedebeat:

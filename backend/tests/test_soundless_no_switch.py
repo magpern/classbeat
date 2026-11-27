@@ -32,8 +32,10 @@ from classbeat.saving import approval
 SRC = Path(__file__).resolve().parents[1] / "src" / "classbeat"
 RETIRED = re.compile(r"soundless_enabled|SOUNDLESS_ENABLED|soundlessEnabled")
 # The only lines of the source that may still name the retired flag: history, never a reader.
+# (reworded by #1544, which retired the running key in the same sentence)
 HISTORY = (
-    "no key (``soundless_enabled`` was retired, ADR 0007 amendment of 2026-11-08, #824), so it is"
+    "``unknown_key``). Soundless and running classes have no key "
+    "(``soundless_enabled`` was retired,"
 )
 ALLOWED = {("admin/settings.py", HISTORY)}
 GONE = {

@@ -1,4 +1,4 @@
-# Running classes: the owner's live eval and switching running on
+# Running classes: the owner's live eval
 
 [ADR 0012](../adr/0012-eval-suite-and-model-providers.md) (amendment of 2026-11-03) and
 [ADR 0018](../adr/0018-mowl-running-classes.md) (Amendment 3). Suite version 10 added running cases (version 11 added the soundless ones, [soundless-evals.md](soundless-evals.md)): the
@@ -6,30 +6,22 @@
 all in the `design` stage group. CI replays them against `FakeProvider` (`backend/tests/test_evals_running.py`)
 and never calls a model. **No live eval has been run or recorded yet.**
 
-## What the gate needs before real users get running
+## What a running class needs now
 
-A running design or revise runs only on a `design` route that is **not stale for any reason**: its result
-was recorded by `suite --live --record` on the running suite (version and manifest digest) with the running
-code's prompt versions of `design`, `revise`, `running_design` and `running_revise`, and no newer result for
-that model failed. The bootstrap model (no route) never serves running. Without such a route a running job
-ends `model_config` before any MOWL or model call, and the admin refuses to store `running_enabled` = `on`
-(422 `running_not_evaluated`) until **every plan's route key** has one. `CLASSBEAT_RUNNING_ENABLED` stays the
-kill switch.
+Since #1544 ([ADR 0018](../adr/0018-mowl-running-classes.md) Amendment 6; owner, 2026-11-26: running is
+always available) there is **no switch**: `RUNNING_ENABLED` and the admin's `running_enabled` are retired
+(migration 0082 deleted a stored row and the Settings page no longer lists the key). Every instructor can
+start a running class; it still designs on one of the user's MOWL playlists (without one the reading says
+"Running needs a playlist from your MOWL music.").
 
-Since #509 ([ADR 0018](../adr/0018-mowl-running-classes.md) Amendment 5) running is on only when **all three**
-hold, checked on every page load and every request: `RUNNING_ENABLED=true`, `running_enabled` stored exactly
-`on`, and every plan's route key covered as above. What the admin sees:
-
-- **Settings page, `running_enabled`:** *effective* `on` only with all three. With nothing stored (also after
-  **Clear**, the DELETE) it shows `off`, even with `RUNNING_ENABLED=true`. Storing `on` answers
-  `running_not_evaluated` while any plan lacks a covering route.
-- **After a plan is added or a route is cleared or goes stale** (a newer failed result, a new suite version or
-  prompt), *effective* turns `off` by itself, while *stored* still says `on`. The New class form stops offering
-  Running at the next page load; nothing needs to be stored again once the route is back.
-- **Users:** a running design or change is refused before anything is charged. A user whose own plan lacks a
-  covering route sees "Running classes are not available on your plan yet"; when only another plan lacks
-  one, running is simply off for everyone (`feature_off`). A job that was already queued when its route went
-  away ends with "classbeat cannot design classes right now" (`model_config`), with its credit returned.
+The recorded eval still matters, for quality: a running design or revise uses the `design` route, and a
+route is **covered for running** when it is not stale for any reason (its result was recorded by
+`suite --live --record` on the running suite version and digest, with the running code's prompt versions of
+`design`, `revise`, `running_design` and `running_revise`, and no newer result for that model failed). The
+bootstrap model (no route) never covers running. On a route that does not cover running the job is **served
+with the stale-route warning** (`model route stale`, reason `running_not_evaluated`, once per process and
+route key; ADR 0012 section 5), not refused. A route with a newer failure is still unusable
+(`model_config`). The running schema and the library's `validate_running` check every draft either way.
 
 ## Rules
 
@@ -70,15 +62,14 @@ Run from the stack's checkout, in the worker container (it has the key file and 
 3. **Enable the route for every plan key** that will serve running (the admin's Model routes page or
    `docker compose exec worker python -m classbeat models enable KEY design anthropic claude-opus-5-5 medium
    --yes`), as in [m3c-model-enable.md](m3c-model-enable.md). `models list` must show no stale reason.
-4. **Switch running on.** Both are needed: set `RUNNING_ENABLED=true` in `.env` (web and worker; restart both),
-   **and** store `running_enabled` = `on` on the admin's Settings page, which refuses with
-   `running_not_evaluated` while a plan's key lacks a covering route. Check that *effective* shows `on`. Record
-   the decision in `docs/status.md`. To switch it off, store `off` or **Clear** it (both are off), or set
-   `RUNNING_ENABLED=false`.
+4. **Nothing to switch on** (#1544). The worker's `model route stale` warning with reason
+   `running_not_evaluated` stops for a key once its route covers running. Record the run in
+   `docs/status.md`. The owner's live check of a running save and update is a separate pre-deploy item there
+   ("Waiting for the owner").
 
 ## After a change
 
 A new running prompt changes `running_design` or `running_revise`; a change to `design/sport_rules.py`,
 `agent/running_input.py`, a running case or a running check is a new suite version. Either makes the route
-stale, so running jobs stop (`model_config`) until a new recorded pass and `models enable`; cycling keeps
-working on the stale route, flagged.
+stale: running jobs, cycling and real no-music classes keep working on it with the warning, until a new
+recorded pass and `models enable`; a sketch stops (`model_config`).
