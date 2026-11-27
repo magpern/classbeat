@@ -55,17 +55,33 @@ function retryAfterOf(response: Response): number | null {
   return Number.isFinite(value) && value > 0 ? value : null
 }
 
+// A lock timeout in the server's general limit answers 503 `busy` with a short Retry-After (#998):
+// the request was not served and may be repeated. Reading the session is safe to repeat, and it is
+// the page's first call: without a repeat a single busy answer leaves "Cannot reach the server".
+const SESSION_BUSY_RETRIES = 2
+const SESSION_BUSY_MAX_WAIT_SECONDS = 5
+
 /** GET /api/auth/session raw; also refreshes the remembered CSRF token. */
 export async function fetchSessionJson(signal?: AbortSignal): Promise<JsonObject> {
-  const response = await fetch('/api/auth/session', {
-    headers: { Accept: 'application/json' },
-    signal,
-  })
-  const body = await readBody(response)
-  if (!response.ok) throw new ApiError(response.status, reasonOf(body), null, body)
-  const session = object(body, 'session')
-  csrfToken = typeof session.csrf_token === 'string' ? session.csrf_token : null
-  return session
+  for (let attempt = 0; ; attempt += 1) {
+    const response = await fetch('/api/auth/session', {
+      headers: { Accept: 'application/json' },
+      signal,
+    })
+    const body = await readBody(response)
+    if (response.ok) {
+      const session = object(body, 'session')
+      csrfToken = typeof session.csrf_token === 'string' ? session.csrf_token : null
+      return session
+    }
+    const why = reasonOf(body)
+    if (response.status === 503 && why === 'busy' && attempt < SESSION_BUSY_RETRIES && !signal?.aborted) {
+      const wait = Math.min(retryAfterOf(response) ?? 1, SESSION_BUSY_MAX_WAIT_SECONDS)
+      await new Promise((resolve) => setTimeout(resolve, wait * 1000))
+      continue
+    }
+    throw new ApiError(response.status, why, null, body)
+  }
 }
 
 async function currentCsrfToken(): Promise<string> {

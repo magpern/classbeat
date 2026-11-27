@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fakeApi, json, reason } from '../test/fakeApi'
-import { ApiError, del, get, post } from './client'
+import { ApiError, del, fetchSessionJson, get, post } from './client'
 import { errorMessage } from './messages'
 
 describe('API client', () => {
@@ -59,6 +59,46 @@ describe('API client', () => {
     expect(error).toBeInstanceOf(ApiError)
     expect(error).toMatchObject({ status: 429, reason: 'rate_limited', retryAfter: 120 })
     expect(errorMessage(error)).toBe('Too many attempts. Try again in 2 minutes.')
+  })
+
+  describe('a busy answer to the session read (#998, #1567)', () => {
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('waits for Retry-After and reads the session again', async () => {
+      vi.useFakeTimers()
+      let reads = 0
+      const api = fakeApi({
+        'GET /api/auth/session': () =>
+          ++reads === 1
+            ? json({ detail: { reason: 'busy' } }, 503, { 'Retry-After': '2' })
+            : { authenticated: false, csrf_token: 'csrf-after-busy' },
+      })
+      const done = fetchSessionJson()
+      await vi.advanceTimersByTimeAsync(1999)
+      expect(api.to('GET', '/api/auth/session')).toHaveLength(1)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(await done).toMatchObject({ csrf_token: 'csrf-after-busy' })
+      expect(api.to('GET', '/api/auth/session')).toHaveLength(2)
+    })
+
+    it('gives up after two repeats and reports the 503', async () => {
+      vi.useFakeTimers()
+      const api = fakeApi({
+        'GET /api/auth/session': json({ detail: { reason: 'busy' } }, 503, { 'Retry-After': '1' }),
+      })
+      const done = fetchSessionJson().catch((e: unknown) => e)
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(await done).toMatchObject({ status: 503, reason: 'busy' })
+      expect(api.to('GET', '/api/auth/session')).toHaveLength(3)
+    })
+
+    it('does not repeat another 503', async () => {
+      const api = fakeApi({ 'GET /api/auth/session': reason(503, 'down') })
+      await expect(fetchSessionJson()).rejects.toMatchObject({ status: 503, reason: 'down' })
+      expect(api.to('GET', '/api/auth/session')).toHaveLength(1)
+    })
   })
 
   describe('401 after the session rotated (ADR 0003 section 3)', () => {
