@@ -3,9 +3,8 @@ import da from './da'
 
 // #1562: one Danish term for the instructor's "request" ("anmodning", used in about 65 strings), not a
 // second one ("forespørgsel") beside it. `da` includes the workspace and preview catalogues. The privacy
-// page says "forespørgsel" for a network request to a provider in exactly three strings; it is legal text
-// with an open owner question (docs/status.md), so those keys are named here and nothing else is exempt
-// (#1564): a later privacy string that says it for the instructor's request is caught.
+// page says "forespørgsel" for a network request to a provider in exactly three strings; it is legal text, so
+// those keys are named here and nothing else is exempt (#1564): a later privacy string that says it for the instructor's request is caught.
 const NETWORK_REQUEST_KEYS = ['privacy.processors.li2', 'privacy.processors.li5', 'privacy.processors.li6']
 
 const stringsOf = () => Object.entries(da).filter((entry): entry is [string, string] => typeof entry[1] === 'string')

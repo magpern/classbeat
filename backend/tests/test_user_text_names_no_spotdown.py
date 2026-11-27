@@ -5,20 +5,58 @@ the backend's words in the account mail (``emails.locales``, every language), th
 (``CONSENT_TEXT``) and the job and Spotify failure sentences (``jobs.sentences``,
 ``spotify.errors``); API errors are reason codes, never prose. Code, logs, docs and ADRs keep the
 name. The frontend catalogues have their own guard (``noSpotdownInCatalogues.test.ts``).
+
+The list of what is read is found, not written out (#1573): every language ``emails.catalogue``
+carries, and every module under ``classbeat`` whose file name says it holds user text (a
+``sentence``, ``errors``, ``consent``, ``message`` or ``wording`` module, or any module of
+``emails/locales``). A new locale or a new such module is covered without editing this file. Every
+string literal in them is read, in a function body too, except docstrings. A module of user text
+that is named otherwise is not found: name it so, or add its pattern to ``USER_TEXT_FILE``.
 """
 
+import ast
+import re
 from collections.abc import Iterator
+from pathlib import Path
 from types import ModuleType
 
 import pytest
 
+import classbeat
 from classbeat.connections import spotify_consent_policy
-from classbeat.emails.locales import da, en, sv
+from classbeat.emails.catalogue import LOCALES as MAIL
 from classbeat.jobs import sentences
-from classbeat.spotify import errors
 
-USER_TEXT_MODULES = (spotify_consent_policy, sentences, errors)
-MAIL = {"en": en.CATALOGUE, "sv": sv.CATALOGUE, "da": da.CATALOGUE}
+SRC = Path(classbeat.__file__).parent
+USER_TEXT_FILE = re.compile(r"sentence|errors?\.py|consent|messages?\.py|wording")
+
+
+def user_text_files() -> list[Path]:
+    found = [
+        path
+        for path in SRC.rglob("*.py")
+        if USER_TEXT_FILE.search(path.name)
+        or (path.parent.name == "locales" and path.parent.parent.name == "emails")
+    ]
+    return sorted(found)
+
+
+def literals(source: str, where: str) -> Iterator[tuple[str, str]]:
+    """Every string literal in ``source`` that is not a docstring."""
+    tree = ast.parse(source)
+    docstrings = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
+            first = node.body[0] if node.body else None
+            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant):
+                docstrings.add(id(first.value))
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and id(node) not in docstrings
+        ):
+            yield f"{where}:{node.lineno}", node.value
 
 
 def texts(value: object, where: str) -> Iterator[tuple[str, str]]:
@@ -52,10 +90,28 @@ def test_no_mail_string_names_spotdown(lang: str) -> None:
     assert naming_spotdown(texts(catalogue, lang)) == []
 
 
-@pytest.mark.parametrize("module", USER_TEXT_MODULES, ids=lambda m: m.__name__)
-def test_no_consent_or_failure_sentence_names_spotdown(module: ModuleType) -> None:
-    assert list(module_texts(module))
-    assert naming_spotdown(module_texts(module)) == []
+def test_every_language_the_mail_carries_is_read() -> None:
+    locale_files = {p.stem for p in (SRC / "emails" / "locales").glob("*.py")} - {
+        "__init__",
+        "untranslated",
+    }
+    assert locale_files <= set(MAIL)
+
+
+def test_the_user_text_modules_are_found() -> None:
+    names = {path.relative_to(SRC).as_posix() for path in user_text_files()}
+    assert {
+        "jobs/sentences.py",
+        "spotify/errors.py",
+        "connections/spotify_consent_policy.py",
+        "emails/locales/da.py",
+    } <= names
+
+
+@pytest.mark.parametrize("path", user_text_files(), ids=lambda p: p.relative_to(SRC).as_posix())
+def test_no_user_text_module_names_spotdown(path: Path) -> None:
+    found = list(literals(path.read_text(encoding="utf-8"), path.name))
+    assert naming_spotdown(iter(found)) == []
 
 
 def test_the_consent_text_and_the_song_sentences_are_read() -> None:
@@ -69,3 +125,13 @@ def test_the_consent_text_and_the_song_sentences_are_read() -> None:
 def test_the_check_finds_the_name_in_any_case_and_at_any_depth() -> None:
     sample = {"a": "Analysed by Spotdown.", "b": ("x", {"c": "SPOTDOWN"}), "d": "classbeat"}
     assert naming_spotdown(texts(sample, "s")) == ["s['a']", "s['b'][1]['c']"]
+
+
+def test_the_literal_scan_reads_function_bodies_and_skips_docstrings() -> None:
+    source = (
+        '"""Spotdown in a module docstring."""\n'
+        "def f():\n"
+        '    """Spotdown in a docstring."""\n'
+        '    return "Analysed by Spotdown."\n'
+    )
+    assert [text for _, text in literals(source, "m")] == ["Analysed by Spotdown."]
