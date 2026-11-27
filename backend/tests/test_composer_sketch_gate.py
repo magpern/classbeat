@@ -10,8 +10,13 @@ from uuid import UUID
 
 import pytest
 
-from classbeat.design import music_kind
-from sketchtools import SketchEnv
+from classbeat.db import user_session
+from classbeat.design import DESIGN_DRAFT, music_kind
+from classbeat.design.kind import DesignDraftInput
+from classbeat.jobs.kinds import Admitted, Refused
+from ctx import make_context
+from designtools import BRIEF
+from sketchtools import NO_MUSIC, SketchEnv
 from test_soundless_jobs import own_key, plan_keys, route
 
 pytestmark = pytest.mark.usefixtures("jenv")
@@ -143,6 +148,46 @@ async def test_a_ride_in_progress_follows_its_class_when_coverage_lapses(
     assert (await connections(skenv))["composer_flow"] is False  # a new class: the older route
 
 
+# --- 4b. the design admit (a direct ``design_draft`` in mode ``sketch``) ----------------------
+
+
+async def test_a_direct_sketch_design_on_an_uncovered_plan_is_refused_before_any_job(
+    skenv: SketchEnv,
+) -> None:
+    """``kind_music.admit_music_choice`` runs ``sketch_gate.admit_sketch`` for a ``design_draft``
+    in mode ``sketch``. A browser cannot send ``mode`` (422), so the hand-off is the only caller:
+    its own admit is called here as the jobs API calls it. Without that call the job would be
+    queued and only the worker's ``require_covered`` would stop it."""
+    class_id = await skenv.interpreted()
+
+    def sketch(mode: str | None) -> DesignDraftInput:
+        return DesignDraftInput.model_validate(
+            {
+                "class_id": class_id,
+                "brief": BRIEF,
+                "music": NO_MUSIC,
+                "mowl_connection_id": skenv.renv.browser.connection_id,
+                "mode": mode,
+            }
+        )
+
+    ctx = make_context(skenv.renv.owner)
+    kind_admit = DESIGN_DRAFT.admit
+    assert kind_admit is not None
+
+    async def admit(mode: str | None) -> Refused | Admitted:
+        async with user_session(skenv.renv.denv.ops.factory, ctx) as db:
+            return await kind_admit(db, ctx, sketch(mode))
+
+    before = skenv.ienv.counts()
+    gate(fake=False)  # the user's own plan has no route covering soundless
+    assert await admit("sketch") == Refused("soundless_not_evaluated")
+    assert isinstance(await admit(None), Admitted)  # a real no-music class has no such gate
+    assert skenv.ienv.counts() == before  # no class, no job, no credit
+    gate(fake=True)
+    assert isinstance(await admit("sketch"), Admitted)  # the same input, the plan covered
+
+
 # --- 5. the worker keeps the sketch's rule (#1543) --------------------------------------------
 
 
@@ -167,3 +212,27 @@ async def test_a_sketch_on_a_model_not_covering_soundless_still_ends_model_confi
     assert (row.state, row.error_category) == ("failed", "model_config")
     assert all(p.sent == [] for p in skenv.renv.providers)
     assert skenv.renv.current(class_id) is None
+
+
+async def test_a_sketch_edit_on_a_model_not_covering_soundless_ends_model_config(
+    skenv: SketchEnv,
+) -> None:
+    """``revise_soundless.run_soundless`` passes ``sketch=True`` to ``serve_model`` for a sketch's
+    edit: ``model_config`` before the stage sends anything, and no revision. (Admitted: the plan
+    covers soundless; the attempt's model does not.)"""
+    class_id, sketch = await skenv.sketched()
+    sent = [len(p.sent) for p in skenv.renv.providers]
+    made = await skenv.renv.ask(class_id, sketch, "Seven bursts")
+    assert made.status_code == 201, made.text
+    job_id = UUID(made.json()["id"])
+    skenv.renv.soundless_covered = False
+    try:
+        skenv.renv.use("soundless_revise_good")  # the runtime reads the flag when it is built
+        await skenv.renv.run("revise_draft")
+    finally:
+        skenv.renv.soundless_covered = True
+    row = skenv.renv.denv.ops.row(job_id)
+    assert (row.state, row.error_category) == ("failed", "model_config")
+    assert [len(p.sent) for p in skenv.renv.providers][: len(sent)] == sent
+    assert skenv.renv.current(class_id) == sketch
+    assert len(skenv.renv.revisions(class_id)) == 1  # the sketch only

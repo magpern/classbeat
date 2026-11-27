@@ -159,8 +159,9 @@ describe('duplicate words', () => {
     expect(duplicateReasonText(refusal(409, { reason: 'idempotency_mismatch' }))).toContain(
       'already asked for with other details',
     )
-    expect(duplicateReasonText(refusal(409, { reason: 'soundless_not_evaluated' }))).toContain(
-      'not available on your plan yet',
+    // A duplicate has no soundless gate (#1543), so that refusal has no sentence of its own any more.
+    expect(duplicateReasonText(refusal(409, { reason: 'soundless_not_evaluated' }))).not.toContain(
+      'soundless_not_evaluated',
     )
     expect(duplicateReasonText(refusal(409, { reason: 'not_changeable' }))).toContain('no music of its own')
     // Anything else gets the generic sentence, never the raw reason.

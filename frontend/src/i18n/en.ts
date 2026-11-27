@@ -631,7 +631,6 @@ export const en = {
   'class.duplicate.copyOf': '{title} (copy)',
   'class.duplicate.reason.not_ready': 'This class has no finished design yet, so there is nothing to copy. Try again when it is ready.',
   'class.duplicate.reason.feature_off': 'Classes like this one cannot be made right now, so it cannot be copied.',
-  'class.duplicate.reason.soundless_not_evaluated': 'Classes without music are not available on your plan yet, so this one cannot be copied.',
   'class.duplicate.reason.not_changeable':
     'Chat cannot change this class: it has no music of its own. You can still view, use and save versions.',
   'class.duplicate.reason.hash_mismatch': 'That version is not the one this page showed: it was changed elsewhere. Reload the page and try again.',
