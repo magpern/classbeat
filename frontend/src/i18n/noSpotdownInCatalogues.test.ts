@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import da from './da'
 import { en } from './en'
+import { LOCALES } from './locales'
 import sv from './sv'
 
 // #1571 (owner, 2026-11-27): "for the user classbeat is all they know. Spotdown is just a service for
 // classbeat." No string a user sees names spotdown; code, logs, docs and ADRs keep the name. `en`, `sv`
 // and `da` hold every catalogue module (workspace, preview, editor, legal, help, public and the rest), so
 // a new module spread into them is covered too. Plural forms are objects; every text in them is read.
-const catalogues = { en, sv, da } as const
+const catalogues: Record<string, Record<string, unknown>> = { en, sv, da }
 
 function texts(value: unknown, key: string): [string, string][] {
   if (typeof value === 'string') return [[key, value]]
@@ -24,9 +25,13 @@ function namingSpotdown(catalogue: Record<string, unknown>): string[] {
 }
 
 describe('the user-facing catalogues', () => {
-  for (const lang of ['en', 'sv', 'da'] as const) {
+  it('reads a catalogue for every locale in locales.json', () => {
+    for (const lang of LOCALES) expect(catalogues[lang], lang).toBeDefined()
+  })
+
+  for (const lang of LOCALES) {
     it(`${lang}: no string names spotdown`, () => {
-      const catalogue = catalogues[lang] as Record<string, unknown>
+      const catalogue = catalogues[lang] ?? {}
       expect(Object.keys(catalogue).length).toBeGreaterThan(1000)
       expect(namingSpotdown(catalogue)).toEqual([])
     })
