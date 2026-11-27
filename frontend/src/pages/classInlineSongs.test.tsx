@@ -13,7 +13,7 @@ import {
   waitingJob,
 } from '../test/songFixtures'
 import { renderAt } from '../test/render'
-import { recallRequest } from '../lib/startRequest'
+import { recallRequest, rememberRequest } from '../lib/startRequest'
 
 // MA4 (#884): the song approval, the planned songs of each section and Change music, all inside the
 // class workspace. The API is faked; nothing here reaches a network.
@@ -282,6 +282,47 @@ describe('Change music', () => {
     expect(window.location.search).toBe(`?from=${CLASS_ID}`)
     expect(recallRequest(CLASS_ID)).toEqual({ request: 'A hilly 45 minute ride', music: `playlist:${PLAYLIST}`, sport: 'cycling' })
     expect(api.calls.filter((c) => c.method !== 'GET')).toHaveLength(0)
+  })
+
+  describe('keeps the hand-picked sport only while it is still the class sport (#1564)', () => {
+    const startAgainWith = async (kept: { sport: 'cycling' | 'running'; manual?: boolean } | null, classSport: 'cycling' | 'running') => {
+      if (kept !== null) rememberRequest(CLASS_ID, { request: 'A hilly ride', music: null, ...kept })
+      fakeApi({ ...pickedRoutes(), ...classRoutes({ cls: { songs: APPROVED, brief: BRIEF, sport: classSport } }) })
+      renderAt(PAGE)
+      await open()
+      fireEvent.click(await screen.findByRole('button', { name: 'Music' }))
+      fireEvent.click(screen.getByRole('radio', { name: /Hill climbs/ }))
+      fireEvent.click(screen.getByRole('button', { name: 'Open the start screen with this music' }))
+      await waitFor(() => {
+        expect(window.location.pathname).toBe('/en/classes/new')
+      })
+      return recallRequest(CLASS_ID)
+    }
+
+    it('carries manual when the kept request was manual and its sport is the class sport', async () => {
+      expect(await startAgainWith({ sport: 'running', manual: true }, 'running')).toEqual({
+        request: 'A hilly ride',
+        music: `playlist:${PLAYLIST}`,
+        sport: 'running',
+        manual: true,
+      })
+    })
+
+    it('drops manual when the class sport is no longer the hand-picked one', async () => {
+      expect(await startAgainWith({ sport: 'cycling', manual: true }, 'running')).toEqual({
+        request: 'A hilly ride',
+        music: `playlist:${PLAYLIST}`,
+        sport: 'running',
+      })
+    })
+
+    it('does not make a sport manual that the instructor never picked by hand', async () => {
+      expect(await startAgainWith({ sport: 'running' }, 'running')).toEqual({
+        request: 'A hilly ride',
+        music: `playlist:${PLAYLIST}`,
+        sport: 'running',
+      })
+    })
   })
 
   it('does not offer "classbeat picks songs" as a Change songs shortcut for a class that has none to change', async () => {

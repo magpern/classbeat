@@ -28,8 +28,8 @@ CONSENT_TEXT: Final = (
     "overwritten on each pick. classbeat links it in MOWL so your class can be timed to it. The "
     "songs are analysed by spotdown, the music-analysis service classbeat uses. For each "
     "candidate song it gets the following: the title, artists, length, the explicit-lyrics flag "
-    "from Spotify and a code derived from its Spotify track id. It analyses the same recording "
-    "from a source other than Spotify."
+    "from Spotify and a code derived from the song\u2019s Spotify track id. It analyses the same "
+    "recording from a source other than Spotify."
 )
 
 

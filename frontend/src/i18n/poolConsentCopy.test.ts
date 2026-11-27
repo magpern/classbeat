@@ -12,7 +12,7 @@ const catalogues = { en, sv, da } as const
 const ANALYSE = { en: /analy[sz]|listen/i, sv: /analys|lyssna/i, da: /analys|lytte/i } as const
 const TIMED = { en: /timed to it/, sv: /tidsättas efter den/, da: /afstemmes efter den/ } as const
 const FACTS = {
-  en: [/title, artists, length/, /explicit-lyrics flag from Spotify/, /code derived from its Spotify track id/, /source other than Spotify/],
+  en: [/title, artists, length/, /explicit-lyrics flag from Spotify/, /code derived from the song’s Spotify track id/, /source other than Spotify/],
   sv: [/titel, artister, längd/, /flagga för explicit text/, /kod som härleds från låtens id hos Spotify/, /annan källa än Spotify/],
   da: [/titel, kunstnere, længde/, /markering af eksplicit tekst/, /kode afledt af sangens id hos Spotify/, /anden kilde end Spotify/],
 } as const

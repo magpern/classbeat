@@ -96,6 +96,8 @@ function Chooser({
       request: kept?.request ?? request ?? '',
       music: chosen.key,
       sport: summary.sport,
+      // A hand choice stays only while it is still the class sport; the sport the reading settled is not one.
+      ...(kept?.manual === true && kept.sport === summary.sport ? { manual: true } : {}),
     })
     navigate(startAgainPath(summary.id))
   }
