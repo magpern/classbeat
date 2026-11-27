@@ -37,10 +37,25 @@ SHARED_FACTS = (
 
 
 def catalogue_message(source: str, key: str) -> str:
-    """The single-quoted string ``key`` holds in a catalogue file, with ``\\'`` read as ``'``."""
+    """The single-quoted string ``key`` holds in a catalogue file, escapes read by ``unescape``."""
     found = re.search(rf"'{re.escape(key)}': '((?:[^'\\]|\\.)*)'", source)
     assert found is not None
-    return found.group(1).replace("\\'", "'")
+    return unescape(found.group(1))
+
+
+ESCAPES = {"\\": "\\", "'": "'", "n": "\n"}
+
+
+def unescape(raw: str) -> str:
+    """A TypeScript single-quoted string's text: backslash-backslash, backslash-quote and
+    backslash-n are read in one pass; any other escape fails here instead of reaching the
+    comparison as a stray backslash."""
+
+    def one(found: re.Match[str]) -> str:
+        assert found.group(1) in ESCAPES, f"unhandled escape \\{found.group(1)} in {raw!r}"
+        return ESCAPES[found.group(1)]
+
+    return re.sub(r"\\(.)", one, raw, flags=re.DOTALL)
 
 
 def card_body() -> str:
@@ -51,7 +66,7 @@ def fixture_text(path: str) -> str:
     source = (FRONTEND / path).read_text("utf-8")
     found = re.search(r"const CONSENT_TEXT =\s*'((?:[^'\\]|\\.)*)'", source)
     assert found is not None
-    return found.group(1).replace("\\'", "'")
+    return unescape(found.group(1))
 
 
 def mowl_sentences(text: str) -> list[str]:
@@ -62,6 +77,25 @@ def test_the_card_regex_reads_past_an_escaped_quote() -> None:
     source = "'a': 'x', 'k': 'It\\'s linked in MOWL. Then it is analysed.', 'z': 'y'"
     assert catalogue_message(source, "k") == "It's linked in MOWL. Then it is analysed."
     assert mowl_sentences(catalogue_message(source, "k")) == ["It's linked in MOWL."]
+
+
+def test_the_helpers_read_a_backslash_and_a_newline_escape_in_one_pass() -> None:
+    # The old helper only turned backslash-quote into a quote: it left the other two escapes as
+    # two characters, and turned the second half of an escaped backslash plus a quote wrongly.
+    assert unescape("a\\\\b") == "a\\b"
+    assert unescape("a\\nb") == "a\nb"
+    assert unescape("\\\\n") == "\\n"  # an escaped backslash then ``n``, not a newline
+    assert unescape("\\\\\\'") == "\\'"
+    source = "'k': 'one\\\\two\\nthree\\'s', 'z': 'y'"
+    assert catalogue_message(source, "k") == "one\\two\nthree's"
+
+
+def test_an_escape_the_helpers_do_not_read_fails_instead_of_passing_through() -> None:
+    for raw in ("\\u2019", "\\t", '\\"', "\\x41"):
+        with pytest.raises(AssertionError, match="unhandled escape"):
+            unescape(raw)
+    with pytest.raises(AssertionError, match="unhandled escape"):
+        catalogue_message("'k': 'a\\tb'", "k")
 
 
 def test_consent_text_says_the_playlist_is_public() -> None:

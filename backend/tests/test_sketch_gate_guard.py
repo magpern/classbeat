@@ -159,10 +159,11 @@ def admit_sketch_sites(source: str) -> list[list[tuple[str, str]]]:
     found: list[list[tuple[str, str]]] = []
     tree = ast.parse(source)
     modules, functions = gate_aliases(tree)
+    bound = set(functions)  # plus the names assigned from it (``f = sketch_gate.admit_sketch``)
 
     def is_admit(func: ast.expr) -> bool:
         if isinstance(func, ast.Name):
-            return func.id in functions
+            return func.id in bound
         return (
             isinstance(func, ast.Attribute)
             and func.attr == "admit_sketch"
@@ -171,6 +172,22 @@ def admit_sketch_sites(source: str) -> list[list[tuple[str, str]]]:
                 or ast.unparse(func.value).endswith(".sketch_gate")
             )
         )
+
+    # A call made through an assignment is resolved too, also through a chain of them
+    # (``f = sketch_gate.admit_sketch``, ``g = f``): repeat until no new name is bound.
+    while True:
+        before = len(bound)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                value, targets = node.value, node.targets
+            elif isinstance(node, (ast.AnnAssign, ast.NamedExpr)) and node.value is not None:
+                value, targets = node.value, [node.target]
+            else:
+                continue
+            if is_admit(value):
+                bound.update(t.id for t in targets if isinstance(t, ast.Name))
+        if len(bound) == before:
+            break
 
     def walk(node: ast.AST, path: list[tuple[str, str]]) -> None:
         if isinstance(node, (ast.If, ast.IfExp)):
@@ -267,6 +284,41 @@ def test_the_guard_sees_the_switch_through_a_function_alias() -> None:
 )
 def test_the_sketch_admit_pin_sees_the_call_through_an_alias(source: str) -> None:
     assert admit_sketch_sites(source) == [[]]
+
+
+IMPORT = "from classbeat.design import sketch_gate\n"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        IMPORT + "f = sketch_gate.admit_sketch\nawait f(db, ctx)\n",
+        "from classbeat.design.sketch_gate import admit_sketch\nf = admit_sketch\nawait f(db)\n",
+        "from classbeat.design import sketch_gate as g\nf = g.admit_sketch\nh = f\nawait h(db)\n",
+        "import classbeat.design.sketch_gate\nf = classbeat.design.sketch_gate.admit_sketch\nf(db)",
+        IMPORT + "f: object = sketch_gate.admit_sketch\nf(db)\n",
+        IMPORT + "(f := sketch_gate.admit_sketch)\nf(db)\n",
+        IMPORT + "def g():\n    f = sketch_gate.admit_sketch\n    f(db)\n",
+    ],
+)
+def test_the_sketch_admit_pin_sees_the_call_through_an_assignment(source: str) -> None:
+    assert admit_sketch_sites(source) == [[]]
+
+
+def test_the_sketch_admit_pin_keeps_the_arm_of_a_call_through_an_assignment() -> None:
+    src = (
+        "from classbeat.design import sketch_gate\n"
+        "f = sketch_gate.admit_sketch\n"
+        "if soundless and sketch:\n"
+        "    await f(db, ctx)\n"
+    )
+    assert admit_sketch_sites(src) == ADMIT_SKETCH["design/kind_music.py"]
+
+
+def test_the_sketch_admit_pin_ignores_an_assignment_of_another_name() -> None:
+    src = "from classbeat.design import sketch_gate\nf = sketch_gate.can_change\nf(db)\n"
+    assert admit_sketch_sites(src) == []
+    assert admit_sketch_sites("f = other.admit_sketch\nf(db)\n") == []
 
 
 def test_the_sketch_admit_pin_ignores_other_names() -> None:

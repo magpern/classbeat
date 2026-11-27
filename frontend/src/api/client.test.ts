@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fakeApi, json, reason } from '../test/fakeApi'
-import { ApiError, del, fetchSessionJson, get, post } from './client'
+import { ApiError, del, fetchSessionJson, get, post, rememberCsrfToken } from './client'
 import { errorMessage } from './messages'
 
 describe('API client', () => {
@@ -26,6 +26,34 @@ describe('API client', () => {
     await post('/api/x')
     await post('/api/x')
     expect(api.to('GET', '/api/auth/session')).toHaveLength(2)
+  })
+
+  it('stores the token a session read returns, so the next unsafe request reads no session (#1569)', async () => {
+    const api = fakeApi({
+      'GET /api/auth/session': { authenticated: false, csrf_token: 'csrf-stored' },
+      'POST /api/x': { ok: true },
+    })
+    await fetchSessionJson()
+    await post('/api/x')
+    expect(api.to('GET', '/api/auth/session')).toHaveLength(1)
+    expect(api.to('POST', '/api/x')[0]?.headers.get('X-CSRF-Token')).toBe('csrf-stored')
+  })
+
+  it('sends a remembered token without a session read (#1569)', async () => {
+    const api = fakeApi({ 'POST /api/x': { ok: true } })
+    rememberCsrfToken('csrf-cached')
+    await post('/api/x')
+    expect(api.to('GET', '/api/auth/session')).toHaveLength(0)
+    expect(api.to('POST', '/api/x')[0]?.headers.get('X-CSRF-Token')).toBe('csrf-cached')
+  })
+
+  it('fails an unsafe request with no_csrf_token when the session read carries none, and sends nothing (#1569)', async () => {
+    const api = fakeApi({
+      'GET /api/auth/session': { authenticated: false },
+      'POST /api/x': { ok: true },
+    })
+    await expect(post('/api/x')).rejects.toMatchObject({ status: 500, reason: 'no_csrf_token' })
+    expect(api.to('POST', '/api/x')).toHaveLength(0)
   })
 
   it('retries once with a fresh token when the server blames the CSRF token', async () => {
@@ -145,6 +173,18 @@ describe('API client', () => {
       expect(await done).toMatchObject({ name: 'AbortError' })
       expect(reads(api)).toBe(1)
       expect(vi.getTimerCount()).toBe(0)
+    })
+
+    it('keeps the abort signal on the repeated read (#1569)', async () => {
+      vi.useFakeTimers()
+      let n = 0
+      fakeApi({ 'GET /api/auth/session': () => (++n === 1 ? busy('1') : OK) })
+      const controller = new AbortController()
+      const done = fetchSessionJson(controller.signal)
+      await vi.advanceTimersByTimeAsync(1000)
+      await done
+      const signals = vi.mocked(fetch).mock.calls.map(([, init]) => init?.signal)
+      expect(signals).toEqual([controller.signal, controller.signal])
     })
 
     it('sends an unsafe request whose token read was repeated, after another request used and dropped its token', async () => {
