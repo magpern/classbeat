@@ -38,6 +38,7 @@ export type ModelScript =
   | 'composer_fill' // the fill: pick pool, choose, then the design stage on the chosen songs
   | 'composer_swap' // the swap of one song (row 4)
   | 'composer_release_read' // composer-release-*.spec.ts: the issue's request, read as six sections
+  | 'composer_release_read_styled' // the same reading with a music style ("rock"), for the re-read after the instructor typed one (#1538)
   | 'composer_release_sketch' // its sketch: 60 minutes, every segment tagged, six efforts in section 3
   | 'composer_release_seven' // "Make it seven bursts": the reading of it, then the sketch with seven
   | 'composer_release_fill' // the fill on 15 songs and the design with seven efforts (no pin, no cues)

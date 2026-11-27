@@ -172,3 +172,44 @@ async def test_the_fill_designs_seven_efforts_on_fifteen_songs_and_phase_two_kee
     saved = cenv.content(draft)
     assert (efforts(saved, 2), efforts(saved, 5)) == (7, 3)
     assert cenv.songenv.revision(draft).provenance["fit"] == "kept"
+
+
+async def test_the_styled_reading_answers_the_music_question_of_the_plain_one(
+    skenv: SketchEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The e2e specs' confirm step (#1538): the plain reading has no hint of what to play, so the
+    reading asks the closed music question and the page keeps "Design this class" off; the
+    instructor types "rock", the request is read again with the styled script, and that reading
+    has a taste, asks nothing and leaves the music decided, so the sketch can start."""
+    from classbeat.design import interpret_admit
+
+    async def admits(*_args: Any) -> bool:
+        return True
+
+    monkeypatch.setattr(interpret_admit, "song_picking", admits)
+    ienv = skenv.ienv
+    spotify = str(await ienv.connect_spotify())
+    ienv.models(FakeProvider(script("composer_release_read")))
+    made = await ienv.start(REQUEST, spotify=False, spotify_connection_id=spotify)
+    assert made.status_code == 201, made.text
+    await ienv.run(INTERPRET_REQUEST.name)
+    class_id = UUID(made.json()["class_id"])
+    plain = ienv.interpretation(class_id)
+    assert [(q["topic"], q.get("code")) for q in plain["questions"]] == [("music", "which_music")]
+    assert plain["music_decision"]["state"] == "undecided"
+
+    body = {"interpret_job_id": plain["job_id"], "answers": [{"question_index": 0, "text": "rock"}]}
+    again = await ienv.renv.browser.post(f"/api/classes/{class_id}/reread", body)
+    assert again.status_code == 201, again.text
+    ienv.models(FakeProvider(script("composer_release_read_styled")))
+    await ienv.run(INTERPRET_REQUEST.name)
+    styled = ienv.interpretation(class_id)
+    assert styled["job_id"] == again.json()["job_id"]
+    assert styled["brief"]["music_taste"]["genres"] == ["rock"]
+    assert "questions" not in styled  # a hint: nothing is asked, and nothing is required
+    assert (styled["music_decision"]["state"], styled["music_decision"]["choice"]) == (
+        "decided",
+        "request",
+    )
+    handed = await ienv.handoff(class_id, interpret_job_id=again.json()["job_id"])
+    assert handed.status_code == 201, handed.text

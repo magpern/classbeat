@@ -28,7 +28,8 @@ async def test_the_answer_waits_for_the_class_row_lock_and_lands_after_it(
     cenv: ComposerEnv,
 ) -> None:
     rider = await cenv.songenv.rider()
-    class_id, _ = await cenv.sketched(rider, decision=PICK)
+    # A pick needs a hint of what to play (#1538): a song the instructor named is one.
+    class_id, _ = await cenv.sketched(rider, pinned=[{"title": "Africa"}], decision=PICK)
     ctx = make_context(rider.user_id)
     factory = cenv.songenv.factory
     given = MusicAnswer(choice="pick")

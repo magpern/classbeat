@@ -64,13 +64,45 @@ export async function getInterpretation(classId: string, signal?: AbortSignal): 
   }
 }
 
-/** Starts the design of an interpreted request; the same job comes back for every later call. */
-export async function designFromInterpretation(classId: string, retry = false): Promise<string> {
-  const body = object(
-    await post(`/api/classes/${encodeURIComponent(classId)}/design-from-interpretation`, retry ? { retry: true } : {}),
-    'design job',
-  )
+/**
+ * Starts the design of an interpreted request; the same job comes back for every later call.
+ * `interpretJobId` names the reading the instructor confirmed: the server refuses `not_ready` when
+ * another was stored since (#1538), so a stale tab never designs a reading it did not show.
+ */
+export async function designFromInterpretation(classId: string, interpretJobId: string | null = null, retry = false): Promise<string> {
+  const sent = { ...(retry ? { retry: true } : {}), ...(interpretJobId !== null ? { interpret_job_id: interpretJobId } : {}) }
+  const body = object(await post(`/api/classes/${encodeURIComponent(classId)}/design-from-interpretation`, sent), 'design job')
   return text(body, 'job_id')
+}
+
+/** One answer to a reading question: an option of it, or the instructor's own words (backend `Answer`). */
+export type RereadAnswer = { questionIndex: number; optionIndex: number } | { questionIndex: number; text: string }
+
+/**
+ * What `POST /api/classes/{id}/reread` takes (#1538, backend `RereadIn`). `noMusic` is the closed
+ * "No music" field of a reading with no music question, never derived from words; `musicSources`
+ * are the Spotify playlists of the picker (the server checks them as a request's own).
+ */
+export interface RereadBody {
+  interpretJobId: string
+  answers: readonly RereadAnswer[]
+  note?: string
+  noMusic?: true
+  musicSources?: readonly string[]
+}
+
+/** Reads the request again with the answers, before any design: a new `interpret_request` job, no class credit. */
+export async function rereadClass(classId: string, input: RereadBody): Promise<string> {
+  const body = {
+    interpret_job_id: input.interpretJobId,
+    answers: input.answers.map((a) =>
+      'optionIndex' in a ? { question_index: a.questionIndex, option_index: a.optionIndex } : { question_index: a.questionIndex, text: a.text },
+    ),
+    ...(input.note !== undefined ? { note: input.note } : {}),
+    ...(input.noMusic === true ? { no_music: true } : {}),
+    ...(input.musicSources !== undefined ? { music_sources: input.musicSources.map((id) => ({ kind: 'spotify_playlist', id })) } : {}),
+  }
+  return text(object(await post(`/api/classes/${encodeURIComponent(classId)}/reread`, body), 'reread job'), 'job_id')
 }
 
 /**

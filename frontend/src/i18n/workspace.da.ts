@@ -79,7 +79,7 @@ export const workspaceDa: Catalogue = {
   'cw.more.delete': 'Slet hold',
   'cw.more.close': 'Luk',
   'cw.music.title': 'Musik til holdet',
-  'cw.music.question': 'Vil du have musik til dette hold? Jeg kan vælge den for dig, du kan beskrive den lyd, du vil have, eller dele playlister som inspiration, eller vi kan fortsætte uden musik.',
+  'cw.music.question': 'Hvilken musik vil du have til dette hold? Angiv en stil, beskriv den lyd, du vil have, eller del playlister som inspiration, eller vi kan fortsætte uden musik.',
   'cw.music.answers': 'Svar om musikken',
   'cw.music.pick': 'Vælg for mig',
   'cw.music.describe': 'Beskriv lyden',

@@ -13,7 +13,12 @@ the class answer shows it (ADR 0038 amendment of 2026-11-24, decision 5, #1495).
    fill's create locks the same row (``song_fill._Hold``) and compares the decision it planned
    with the stored one, so an answer either lands before the fill reads it or is refused
    ``music_fixed``;
-4. the decision (``music_decision.answered``) is stored when it differs from the stored one, so
+4. ``music_unanswered`` for ``choice: "pick"`` ("choose it for me") unless the reading has a hint of
+   what to play (``music_hint_policy.pick_allowed``: a taste item, a pinned song, a named playlist
+   or mix, a chosen source or attached playlists; #1538, owner rule 2026-11-26: songs are never
+   picked without a hint). The other answers (a described sound, playlists, later) are hints
+   themselves or pick nothing;
+5. the decision (``music_decision.answered``) is stored when it differs from the stored one, so
    the same answer twice changes nothing (idempotent per state).
 
 No Spotify, MOWL or model call, no job and no credit: the answer only says what the song search
@@ -29,15 +34,17 @@ attached ones), never an id or the note.
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from classbeat.agent.brief import Brief
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 from classbeat.design import composer, interpretation_row, music_decision
 from classbeat.design.interpretation_row import StoredInterpretation
 from classbeat.design.music_decision import MusicAnswer
+from classbeat.design.music_hint_policy import MUSIC_UNANSWERED, pick_allowed
 from classbeat.design.revision_ready_policy import SKETCH
 
 Factory = async_sessionmaker[AsyncSession]
@@ -56,6 +63,12 @@ _FILL_STARTED = text(
 )
 _ATTACHED = text(
     "SELECT input -> 'music_sources' FROM jobs WHERE owner_id = :owner_id "
+    "AND class_id = :class_id AND id = :job_id AND kind = 'interpret_request'"
+)
+# What the request itself said about its music (the form's source and attached playlists).
+_GIVEN = text(
+    "SELECT input -> 'music_override' ->> 'source' AS override, "
+    "input -> 'music_sources' AS sources FROM jobs WHERE owner_id = :owner_id "
     "AND class_id = :class_id AND id = :job_id AND kind = 'interpret_request'"
 )
 
@@ -84,12 +97,31 @@ async def answer(
         sketch = str(now.current_revision_id)
         if (await db.execute(_FILL_STARTED, {**ids, "sketch": sketch})).first() is not None:
             return music_decision.FIXED
+        if given.choice == "pick" and not await _may_pick(db, ids, row):
+            return MUSIC_UNANSWERED
         decision = music_decision.answered(given)
         if decision != music_decision.decision_of(row.music_decision):
             stored = row.model_copy(update={"music_decision": decision})
             await interpretation_row.write(db, ctx.user_id, class_id, stored)
             row = stored
         return await decision_out(db, ctx.user_id, class_id, row)
+
+
+async def _may_pick(db: AsyncSession, ids: dict[str, Any], row: StoredInterpretation) -> bool:
+    """Whether the stored reading has a hint of what to play (``pick_allowed``)."""
+    given = (await db.execute(_GIVEN, {**ids, "job_id": row.job_id})).first()
+    try:
+        taste = Brief.model_validate(row.brief).music_taste
+    except ValidationError:
+        taste = None
+    return pick_allowed(
+        row.music,
+        row.items,
+        taste,
+        pinned=len(row.pinned_songs),
+        override=None if given is None else given.override,
+        sources=None if given is None else given.sources,
+    )
 
 
 async def decision_out(

@@ -1,13 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError } from '../api/client'
 import type { ClassSummary } from '../api/classes'
-import { designFromInterpretation, getInterpretation } from '../api/interpret'
+import { designFromInterpretation, getInterpretation, rereadClass, type RereadBody } from '../api/interpret'
 import type { InterpretationItem } from '../api/interpretationItems'
+import { getJob } from '../api/jobs'
 import { NO_EXTRAS, type ReadingExtras } from '../api/readingExtras'
 import { heldNeed, type Need } from '../lib/planUpgrade'
 import { recallRequest } from '../lib/startRequest'
 
-export type HandoffPhase = 'idle' | 'reading' | 'choose' | 'starting' | 'refused' | 'failed' | 'error'
+export type HandoffPhase = 'idle' | 'reading' | 'confirm' | 'choose' | 'starting' | 'refused' | 'failed' | 'error'
+
+/** What the confirm screen does with the reading it shows (#1538). */
+export interface Confirmation {
+  /** The reading the questions belong to: the re-read and the hand-off name it, so a stale tab is refused. */
+  interpretJobId: string
+  /** "Design this class": agrees to the reading as it is; only then is anything designed or fetched. */
+  onDesign: () => void
+  /** "Update the reading": answers that change it read the request again (no class credit); resolves with the refusal, null when the new reading is on its way. */
+  onReread: (body: RereadBody) => Promise<unknown>
+  /** The last re-read ended without a new reading: the earlier one is kept. */
+  rereadFailed: boolean
+}
 
 export interface Handoff {
   phase: HandoffPhase
@@ -23,6 +36,8 @@ export interface Handoff {
   held: Need | null
   /** "Design within my plan": sends the design hand-off the reading held back. */
   designWithinPlan: () => void
+  /** Set in phase `confirm` only: what the reading's questions do (see `Confirmation`). */
+  confirmation: Confirmation | null
   /** Asks again, after an `error`. */
   retry: () => void
 }
@@ -33,9 +48,12 @@ const POLL_MS = 2000
  * The web-side hand-off of a class started from the free-text start screen (ADR 0029 section 5;
  * MA2 opened it, MA3 draws it in the workspace). It runs only for a class with no version that is
  * not being designed: while the `interpret_request` job runs it waits and reloads the class; once
- * the reading is stored it asks the server to design from it (`design-from-interpretation`,
- * idempotent, so a reopened tab gets the same job) and reloads, so the class then shows its
- * designing state in place. A stored refusal is answered again until the instructor acts.
+ * the reading is stored it **waits for the instructor** (phase `confirm`, #1538: nothing is
+ * designed or fetched until they agree, and a reopened tab waits again). `confirm()` then asks the
+ * server to design from the reading they saw (`design-from-interpretation` with its
+ * `interpret_job_id`, idempotent, so a reopened tab gets the same job) and reloads, so the class
+ * then shows its designing state in place. `reread()` sends answers that change the reading and
+ * waits for the new one. A stored refusal is answered again until the instructor acts.
  */
 export function useHandoff(summary: ClassSummary, reload: () => void): Handoff {
   const classId = summary.id
@@ -51,8 +69,15 @@ export function useHandoff(summary: ClassSummary, reload: () => void): Handoff {
   const [refusal, setRefusal] = useState<string | null>(null)
   const [round, setRound] = useState(0)
   const [held, setHeld] = useState<Need | null>(null)
+  const [rereadFailed, setRereadFailed] = useState(false)
+  // The reading the instructor agreed to: the one on screen when they clicked (this tab only: a reopened
+  // tab waits again). The hand-off names it, never a reading fetched since; another one stored since
+  // (a re-read from another tab) is shown for confirmation again.
+  const confirmed = useRef<string | null>(null)
   // Set when the instructor chose "design within my plan": the hand-off is then sent as usual.
   const chose = useRef(false)
+  // The job of a re-read whose reading is awaited; the reading shown stays the old one until it is stored.
+  const rereadJob = useRef<string | null>(null)
   // Read inside the polling loop: the page reloads the class while it waits, and the loop must not restart.
   const stillReading = useRef(interpreting)
   const reloadRef = useRef(reload)
@@ -69,6 +94,28 @@ export function useHandoff(summary: ClassSummary, reload: () => void): Handoff {
       try {
         const found = await getInterpretation(classId, abort.signal)
         if (abort.signal.aborted) return
+        if (rereadJob.current !== null && found.interpretJobId === rereadJob.current) rereadJob.current = null
+        let waiting = stillReading.current // a reopened tab while a re-read runs: the old reading is about to be replaced
+        if (rereadJob.current !== null) {
+          // The new reading is not stored yet: the old one is not shown (its questions are no longer asked).
+          const job = await getJob(rereadJob.current, abort.signal)
+          if (abort.signal.aborted) return
+          // A completed job stored its reading in the same step that completed it: the reading fetched
+          // just before was the old one, so read it again rather than call the re-read failed.
+          waiting = job.state === 'queued' || job.state === 'running' || job.state === 'completed'
+          if (!waiting) {
+            rereadJob.current = null // ended with no new reading: the earlier one stands
+            setRereadFailed(true)
+          }
+        }
+        if (waiting && found.designJobId === null) {
+          setPhase('reading')
+          timer = setTimeout(() => {
+            reloadRef.current()
+            void step()
+          }, POLL_MS)
+          return
+        }
         setItems(found.items)
         setExtras(found.extras)
         setInterpretJobId(found.interpretJobId)
@@ -79,13 +126,19 @@ export function useHandoff(summary: ClassSummary, reload: () => void): Handoff {
         } else if (found.refusal !== null) {
           setRefusal(found.refusal)
           setPhase('refused')
+        } else if (confirmed.current === null || confirmed.current !== found.interpretJobId) {
+          // Nothing is designed or fetched until the instructor agrees to the reading (#1538), and
+          // only to the reading they saw: a different one stored since needs its own confirmation.
+          confirmed.current = null
+          chose.current = false
+          setPhase('confirm')
         } else if (!chose.current && heldNeed(found.items) !== null) {
           // Over the plan: nothing is sent (the design job takes the class credit) until the instructor chooses.
           setHeld(heldNeed(found.items))
           setPhase('choose')
         } else {
           setPhase('starting')
-          await designFromInterpretation(classId)
+          await designFromInterpretation(classId, confirmed.current)
           if (abort.signal.aborted) return
           setPhase('idle')
           reloadRef.current()
@@ -128,5 +181,33 @@ export function useHandoff(summary: ClassSummary, reload: () => void): Handoff {
     setPhase('starting')
     setRound((n) => n + 1)
   }, [])
-  return { phase: active ? phase : 'idle', items, extras, interpretJobId, refusal, held, designWithinPlan, retry }
+  const confirm = useCallback((shown: string) => {
+    confirmed.current = shown
+    setRereadFailed(false)
+    setPhase('starting')
+    setRound((n) => n + 1)
+  }, [])
+  const reread = useCallback(
+    async (body: RereadBody): Promise<unknown> => {
+      try {
+        rereadJob.current = await rereadClass(classId, body)
+      } catch (error) {
+        return error
+      }
+      setRereadFailed(false)
+      confirmed.current = null
+      setItems(null)
+      setExtras(NO_EXTRAS)
+      setPhase('reading')
+      reloadRef.current()
+      setRound((n) => n + 1)
+      return null
+    },
+    [classId],
+  )
+  const confirmation =
+    active && phase === 'confirm' && interpretJobId !== null
+      ? { interpretJobId, onDesign: () => { confirm(interpretJobId) }, onReread: reread, rereadFailed }
+      : null
+  return { phase: active ? phase : 'idle', items, extras, interpretJobId, refusal, held, designWithinPlan, confirmation, retry }
 }

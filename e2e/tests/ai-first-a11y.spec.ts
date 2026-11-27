@@ -51,7 +51,7 @@ test('a refused hand-off passes the audit', async ({ page }) => {
   test.setTimeout(240_000)
   await instructorWithMowl(page, 'aia11yrefuse')
   useModelScript('ai_first_read_pull')
-  const held = await holdHandoff(page)
+  const held = holdHandoff(page)
   await say(page, 'A 30 minute ride with two climbs and a Power Pull after climb 2.')
   await pickMusic(page, PLAYLISTS.draft.name)
   await page.getByRole('button', { name: 'Design my class' }).click()
@@ -60,7 +60,7 @@ test('a refused hand-off passes the audit', async ({ page }) => {
   await disconnectMowl(other)
   await other.close()
   await page.bringToFront() // the audit waits on animation frames, which a hidden tab does not run
-  held.release()
+  await held.release()
   const stopped = page.getByTestId('handoff-stopped')
   await expect(stopped).toBeVisible(LONG)
   // On a phone the Chat and Class panels are tabs: audit the reading first, then the refusal.

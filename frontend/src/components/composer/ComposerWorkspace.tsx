@@ -10,6 +10,7 @@ import { swapSong } from '../../api/swapSong'
 import { useComposerDriver } from '../../hooks/composer/useComposerDriver'
 import { usePendingMessages } from '../../hooks/composer/usePendingMessages'
 import { useMusicSetup } from '../../hooks/composer/useMusicSetup'
+import { NO_EXTRAS } from '../../api/readingExtras'
 import { useReading } from '../../hooks/composer/useReading'
 import { useSendMessage } from '../../hooks/composer/useSendMessage'
 import { useSongsOfClass } from '../../hooks/composer/useSongsOfClass'
@@ -270,8 +271,9 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted, paused = f
             request={request}
             messages={shownMessages}
             numbers={new Map(revisions.map((r) => [r.id, r.number]))}
-            items={handoff.items ?? reading.items}
-            extras={handoff.items !== null ? handoff.extras : reading.extras}
+            items={handoff.phase === 'reading' ? null : (handoff.items ?? reading.items)}
+            extras={handoff.phase === 'reading' ? NO_EXTRAS : handoff.items !== null ? handoff.extras : reading.extras}
+            confirm={handoff.confirmation}
             music={
               searchOpen ? (
                 <MusicSetup
@@ -280,6 +282,7 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted, paused = f
                   decision={decision}
                   setup={music}
                   words={request?.body ?? recallRequest(classId)?.request ?? null}
+                  pinned={reading.extras.pinnedSongs.length}
                   reload={reload}
                 />
               ) : null

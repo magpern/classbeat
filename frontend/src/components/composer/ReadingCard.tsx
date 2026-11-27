@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import type { InterpretationItem } from '../../api/interpretationItems'
 import type { ReadingExtras, ReadingQuestion } from '../../api/readingExtras'
+import type { Confirmation } from '../../hooks/useHandoff'
 import { useT } from '../../i18n/I18n'
 import { quickAnswers } from '../../lib/composer/quickAnswers'
 import { optionLabel, questionText } from '../../lib/readingQuestionWords'
 import { ReadingExtras as PinnedAndQuestions } from '../classes/ReadingExtras'
+import { ReadingQuestions } from '../classes/ReadingQuestions'
 import { InterpretationNote } from '../classes/InterpretationNote'
 
 function Question({
@@ -63,22 +65,27 @@ function Question({
  * The reading as a compact card (ADR 0038 sections 3 and 10.2): how the request was read, the
  * songs that were pinned, and each question with its quick answers. A quick answer sends its
  * prepared sentence as an ordinary chat change; "keep" only closes the question, so it never
- * spends one of the class's changes on the value that was already used.
+ * spends one of the class's changes on the value that was already used. While the reading waits
+ * for the instructor (`confirm`, #1538: nothing is designed before) the questions are the confirm
+ * screen's (`ReadingQuestions`) and nothing is a chat change yet.
  */
 export function ReadingCard({
   items,
   extras,
   onAnswer,
   disabled,
+  confirm = null,
 }: {
   items: readonly InterpretationItem[] | null
   extras: ReadingExtras
   onAnswer: (sentence: string) => Promise<boolean>
   /** A send runs, a message is pending, or the box is blocked: the answers wait. */
   disabled: boolean
+  confirm?: Confirmation | null
 }) {
   const t = useT()
-  const read = (items !== null && items.length > 0) || extras.pinnedSongs.length > 0 || extras.questions.length > 0
+  const read =
+    (items !== null && items.length > 0) || extras.pinnedSongs.length > 0 || extras.questions.length > 0 || confirm !== null
   if (!read) return null
   return (
     <section
@@ -89,7 +96,9 @@ export function ReadingCard({
       <h2 className="m-0 text-base font-semibold">{t('cw.reading.title')}</h2>
       {items !== null ? <InterpretationNote items={items} /> : null}
       <PinnedAndQuestions extras={{ pinnedSongs: extras.pinnedSongs, questions: [] }} />
-      {extras.questions.length > 0 ? (
+      {confirm !== null ? (
+        <ReadingQuestions key={confirm.interpretJobId} questions={extras.questions} confirm={confirm} />
+      ) : extras.questions.length > 0 ? (
         <ul className="m-0 flex list-none flex-col gap-3 p-0">
           {extras.questions.map((question) => (
             <Question key={`${question.topic}-${question.code ?? question.text}`} question={question} onAnswer={onAnswer} disabled={disabled} />

@@ -23,7 +23,7 @@ export function HandoffStatus({ classId, handoff }: { classId: string; handoff: 
   const retrying = useAction()
   const { phase, refusal, retry } = handoff
   const sad = phase === 'refused' || phase === 'failed' || phase === 'error'
-  if (phase === 'idle') return null
+  if (phase === 'idle' || phase === 'confirm') return null // the reading's own questions ask for the confirmation
   if (phase === 'choose' && handoff.held !== null) return <PlanChoice need={handoff.held} onWithin={handoff.designWithinPlan} />
   if (!sad) {
     return <Notice>{phase === 'reading' ? t('start.handoff.waiting') : t('start.handoff.starting')}</Notice>
@@ -46,7 +46,7 @@ export function HandoffStatus({ classId, handoff }: { classId: string; handoff: 
     void retrying
       .run(async () => {
         try {
-          await designFromInterpretation(classId, true)
+          await designFromInterpretation(classId, handoff.interpretJobId, true)
         } catch (error) {
           // Whatever the server answered (409 "already designed", 429 busy ...), the stored refusal
           // may have changed: read the hand-off again. Anything that is not an API answer is a real error.

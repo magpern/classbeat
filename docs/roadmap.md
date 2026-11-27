@@ -43,7 +43,10 @@ Decisions:
    designed or fetched until the instructor confirms the reading: the sketch and the design start from
    the reading the instructor confirmed, which the hand-off may name (`interpret_job_id`). The confirm
    and answer screen, with the assumed answers pre-selected and one click to accept them all, is #1538;
-   this amendment covers the backend and the eval.
+   this amendment covers the backend and the eval. *(#1538, built 2026-11-26: the web waits in a phase
+   `confirm`; "Design this class" sends the hand-off naming the reading, "Update the reading" sends the
+   re-read. The re-read body also takes `no_music: true`, a closed field for a reading with no music
+   question to mark, and `music_sources`, the picker's playlists, checked like a request's own.)*
 
 6. **"No music" is always offered (owner, 2026-11-26: "There should be no such thing [as soundless off].
    Sound is always on, but user can opt out if he says no").** The music question always has a "No music"
@@ -79,6 +82,8 @@ Decisions:
      `needs_spotify`. A composer reading reaches its sketch with the music undecided (the sketch picks
      no songs, Amendment 36); the composer's `PUT /api/classes/{id}/music` (a decision made after the
      sketch) is not changed here: its `pick` choice can still pick with no hint, left to #1538.
+     *(#1538: `PUT /music` with `pick` is refused `music_unanswered` without a hint, and the composer's
+     music question offers no hint-less "Choose it for me".)*
 
 The designs are the notes in ADR 0029 section 4 (rule 4) and section 5 and in ADR 0038 sections 1 and 3.
 Eval suite 34 (ADR 0012) adds the cases for the questions.

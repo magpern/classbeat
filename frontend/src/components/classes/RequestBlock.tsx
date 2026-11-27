@@ -1,6 +1,7 @@
 import type { ClassMessage } from '../../api/classes'
 import type { InterpretationItem } from '../../api/interpretationItems'
 import { NO_EXTRAS, type ReadingExtras as Extras } from '../../api/readingExtras'
+import type { Confirmation } from '../../hooks/useHandoff'
 import { useT } from '../../i18n/I18n'
 import { InterpretationNote } from './InterpretationNote'
 import { ReadingExtras } from './ReadingExtras'
@@ -14,13 +15,16 @@ export function RequestBlock({
   request,
   items,
   extras = NO_EXTRAS,
+  confirm = null,
 }: {
   request: ClassMessage | null
   items: readonly InterpretationItem[] | null
   extras?: Extras
+  /** The reading waits for the instructor: its questions are answerable (#1538). */
+  confirm?: Confirmation | null
 }) {
   const t = useT()
-  const read = (items !== null && items.length > 0) || extras.pinnedSongs.length > 0 || extras.questions.length > 0
+  const read = (items !== null && items.length > 0) || extras.pinnedSongs.length > 0 || extras.questions.length > 0 || confirm !== null
   if (request === null && !read) return null
   return (
     <section aria-labelledby="request-title" className="flex flex-col gap-4" data-testid="request-block">
@@ -31,7 +35,7 @@ export function RequestBlock({
         <p className="m-0 whitespace-pre-wrap break-words rounded-lg bg-raised p-3">{request.body}</p>
       ) : null}
       {items !== null ? <InterpretationNote items={items} /> : null}
-      <ReadingExtras extras={extras} />
+      <ReadingExtras extras={extras} confirm={confirm} />
     </section>
   )
 }

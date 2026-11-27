@@ -6,6 +6,7 @@ import { Notice, useAction } from '../forms'
 import { MusicTagRow } from '../start/MusicTagRow'
 import { NO_TAGS, attachedPlaylists, togglePlaylist, type PlaylistTag } from '../start/musicTags'
 import { TextInput } from '../newclass/inputs'
+import { StyleChips } from '../newclass/StylePicker'
 import { Button } from '../ui/button'
 import { musicAnswerError } from './musicAnswerError'
 
@@ -19,12 +20,18 @@ type Mode = 'describe' | 'playlists' | null
  * music is undecided. Every answer is stored on the class and starts nothing: the song search waits for the
  * answer, Spotify and the consent. Without Spotify the options stay, with a link to connect it.
  * "Continue without music" is shown but off until the `soundless_enabled` flag is on.
+ *
+ * Songs are never picked without a hint (#1538, owner rule 2026-11-26): "Choose it for me" is offered only
+ * when the reading has one (`canPick`: the songs the instructor named). Without one the answers are styles
+ * and a typed style (`StyleChips`), the instructor's playlists or "No music"; the server refuses a hint-less
+ * pick (`music_unanswered`) all the same.
  */
 export function MusicQuestion({
   classId,
   offered,
   connected,
   soundlessEnabled,
+  canPick,
   canStartWithout,
   onAnswered,
   onLater,
@@ -37,6 +44,8 @@ export function MusicQuestion({
   /** Spotify is connected (or not yet known): false shows the connect link. */
   connected: boolean
   soundlessEnabled: boolean
+  /** The reading has a hint of what to play (a song the instructor named): "Choose it for me" is offered. */
+  canPick: boolean
   /** The request's words and a MOWL connection are known, so "Continue without music" can start. */
   canStartWithout: boolean
   /** The answer was stored: read the class again. */
@@ -74,16 +83,18 @@ export function MusicQuestion({
         </p>
       ) : null}
       <div role="group" aria-label={t('cw.music.answers')} className="flex flex-wrap gap-2">
+        {canPick ? (
+          <Button
+            disabled={busy}
+            onClick={() => {
+              send({ choice: 'pick' })
+            }}
+          >
+            {t('cw.music.pick')}
+          </Button>
+        ) : null}
         <Button
-          disabled={busy}
-          onClick={() => {
-            send({ choice: 'pick' })
-          }}
-        >
-          {t('cw.music.pick')}
-        </Button>
-        <Button
-          variant="secondary"
+          variant={canPick ? 'secondary' : 'primary'}
           disabled={busy}
           aria-expanded={mode === 'describe'}
           onClick={() => {
@@ -120,6 +131,7 @@ export function MusicQuestion({
             if (note.trim() !== '') send({ choice: 'describe', note })
           }}
         >
+          <StyleChips value={note} max={MAX_NOTE} onChange={setNote} />
           <TextInput
             label={t('cw.music.note.label')}
             placeholder={t('cw.music.note.placeholder')}

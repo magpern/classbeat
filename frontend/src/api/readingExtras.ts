@@ -22,6 +22,9 @@ export type QuestionCode = 'which_music'
 /** The closed options of `which_music`, in the backend's order; the page phrases them. */
 export const WHICH_MUSIC_OPTIONS: readonly string[] = ['my_playlists', 'no_music']
 
+/** The closed option that sends the picked playlists with the re-read (`WHICH_MUSIC_OPTIONS[0]`). */
+export const MY_PLAYLISTS_INDEX = WHICH_MUSIC_OPTIONS.indexOf('my_playlists')
+
 /**
  * A question of the reading (backend `Question`). The model's question has its text and options
  * as plain text. A closed one has a `code`, an empty `text` and its options as codes: the page
@@ -34,6 +37,8 @@ export interface ReadingQuestion {
   options: string[]
   /** The option the app assumes; null for a required question (a music question with no hint of what to play: nothing is assumed). */
   assumedIndex: number | null
+  /** The option the backend marked "No music" (a music question always has one, Amendment 37 decision 6); null for any other question. */
+  noMusicIndex: number | null
 }
 
 const TOPICS: readonly string[] = ['music', 'length', 'intensity', 'structure', 'sport', 'other']
@@ -79,7 +84,10 @@ export function decodeReadingExtras(body: Record<string, unknown>): ReadingExtra
         Array.isArray(options) &&
         options.length === WHICH_MUSIC_OPTIONS.length &&
         options.every((o, n) => o === WHICH_MUSIC_OPTIONS[n])
-      if (closed) questions.push({ topic: 'music', code: 'which_music', text: '', options: [...WHICH_MUSIC_OPTIONS], assumedIndex: null })
+      if (closed) {
+        const closedNone = WHICH_MUSIC_OPTIONS.indexOf('no_music')
+        questions.push({ topic: 'music', code: 'which_music', text: '', options: [...WHICH_MUSIC_OPTIONS], assumedIndex: null, noMusicIndex: closedNone })
+      }
       continue
     }
     if (typeof topic !== 'string' || !TOPICS.includes(topic)) continue
@@ -91,11 +99,11 @@ export function decodeReadingExtras(body: Record<string, unknown>): ReadingExtra
     if (topic === 'music' && !offersNoMusic(options.length, assumedIndex, noMusicIndex)) continue
     if (assumedIndex === undefined || assumedIndex === null) {
       if (topic !== 'music') continue // only a music question goes without an assumed answer
-      questions.push({ topic, text, options, assumedIndex: null })
+      questions.push({ topic, text, options, assumedIndex: null, noMusicIndex: noMusicIndex as number })
       continue
     }
     if (typeof assumedIndex !== 'number' || !Number.isInteger(assumedIndex) || assumedIndex < 0 || assumedIndex >= options.length) continue
-    questions.push({ topic: topic as QuestionTopic, text, options, assumedIndex })
+    questions.push({ topic: topic as QuestionTopic, text, options, assumedIndex, noMusicIndex: topic === 'music' ? (noMusicIndex as number) : null })
   }
   return { pinnedSongs, questions }
 }
