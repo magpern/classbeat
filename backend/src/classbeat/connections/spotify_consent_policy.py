@@ -11,8 +11,11 @@ user is asked again before any write.
   stood.
 - Version 3 (#1540): MOWL does not analyse the songs. classbeat links the playlist in MOWL so the
   class can be timed to it, and spotdown, a separate music-analysis service, gets the candidates'
-  title, artists and length and analyses the same recordings from a source other than Spotify
-  (ADR 0040). That recipient and purpose were never in versions 1 and 2, so neither stands.
+  title, artists, length and Spotify explicit flag (``/v2/match``, ``pick_match_batch._query``) and,
+  for the analysis, a digest of the Spotify track id with its length (``/v2/analyses``,
+  ``pick_analyse_batch.reference_of``), and analyses the same recordings from a source other than
+  Spotify (ADR 0040). That recipient and purpose were never in versions 1 and 2, so neither stands.
+  The sentence lists everything the pick path sends spotdown; a new field needs a new version.
 """
 
 from typing import Final
@@ -23,9 +26,10 @@ CONSENT_TEXT: Final = (
     "copy, to hold the song candidates of a pick. It is public, so MOWL can find it: it can show "
     "on your Spotify profile and in search, and anyone with its link can open it. It is "
     "overwritten on each pick. classbeat links it in MOWL so your class can be timed to it. The "
-    "songs are analysed by spotdown, the music-analysis service classbeat uses: classbeat sends "
-    "it the title, artists and length of each candidate, and spotdown analyses the same recording "
-    "from a source other than Spotify."
+    "songs are analysed by spotdown, the music-analysis service classbeat uses. For each "
+    "candidate it gets the title, artists, length, the explicit-lyrics flag from Spotify and a "
+    "code derived from the Spotify track id, and it analyses the same recording from a source "
+    "other than Spotify."
 )
 
 

@@ -352,16 +352,20 @@ spotdown the analysis service. The sentence is now "classbeat manages one workin
 Spotify account, named classbeat working copy, to hold the song candidates of a pick. It is public, so
 MOWL can find it: it can show on your Spotify profile and in search, and anyone with its link can open
 it. It is overwritten on each pick. classbeat links it in MOWL so your class can be timed to it. The
-songs are analysed by spotdown, the music-analysis service classbeat uses: classbeat sends it the title,
-artists and length of each candidate, and spotdown analyses the same recording from a source other than
-Spotify.", **version 3**, kept with the version and the rule in
+songs are analysed by spotdown, the music-analysis service classbeat uses. For each candidate it gets the
+title, artists, length, the explicit-lyrics flag from Spotify and a code derived from the Spotify track id,
+and it analyses the same recording from a source other than Spotify." (everything the pick path sends
+spotdown: `pick_match_batch._query` and `pick_analyse_batch.reference_of`), **version 3**, kept with the version and the rule in
 `classbeat/connections/spotify_consent_policy.py`. Naming spotdown and what it gets is a recipient and a
 purpose versions 1 and 2 never named, so it widens what the user agreed to: **a consent of an earlier
 version no longer stands.** `GET /api/connections/spotify` reports such a row as `pool_consent: false`
 (with its stored `consent_version`), a pick is refused `consent_missing` at admission
 (`pool_consent_in`), and a pool write's decide step reads it as no consent (`playlists.pool.read_pool`),
-so nothing is written to Spotify until the user switches the consent on again; the same `PUT` brings the
-row to version 3 and keeps its id and playlist. The composer's consent card (`cw.music.consent.body`,
+so nothing is written to Spotify until the user switches the consent on again. A pick or composer job
+also checks it at its start (`playlists.current_pool`, in `songs.pick.run_phase_one` and
+`songs.composer.run_composer`), before any model, Spotify, MOWL or spotdown call, so a job queued under
+an older consent contacts no one. The same `PUT` brings the row to version 3 and keeps its id and
+playlist; it answers 204 only when it inserted or updated the row (otherwise 409). The composer's consent card (`cw.music.consent.body`,
 en, sv, da) says the same.)* `DELETE` revokes, in **one transaction**: the row is deleted and `forget_pool`
 (ADR 0008 §2) deletes the user's pool operation rows, the succeeded create that holds the old id and
 the replace rows whose hash covers it included. The playlist id is therefore forgotten and **never

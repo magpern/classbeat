@@ -276,7 +276,8 @@ stands, since it already said the playlist may be public: nobody is asked again.
 Spotify output description, the help, workspace and public pages say the playlist is public so MOWL can
 find it.)* *(2026-11-27, #1540: the consent no longer says MOWL analyses the songs. It says classbeat
 links the working playlist in MOWL so the class can be timed to it, and spotdown analyses the songs from
-their title, artists and length, from a source other than Spotify (ADR 0040). spotdown is a recipient
+their title, artists, length, Spotify's explicit flag and a code derived from the track id, from a
+source other than Spotify (ADR 0040). spotdown is a recipient
 the earlier wording never named, so `CONSENT_VERSION` is 3 and **a version-1 or version-2 consent no
 longer stands**: the user is asked again before the next pick, and no pool write happens meanwhile
 (ADR 0009 §9).)* Playlist URLs and ids are never in

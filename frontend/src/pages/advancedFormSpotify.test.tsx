@@ -16,7 +16,7 @@ const SPOTIFY_STATUS = {
   last_error_message: null,
   callback_url: 'http://127.0.0.1:8000/oauth/spotify/callback',
   pool_consent: true,
-  consent_version: 1,
+  consent_version: 3,
   consent_text: 'x',
 }
 const DRAFT_JOB = jobBody('queued')

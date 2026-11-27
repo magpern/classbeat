@@ -13,7 +13,7 @@ const ACCOUNT_ROUTES = {
 }
 // The wording of ADR 0009 section 9, as the server sends it.
 const CONSENT_TEXT =
-  'classbeat manages one working playlist in your Spotify account, named classbeat working copy, to hold the song candidates of a pick. It is public, so MOWL can find it: it can show on your Spotify profile and in search, and anyone with its link can open it. It is overwritten on each pick. classbeat links it in MOWL so your class can be timed to it. The songs are analysed by spotdown, the music-analysis service classbeat uses: classbeat sends it the title, artists and length of each candidate, and spotdown analyses the same recording from a source other than Spotify.'
+  'classbeat manages one working playlist in your Spotify account, named classbeat working copy, to hold the song candidates of a pick. It is public, so MOWL can find it: it can show on your Spotify profile and in search, and anyone with its link can open it. It is overwritten on each pick. classbeat links it in MOWL so your class can be timed to it. The songs are analysed by spotdown, the music-analysis service classbeat uses. For each candidate it gets the title, artists, length, the explicit-lyrics flag from Spotify and a code derived from the Spotify track id, and it analyses the same recording from a source other than Spotify.'
 const CALLBACK = 'http://127.0.0.1:8000/oauth/spotify/callback'
 const GOOD_ID = '0123456789abcdef0123456789ABCDEF'
 const AUTHORIZE = 'https://accounts.example.test/authorize?state=opaque'

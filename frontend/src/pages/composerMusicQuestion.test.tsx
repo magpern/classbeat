@@ -279,7 +279,7 @@ describe('the consent before the first song search', () => {
     renderAt(PAGE)
     const consent = await screen.findByTestId('music-consent')
     expect(consent).toHaveTextContent(
-      'classbeat keeps one public working playlist in your Spotify account with candidate songs and links it in MOWL, so your class can be timed to it. spotdown, the music-analysis service classbeat uses, gets the title, artists and length of each song and analyses the same recording from a source other than Spotify. The final playlist and the workout are created only when you approve.',
+      'classbeat keeps one public working playlist in your Spotify account with candidate songs and links it in MOWL, so your class can be timed to it. spotdown, the music-analysis service classbeat uses, gets the title, artists, length, the explicit-lyrics flag from Spotify and a code derived from the Spotify track id of each song, and analyses the same recording from a source other than Spotify. The final playlist and the workout are created only when you approve.',
     )
     expect(within(consent).getByTestId('spotify-consent-text')).toHaveTextContent('The working playlist sentence.')
     await settle()

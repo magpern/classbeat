@@ -20,7 +20,7 @@ reconciler of the user's Check again on a final-playlist write is there). Every 
 from classbeat.playlists.common import POOL_NAME, Runtime, configure
 from classbeat.playlists.create import CREATE
 from classbeat.playlists.final import ClassPlaylist, create_final_playlist, fill_final_playlist
-from classbeat.playlists.pool import Pool, PoolWrite, open_spotify, write_pool
+from classbeat.playlists.pool import Pool, PoolWrite, current_pool, open_spotify, write_pool
 from classbeat.playlists.replace import REPLACE
 
 __all__ = [
@@ -33,6 +33,7 @@ __all__ = [
     "Runtime",
     "configure",
     "create_final_playlist",
+    "current_pool",
     "fill_final_playlist",
     "open_spotify",
     "write_pool",

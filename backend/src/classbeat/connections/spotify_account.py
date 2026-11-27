@@ -81,7 +81,8 @@ async def spotify_status(factory: Factory, ctx: UserContext) -> SpotifyStatus:
 
 
 async def give_pool_consent(factory: Factory, ctx: UserContext, version: int) -> bool:
-    """False (nothing written) when the user has no ``connected`` Spotify row."""
+    """False (nothing written) when the user has no ``connected`` Spotify row, or when no
+    consent row was inserted or updated for this connection's Spotify account."""
     async with user_session(factory, ctx) as db:
         row = (
             await db.execute(
@@ -95,13 +96,14 @@ async def give_pool_consent(factory: Factory, ctx: UserContext, version: int) ->
         spotify_user_id = (row.public or {}).get("spotify_user_id")
         if not isinstance(spotify_user_id, str) or not spotify_user_id:
             return False
-        await db.execute(
+        given = await db.execute(
             _GIVE,
             {"owner_id": ctx.user_id, "spotify_user_id": spotify_user_id, "version": version},
         )
         # A row of another Spotify user id cannot exist (an account change deletes it, under
-        # this same row lock); were it there, the conflict update above leaves it untouched.
-        return (await db.execute(_EXISTS, {"owner_id": ctx.user_id})).first() is not None
+        # this same row lock); were it there, the conflict update leaves it untouched and
+        # returns no row, so the consent is refused rather than answered as given (#1540).
+        return given.first() is not None
 
 
 # Only a consent to the current wording stands (``spotify_consent_policy``).

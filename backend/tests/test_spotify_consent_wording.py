@@ -4,8 +4,9 @@ failure sentence never tells the user to make it private.
 Roadmap Amendment 30 (issue #1287): every playlist classbeat creates is public from the start, so
 MOWL's Spotify import can list it (version 2). #1540: MOWL does not analyse the songs. classbeat
 links the playlist in MOWL so the class can be timed to it, and spotdown analyses the songs from
-their title, artists and length (ADR 0040). spotdown is a recipient versions 1 and 2 never named, so
-the wording is version 3 and only a version-3 consent stands (ADR 0009 section 9).
+their title, artists, length and Spotify explicit flag, and a digest of the track id (ADR 0040).
+spotdown is a recipient versions 1 and 2 never named, so the wording is version 3 and only a
+version-3 consent stands (ADR 0009 section 9).
 """
 
 import re
@@ -24,7 +25,9 @@ SHARED_FACTS = (
     "links it in MOWL",
     "can be timed to it",
     "spotdown",
-    "title, artists and length",
+    "title, artists, length",
+    "the explicit-lyrics flag from Spotify",
+    "a code derived from the Spotify track id",
     "source other than Spotify",
     "public",
 )
@@ -64,7 +67,8 @@ def test_the_backend_and_the_card_say_the_same_thing(fact: str) -> None:
 def test_consent_text_names_the_mowl_link_and_what_spotdown_gets() -> None:
     assert "links it in MOWL so your class can be timed to it" in CONSENT_TEXT
     assert "analysed by spotdown" in CONSENT_TEXT
-    assert "title, artists and length" in CONSENT_TEXT
+    assert "title, artists, length, the explicit-lyrics flag from Spotify" in CONSENT_TEXT
+    assert "a code derived from the Spotify track id" in CONSENT_TEXT
     assert "source other than Spotify" in CONSENT_TEXT
 
 

@@ -12,9 +12,9 @@ const catalogues = { en, sv, da } as const
 const ANALYSE = { en: /analy[sz]|listen/i, sv: /analys|lyssna/i, da: /analys|lytte/i } as const
 const TIMED = { en: /timed to it/, sv: /tidsättas efter den/, da: /afstemmes efter den/ } as const
 const FACTS = {
-  en: [/title, artists and length/, /source other than Spotify/],
-  sv: [/titel, artister och längd/, /annan källa än Spotify/],
-  da: [/titel, kunstnere og længde/, /anden kilde end Spotify/],
+  en: [/title, artists, length/, /explicit-lyrics flag from Spotify/, /code derived from the Spotify track id/, /source other than Spotify/],
+  sv: [/titel, artister, längd/, /flagga för explicit text/, /kod som härleds från Spotifys låt-id/, /annan källa än Spotify/],
+  da: [/titel, kunstnere, længde/, /markering af eksplicit tekst/, /kode afledt af Spotifys sang-id/, /anden kilde end Spotify/],
 } as const
 
 const sentences = (text: string) => text.split(/(?<=[.:])\s+/)
