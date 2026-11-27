@@ -202,3 +202,20 @@ export async function answerMusic(page: Page): Promise<void> {
   await expect(reading.getByLabel('Or type your own answer')).toHaveCount(0, { timeout: 90_000 })
   await expect(reading.getByRole('button', { name: 'Design this class' })).toBeEnabled()
 }
+
+/**
+ * The confirm step of a Spotify-connected instructor whose reading has no hint (#1538): the instructor
+ * answers "Use one of my playlists", picks the e2e playlist in the picker and updates the reading. The
+ * playlist goes with the re-read (`music_sources`), so the new reading has a hint and asks nothing.
+ */
+export async function answerWithPlaylist(page: Page): Promise<void> {
+  const reading = page.getByTestId('reading-card')
+  await expect(reading.getByRole('button', { name: 'Design this class' })).toBeDisabled({ timeout: 90_000 })
+  await reading.getByRole('radio', { name: 'Use one of my playlists' }).click()
+  await reading.getByRole('button', { name: /^Add music/ }).click()
+  await page.getByRole('group', { name: 'Add music to your request' }).getByRole('button', { name: PLAYLISTS.draft.name }).click()
+  await page.keyboard.press('Escape')
+  await reading.getByRole('button', { name: 'Update the reading' }).click()
+  await expect(reading.getByRole('radio', { name: 'Use one of my playlists' })).toHaveCount(0, { timeout: 90_000 })
+  await expect(reading.getByRole('button', { name: 'Design this class' })).toBeEnabled()
+}

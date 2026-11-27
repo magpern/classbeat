@@ -90,6 +90,47 @@ describe('the hand-off from the start screen', () => {
     await waitFor(() => expect(api.to('POST', `${CLASS_PATH}/design-from-interpretation`)).toHaveLength(1))
   })
 
+  it('names the reading that was on screen, not a newer one stored since (a stale tab), and shows the newer one for confirmation', async () => {
+    let latest = READING
+    const api = fakeApi(
+      routes({
+        [INTERPRETATION]: () => reading({ interpret_job_id: latest, questions: latest === READING ? [LENGTH_Q] : [] }),
+        [DESIGN]: { job_id: DESIGN_JOB },
+      }),
+    )
+    renderAt(PAGE)
+    await screen.findByRole('group', { name: 'How long should it be?' }) // d111 is on screen
+    latest = READ_AGAIN // another tab re-read the request
+    await confirmDesign()
+    // The new reading is shown for its own confirmation; nothing was sent for it.
+    await waitFor(() => expect(screen.queryByRole('group', { name: 'How long should it be?' })).toBeNull())
+    await screen.findByRole('button', { name: 'Design this class' })
+    expect(api.to('POST', `${CLASS_PATH}/design-from-interpretation`)).toHaveLength(0)
+    await confirmDesign()
+    await waitFor(() => expect(api.to('POST', `${CLASS_PATH}/design-from-interpretation`)).toHaveLength(1))
+    expect(api.to('POST', `${CLASS_PATH}/design-from-interpretation`)[0]?.body).toEqual({ interpret_job_id: READ_AGAIN })
+  })
+
+  it('offers no playlist option in the classic flow, which has no composer', async () => {
+    fakeApi(routes({ [INTERPRETATION]: reading({ questions: [{ topic: 'music', code: 'which_music', options: ['my_playlists', 'no_music'], no_music_index: 1 }] }) }))
+    renderAt(PAGE)
+    await screen.findByRole('radio', { name: 'No music' })
+    expect(screen.queryByRole('radio', { name: 'Use one of my playlists' })).toBeNull()
+  })
+
+  it('does not wait for a re-read once a design job exists', async () => {
+    const api = fakeApi(
+      routes(
+        { [INTERPRETATION]: reading({ design_job: { job_id: DESIGN_JOB } }), ...designJob },
+        { open_job: { id: READ_AGAIN, kind: 'interpret_request', state: 'running' } },
+      ),
+    )
+    renderAt(PAGE)
+    await waitFor(() => expect(api.to('GET', `${CLASS_PATH}/interpretation`).length).toBeGreaterThan(0))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(screen.queryByText('Reading your request.')).toBeNull()
+  })
+
   it('reads the request again for a changed answer, not the hand-off, and asks the new reading', async () => {
     let reread = false
     const api = fakeApi(

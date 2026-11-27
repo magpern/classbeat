@@ -1,4 +1,6 @@
 import { useId, useState } from 'react'
+import { MY_PLAYLISTS_INDEX } from '../../api/readingExtras'
+import { useComposerFlag } from '../../hooks/composer/useComposerFlag'
 import type { ReadingQuestion } from '../../api/readingExtras'
 import type { Confirmation } from '../../hooks/useHandoff'
 import { useT } from '../../i18n/I18n'
@@ -26,7 +28,10 @@ function QuestionBlock({
   answers,
   onChange,
   disabled,
+  playlists,
 }: {
+  /** Playlists can be shared with a re-read (the composer is available to the user). */
+  playlists: boolean
   question: ReadingQuestion
   index: number
   answers: ConfirmAnswers
@@ -46,6 +51,9 @@ function QuestionBlock({
       {required ? <p className="m-0 text-[0.875rem] text-muted">{t('ws.refused.music_unanswered')}</p> : null}
       <div className="flex flex-col gap-1">
         {question.options.map((_, option) => {
+          // The closed "Use one of my playlists" needs the composer (the server refuses attached playlists
+          // without it, `feature_off`): not offered in the classic flow, which keeps its other options.
+          if (question.code === 'which_music' && option === MY_PLAYLISTS_INDEX && !playlists) return null
           const label = optionLabel(question, option, t)
           const id = `${name}-${String(option)}`
           return (
@@ -102,6 +110,8 @@ function QuestionBlock({
 export function ReadingQuestions({ questions, confirm }: { questions: readonly ReadingQuestion[]; confirm: Confirmation }) {
   const t = useT()
   const [answers, setAnswers] = useState<ConfirmAnswers>(() => initialAnswers(questions))
+  // The same answer the server's re-read admit uses (`composer_available`): `GET /api/connections`' `composer_flow`.
+  const playlists = useComposerFlag(true) === true
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const dirty = changed(questions, answers)
@@ -132,6 +142,7 @@ export function ReadingQuestions({ questions, confirm }: { questions: readonly R
           index={index}
           answers={answers}
           disabled={sending}
+          playlists={playlists}
           onChange={setAnswers}
         />
       ))}

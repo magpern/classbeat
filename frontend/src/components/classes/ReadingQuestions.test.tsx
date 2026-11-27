@@ -19,7 +19,12 @@ function questionsOf(...raw: object[]): ReadingQuestion[] {
   return decodeReadingExtras({ questions: raw }).questions
 }
 
-function show(questions: ReadingQuestion[], more: Partial<Confirmation> = {}) {
+function show(questions: ReadingQuestion[], more: Partial<Confirmation> = {}, composer = true) {
+  // The composer is available to the user (`GET /api/connections`' `composer_flow`) unless the test says the classic flow.
+  const api = fakeApi({
+    'GET /api/connections': { connections: [], composer_flow: composer },
+    'GET /api/music/mowl-playlists': { playlists: [{ spotify_playlist_id: PLAYLIST, name: 'Tuesday ride' }] },
+  })
   const confirm: Confirmation = {
     interpretJobId: READING,
     onDesign: vi.fn(),
@@ -32,7 +37,7 @@ function show(questions: ReadingQuestion[], more: Partial<Confirmation> = {}) {
       <ReadingQuestions questions={questions} confirm={confirm} />
     </I18nProvider>,
   )
-  return confirm
+  return Object.assign(confirm, { api })
 }
 
 const design = () => screen.getByRole('button', { name: 'Design this class' })
@@ -117,9 +122,8 @@ describe('the confirm screen', () => {
   })
 
   it('sends the picked playlists with the closed "Use one of my playlists" answer', async () => {
-    fakeApi({ 'GET /api/music/mowl-playlists': { playlists: [{ spotify_playlist_id: PLAYLIST, name: 'Tuesday ride' }] } })
     const confirm = show(questionsOf(CLOSED))
-    await userEvent.click(screen.getByRole('radio', { name: 'Use one of my playlists' }))
+    await userEvent.click(await screen.findByRole('radio', { name: 'Use one of my playlists' }))
     expect(update()).toBeDisabled() // no playlist yet: it would loop back to the same question
     await userEvent.click(await screen.findByRole('button', { name: /Add music/ }))
     await userEvent.click(await screen.findByRole('button', { name: 'Tuesday ride' }))
@@ -129,6 +133,24 @@ describe('the confirm screen', () => {
       answers: [{ questionIndex: 0, optionIndex: 0 }],
       musicSources: [PLAYLIST],
     })
+  })
+
+  it('offers "Use one of my playlists" and its picker in the composer flow', async () => {
+    show(questionsOf(CLOSED))
+    await userEvent.click(await screen.findByRole('radio', { name: 'Use one of my playlists' }))
+    expect(await screen.findByTestId('reading-playlists')).toBeInTheDocument()
+  })
+
+  it('offers no playlist option or picker in the classic flow, and keeps "No music" and a typed answer', async () => {
+    const { api } = show(questionsOf(CLOSED), {}, false)
+    await waitFor(() => {
+      expect(api.to('GET', '/api/connections').length).toBeGreaterThan(0)
+    })
+    await new Promise((resolve) => setTimeout(resolve, 30)) // the answer is in
+    expect(screen.queryByRole('radio', { name: 'Use one of my playlists' })).toBeNull()
+    expect(screen.queryByTestId('reading-playlists')).toBeNull()
+    expect(screen.getByRole('radio', { name: 'No music' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Or type your own answer')).toBeInTheDocument()
   })
 
   it('says why a re-read was refused and keeps the answers', async () => {

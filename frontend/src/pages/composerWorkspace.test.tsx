@@ -803,6 +803,19 @@ describe('the composer reading waits for the instructor (#1538)', () => {
     expect(api.to('POST', DESIGN)).toHaveLength(0)
   })
 
+  it('offers "Use one of my playlists" and its picker in the composer', async () => {
+    const closed = { topic: 'music', code: 'which_music', options: ['my_playlists', 'no_music'], no_music_index: 1 }
+    setup({
+      cls: NO_SKETCH,
+      extraRoutes: { ...reading(closed), 'GET /api/music/mowl-playlists': { playlists: [{ spotify_playlist_id: 'AbCdEfGhIjKlMnOpQrStU1', name: 'Hill climbs' }] } },
+    })
+    renderAt(PAGE)
+    const card = await screen.findByTestId('reading-card')
+    await userEvent.click(await within(card).findByRole('radio', { name: 'Use one of my playlists' }))
+    expect(await within(card).findByTestId('reading-playlists')).toBeInTheDocument()
+    expect(within(card).getByRole('radio', { name: 'No music' })).toBeInTheDocument()
+  })
+
   it('offers "No music" on a reading with no music question and sends it as the closed field', async () => {
     const { api } = setup({ cls: NO_SKETCH, extraRoutes: reading() })
     renderAt(PAGE)

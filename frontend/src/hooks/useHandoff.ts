@@ -70,8 +70,10 @@ export function useHandoff(summary: ClassSummary, reload: () => void): Handoff {
   const [round, setRound] = useState(0)
   const [held, setHeld] = useState<Need | null>(null)
   const [rereadFailed, setRereadFailed] = useState(false)
-  // Set when the instructor agreed to the reading (this tab only: a reopened tab waits again).
-  const confirmed = useRef(false)
+  // The reading the instructor agreed to: the one on screen when they clicked (this tab only: a reopened
+  // tab waits again). The hand-off names it, never a reading fetched since; another one stored since
+  // (a re-read from another tab) is shown for confirmation again.
+  const confirmed = useRef<string | null>(null)
   // Set when the instructor chose "design within my plan": the hand-off is then sent as usual.
   const chose = useRef(false)
   // The job of a re-read whose reading is awaited; the reading shown stays the old one until it is stored.
@@ -122,8 +124,11 @@ export function useHandoff(summary: ClassSummary, reload: () => void): Handoff {
         } else if (found.refusal !== null) {
           setRefusal(found.refusal)
           setPhase('refused')
-        } else if (!confirmed.current) {
-          // Nothing is designed or fetched until the instructor agrees to the reading (#1538).
+        } else if (confirmed.current === null || confirmed.current !== found.interpretJobId) {
+          // Nothing is designed or fetched until the instructor agrees to the reading (#1538), and
+          // only to the reading they saw: a different one stored since needs its own confirmation.
+          confirmed.current = null
+          chose.current = false
           setPhase('confirm')
         } else if (!chose.current && heldNeed(found.items) !== null) {
           // Over the plan: nothing is sent (the design job takes the class credit) until the instructor chooses.
@@ -131,7 +136,7 @@ export function useHandoff(summary: ClassSummary, reload: () => void): Handoff {
           setPhase('choose')
         } else {
           setPhase('starting')
-          await designFromInterpretation(classId, found.interpretJobId)
+          await designFromInterpretation(classId, confirmed.current)
           if (abort.signal.aborted) return
           setPhase('idle')
           reloadRef.current()
@@ -174,8 +179,8 @@ export function useHandoff(summary: ClassSummary, reload: () => void): Handoff {
     setPhase('starting')
     setRound((n) => n + 1)
   }, [])
-  const confirm = useCallback(() => {
-    confirmed.current = true
+  const confirm = useCallback((shown: string) => {
+    confirmed.current = shown
     setRereadFailed(false)
     setPhase('starting')
     setRound((n) => n + 1)
@@ -188,6 +193,7 @@ export function useHandoff(summary: ClassSummary, reload: () => void): Handoff {
         return error
       }
       setRereadFailed(false)
+      confirmed.current = null
       setItems(null)
       setExtras(NO_EXTRAS)
       setPhase('reading')
@@ -199,7 +205,7 @@ export function useHandoff(summary: ClassSummary, reload: () => void): Handoff {
   )
   const confirmation =
     active && phase === 'confirm' && interpretJobId !== null
-      ? { interpretJobId, onDesign: confirm, onReread: reread, rereadFailed }
+      ? { interpretJobId, onDesign: () => { confirm(interpretJobId) }, onReread: reread, rereadFailed }
       : null
   return { phase: active ? phase : 'idle', items, extras, interpretJobId, refusal, held, designWithinPlan, confirmation, retry }
 }
