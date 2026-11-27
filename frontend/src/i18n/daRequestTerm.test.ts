@@ -20,6 +20,9 @@ describe('the Danish catalogue', () => {
   })
 
   it('keeps the exemption to the three privacy strings that use the term, no more and no fewer', () => {
-    expect(withTerm(stringsOf().filter(([key]) => key.startsWith('privacy.')))).toEqual(NETWORK_REQUEST_KEYS)
+    // sorted on both sides: the catalogue's own order is not part of the rule (#1569)
+    expect(withTerm(stringsOf().filter(([key]) => key.startsWith('privacy.'))).sort()).toEqual(
+      [...NETWORK_REQUEST_KEYS].sort(),
+    )
   })
 })
