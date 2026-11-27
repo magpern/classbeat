@@ -61,11 +61,6 @@ function retryAfterOf(response: Response): number | null {
 const SESSION_BUSY_RETRIES = 2
 const SESSION_BUSY_MAX_WAIT_SECONDS = 5
 
-// Reads can overlap and answer out of order, and a read that was repeated finishes late: only the
-// read that started last may set the remembered token, so an older answer never replaces a newer one.
-let sessionReads = 0
-let tokenReadNumber = 0
-
 function abortReason(signal: AbortSignal): Error {
   return signal.reason instanceof Error ? signal.reason : new DOMException('Aborted', 'AbortError')
 }
@@ -89,9 +84,12 @@ function pause(seconds: number, signal?: AbortSignal): Promise<void> {
   })
 }
 
+function tokenOf(session: JsonObject): string | null {
+  return typeof session.csrf_token === 'string' ? session.csrf_token : null
+}
+
 /** GET /api/auth/session raw; also refreshes the remembered CSRF token. */
 export async function fetchSessionJson(signal?: AbortSignal): Promise<JsonObject> {
-  const mine = ++sessionReads
   for (let attempt = 0; ; attempt += 1) {
     const response = await fetch('/api/auth/session', {
       headers: { Accept: 'application/json' },
@@ -100,10 +98,7 @@ export async function fetchSessionJson(signal?: AbortSignal): Promise<JsonObject
     const body = await readBody(response)
     if (response.ok) {
       const session = object(body, 'session')
-      if (mine > tokenReadNumber) {
-        tokenReadNumber = mine
-        csrfToken = typeof session.csrf_token === 'string' ? session.csrf_token : null
-      }
+      csrfToken = tokenOf(session)
       return session
     }
     const why = reasonOf(body)
@@ -115,10 +110,13 @@ export async function fetchSessionJson(signal?: AbortSignal): Promise<JsonObject
   }
 }
 
+// Uses the token its own read returned, never the shared one read back afterwards: another
+// request may finish meanwhile and drop it. A token that is stale by the time it is sent gets one
+// CSRF 403 and a fresh read in `request()`.
 async function currentCsrfToken(): Promise<string> {
-  if (csrfToken === null) await fetchSessionJson()
-  if (csrfToken === null) throw new ApiError(500, 'no_csrf_token', null, undefined)
-  return csrfToken
+  const token = csrfToken ?? tokenOf(await fetchSessionJson())
+  if (token === null) throw new ApiError(500, 'no_csrf_token', null, undefined)
+  return token
 }
 
 export interface RequestOptions {

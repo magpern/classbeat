@@ -147,26 +147,45 @@ describe('API client', () => {
       expect(vi.getTimerCount()).toBe(0)
     })
 
-    it('does not let a slower, repeated read replace the token of a newer one', async () => {
+    it('sends an unsafe request whose token read was repeated, after another request used and dropped its token', async () => {
       vi.useFakeTimers()
       let n = 0
       const api = fakeApi({
-        'GET /api/auth/session': () => {
-          n += 1
-          if (n === 1) return busy('1') // read A, repeated after a second
-          if (n === 2) return { authenticated: false, csrf_token: 'csrf-newer' } // read B
-          return { authenticated: false, csrf_token: 'csrf-older' } // A's repeat
-        },
-        'POST /api/x': { ok: true },
+        'GET /api/auth/session': () =>
+          ++n === 1 ? busy('1') : { authenticated: false, csrf_token: 'csrf-same-session' },
+        'POST /api/a': { ok: 'a' },
+        'POST /api/b': { ok: 'b' },
       })
-      const a = fetchSessionJson()
+      const a = post('/api/a') // reads the token, is told busy, waits a second
       await vi.advanceTimersByTimeAsync(0)
-      await fetchSessionJson()
+      expect(await post('/api/b')).toEqual({ ok: 'b' }) // its own read, sent, token dropped
       await vi.advanceTimersByTimeAsync(1000)
-      await a
-      await post('/api/x')
-      expect(api.to('POST', '/api/x')[0]?.headers.get('X-CSRF-Token')).toBe('csrf-newer')
+      expect(await a).toEqual({ ok: 'a' })
+      expect(api.to('POST', '/api/a')[0]?.headers.get('X-CSRF-Token')).toBe('csrf-same-session')
     })
+  })
+
+  it('uses the token its own read returned even when another request drops the token meanwhile', async () => {
+    let releaseRead: (answer: unknown) => void = () => undefined
+    let releaseB: (answer: unknown) => void = () => undefined
+    let reads = 0
+    const api = fakeApi({
+      'GET /api/auth/session': () =>
+        ++reads === 1
+          ? new Promise((resolve) => (releaseRead = resolve)) // A's read, answered late
+          : { authenticated: false, csrf_token: 'csrf-b' },
+      'POST /api/a': { ok: 'a' },
+      'POST /api/b': () => new Promise((resolve) => (releaseB = resolve)),
+    })
+    const a = post('/api/a')
+    const b = post('/api/b')
+    await vi.waitFor(() => expect(api.to('POST', '/api/b')).toHaveLength(1))
+    // A's read answers and B succeeds (dropping the remembered token) in the same turn.
+    releaseRead({ authenticated: false, csrf_token: 'csrf-a' })
+    releaseB({ ok: 'b' })
+    expect(await b).toEqual({ ok: 'b' })
+    expect(await a).toEqual({ ok: 'a' })
+    expect(api.to('POST', '/api/a')[0]?.headers.get('X-CSRF-Token')).toBe('csrf-a')
   })
 
   describe('401 after the session rotated (ADR 0003 section 3)', () => {
