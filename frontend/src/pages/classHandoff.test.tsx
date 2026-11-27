@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CLASS_PATH, REVISE_JOB, classRoutes } from '../test/classFixtures'
 import { fakeApi, reason } from '../test/fakeApi'
 import { CLASS_ID, SESSION_ROUTES, jobBody, openStream } from '../test/jobFixtures'
@@ -129,6 +129,34 @@ describe('the hand-off from the start screen', () => {
     await waitFor(() => expect(api.to('GET', `${CLASS_PATH}/interpretation`).length).toBeGreaterThan(0))
     await new Promise((resolve) => setTimeout(resolve, 50))
     expect(screen.queryByText('Reading your request.')).toBeNull()
+  })
+
+  it('stops waiting for a completed re-read whose reading never shows, and shows the latest one for confirmation', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const api = fakeApi(
+        routes({
+          // The re-read job completed, but the reading fetched stays the old one (a later re-read replaced it).
+          [INTERPRETATION]: () => reading({ questions: [LENGTH_Q] }),
+          [REREAD]: { job_id: READ_AGAIN },
+          [`GET /api/jobs/${READ_AGAIN}`]: jobBody('completed', { id: READ_AGAIN, kind: 'interpret_request' }),
+          [DESIGN]: { job_id: DESIGN_JOB },
+        }),
+      )
+      renderAt(PAGE)
+      const group = await screen.findByRole('group', { name: 'How long should it be?' })
+      fireEvent.click(within(group).getByRole('radio', { name: /60 minutes/ }))
+      fireEvent.click(screen.getByRole('button', { name: 'Update the reading' }))
+      await waitFor(() => expect(api.to('POST', `${CLASS_PATH}/reread`)).toHaveLength(1))
+      expect(await screen.findByText('Reading your request.')).toBeInTheDocument()
+      await vi.advanceTimersByTimeAsync(12000)
+      // The wait ended: the latest reading is on screen again, to be confirmed. Nothing was sent.
+      expect(await screen.findByRole('button', { name: 'Design this class' })).toBeInTheDocument()
+      expect(screen.queryByText('Reading your request.')).toBeNull()
+      expect(api.to('POST', `${CLASS_PATH}/design-from-interpretation`)).toHaveLength(0)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('reads the request again for a changed answer, not the hand-off, and asks the new reading', async () => {

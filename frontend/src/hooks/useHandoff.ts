@@ -43,6 +43,8 @@ export interface Handoff {
 }
 
 const POLL_MS = 2000
+/** Reads after a re-read job completed that still do not show its reading, before the latest reading is shown as it stands. */
+export const MAX_COMPLETED_MISSES = 3
 
 /**
  * The web-side hand-off of a class started from the free-text start screen (ADR 0029 section 5;
@@ -78,6 +80,8 @@ export function useHandoff(summary: ClassSummary, reload: () => void): Handoff {
   const chose = useRef(false)
   // The job of a re-read whose reading is awaited; the reading shown stays the old one until it is stored.
   const rereadJob = useRef<string | null>(null)
+  // Reads that found the re-read job completed but its reading not yet shown (bounded: see `MAX_COMPLETED_MISSES`).
+  const completedMisses = useRef(0)
   // Read inside the polling loop: the page reloads the class while it waits, and the loop must not restart.
   const stillReading = useRef(interpreting)
   const reloadRef = useRef(reload)
@@ -103,7 +107,16 @@ export function useHandoff(summary: ClassSummary, reload: () => void): Handoff {
           // A completed job stored its reading in the same step that completed it: the reading fetched
           // just before was the old one, so read it again rather than call the re-read failed.
           waiting = job.state === 'queued' || job.state === 'running' || job.state === 'completed'
-          if (!waiting) {
+          if (job.state === 'completed') {
+            completedMisses.current += 1
+            if (completedMisses.current > MAX_COMPLETED_MISSES) {
+              // The reading never showed (replaced by a later re-read, say): stop waiting and show the latest
+              // one for confirmation. Nothing is sent: `confirmed` is null after a re-read.
+              rereadJob.current = null
+              waiting = false
+            }
+          }
+          if (!waiting && rereadJob.current !== null) {
             rereadJob.current = null // ended with no new reading: the earlier one stands
             setRereadFailed(true)
           }
@@ -191,6 +204,7 @@ export function useHandoff(summary: ClassSummary, reload: () => void): Handoff {
     async (body: RereadBody): Promise<unknown> => {
       try {
         rereadJob.current = await rereadClass(classId, body)
+        completedMisses.current = 0
       } catch (error) {
         return error
       }
