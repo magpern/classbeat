@@ -82,5 +82,5 @@ export const previewDa: Catalogue = {
   'preview.corr.saving': 'Gemmer',
   'preview.corr.saved': 'Gemt.',
   'preview.prov.title': 'Hvor timingen for sang {n} kommer fra',
-  'preview.prov.note': 'spotdowns analyse og din justering holdes adskilt og lægges aldrig sammen til ét tal.',
+  'preview.prov.note': 'classbeats analyse og din justering holdes adskilt og lægges aldrig sammen til ét tal.',
 }

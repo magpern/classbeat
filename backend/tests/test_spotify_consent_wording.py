@@ -3,10 +3,11 @@ failure sentence never tells the user to make it private.
 
 Roadmap Amendment 30 (issue #1287): every playlist classbeat creates is public from the start, so
 MOWL's Spotify import can list it (version 2). #1540: MOWL does not analyse the songs. classbeat
-links the playlist in MOWL so the class can be timed to it, and spotdown analyses the songs from
-their title, artists, length and Spotify explicit flag, and a digest of the track id (ADR 0040).
-spotdown is a recipient versions 1 and 2 never named, so the wording is version 3 and only a
-version-3 consent stands (ADR 0009 section 9).
+links the playlist in MOWL so the class can be timed to it, and the songs are analysed (by spotdown,
+ADR 0040) from their title, artists, length and Spotify explicit flag, and a digest of the track id.
+That purpose and those fields were never in versions 1 and 2, so the wording is version 3 and only a
+version-3 consent stands (ADR 0009 section 9). The words name classbeat as the analyser, never
+spotdown (owner, 2026-11-27, #1571: classbeat is all the user knows); no fact changed: still 3.
 """
 
 import re
@@ -27,7 +28,7 @@ FIXTURES = ("pages/accountTabs.test.tsx", "components/account/Spotify.test.tsx")
 SHARED_FACTS = (
     "links it in MOWL",
     "can be timed to it",
-    "spotdown",
+    "classbeat analyses the songs.",
     "title, artists, length",
     "the explicit-lyrics flag from Spotify",
     "a code derived from the song\u2019s Spotify track id",
@@ -119,9 +120,11 @@ def test_the_backend_and_the_card_say_the_same_thing(fact: str) -> None:
     assert fact in card_body()
 
 
-def test_consent_text_names_the_mowl_link_and_what_spotdown_gets() -> None:
+def test_consent_text_names_the_mowl_link_and_what_the_analysis_uses() -> None:
     assert "links it in MOWL so your class can be timed to it" in CONSENT_TEXT
-    assert "analysed by spotdown" in CONSENT_TEXT
+    assert "classbeat analyses the songs. For each candidate song it uses the following:" in (
+        CONSENT_TEXT
+    )
     assert "title, artists, length, the explicit-lyrics flag from Spotify" in CONSENT_TEXT
     assert "a code derived from the song\u2019s Spotify track id" in CONSENT_TEXT
     assert "source other than Spotify" in CONSENT_TEXT
@@ -138,13 +141,20 @@ def test_the_composer_test_expects_the_card_as_it_is() -> None:
 
 
 def test_the_song_owns_its_track_id_in_both_copies() -> None:
-    # "it" is spotdown; "its" would be read as spotdown's too (#1564).
+    # "it" is classbeat; "its" would be read as classbeat's too (#1564).
     for text in (CONSENT_TEXT, card_body()):
         assert "derived from the song\u2019s Spotify track id" in text
         assert "its Spotify track id" not in text
 
 
-def test_consent_version_is_three_for_the_spotdown_wording() -> None:
+@pytest.mark.parametrize("text", [CONSENT_TEXT, card_body()], ids=["consent", "card"])
+def test_no_consent_copy_names_spotdown(text: str) -> None:
+    # #1571: spotdown is classbeat's own service; the user is told classbeat analyses the songs.
+    assert "spotdown" not in text.lower()
+
+
+def test_consent_version_stays_three_for_the_analysis_wording() -> None:
+    # #1571 reworded version 3 with no fact added or removed, before any release carried it.
     assert CONSENT_VERSION == 3
 
 

@@ -88,7 +88,7 @@ export const previewEn = {
   'preview.corr.saving': 'Saving',
   'preview.corr.saved': 'Saved.',
   'preview.prov.title': 'Where the timing of song {n} comes from',
-  'preview.prov.note': 'spotdown’s analysis and your correction are kept apart and never added into one number.',
+  'preview.prov.note': 'classbeat’s analysis and your correction are kept apart and never added into one number.',
 } as const
 
 /** The key of a sentence of the listening preview. */

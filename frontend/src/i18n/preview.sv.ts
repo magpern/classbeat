@@ -82,5 +82,5 @@ export const previewSv: Catalogue = {
   'preview.corr.saving': 'Sparar',
   'preview.corr.saved': 'Sparat.',
   'preview.prov.title': 'Varifrån tiden för låt {n} kommer',
-  'preview.prov.note': 'spotdowns analys och din justering hålls isär och läggs aldrig ihop till ett tal.',
+  'preview.prov.note': 'classbeats analys och din justering hålls isär och läggs aldrig ihop till ett tal.',
 }

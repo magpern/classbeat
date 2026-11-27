@@ -280,7 +280,10 @@ their title, artists, length, Spotify's explicit flag and a code derived from th
 source other than Spotify (ADR 0040). spotdown is a recipient
 the earlier wording never named, so `CONSENT_VERSION` is 3 and **a version-1 or version-2 consent no
 longer stands**: the user is asked again before the next pick, and no pool write happens meanwhile
-(ADR 0009 §9).)* Playlist URLs and ids are never in
+(ADR 0009 §9).)* *(2026-11-27, owner decision, #1571: the consent and the composer's card say "classbeat
+analyses the songs" and no longer name spotdown, which is classbeat's own service and not one the user deals
+with. They state the same fields and the same source other than Spotify, so `CONSENT_VERSION` stays 3; version 3
+was never released (ADR 0009 §9).)* Playlist URLs and ids are never in
 events, SSE, logs or model input; the owner sees a link to their own final playlist on their class page
 only (`https://open.spotify.com/playlist/<id>` built by the page from the id, never from Spotify data).
 

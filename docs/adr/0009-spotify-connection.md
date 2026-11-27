@@ -372,7 +372,19 @@ interpret stage run, which may take a reminder turn and up to 3 correction turns
 `agent/loop.py`), so a revise queued under an older consent can spend that one reading before it fails
 `consent_missing`; every other pick or composer job spends none. The same `PUT` brings the row to version 3 and keeps its id and
 playlist; it answers 204 only when it inserted or updated the row (otherwise 409). The composer's consent card (`cw.music.consent.body`,
-en, sv, da) says the same.)* `DELETE` revokes, in **one transaction**: the row is deleted and `forget_pool`
+en, sv, da) says the same.)* *(2026-11-27, owner decision, #1571: what the user reads names classbeat,
+never spotdown: "for the user classbeat is all they know. Spotdown is just a service for classbeat." The
+sentence now reads "classbeat manages one working playlist in your Spotify account, named classbeat working
+copy, to hold the song candidates of a pick. It is public, so MOWL can find it: it can show on your Spotify
+profile and in search, and anyone with its link can open it. It is overwritten on each pick. classbeat links it
+in MOWL so your class can be timed to it. classbeat analyses the songs. For each candidate song it uses the
+following: the title, artists, length, the explicit-lyrics flag from Spotify and a code derived from the
+song’s Spotify track id. It analyses the same recording from a source other than Spotify." The composer's card
+says the same in en, sv and da. Every fact stays: the same fields, and the analysis of the same recording from
+a source other than Spotify; what the pick path sends spotdown is unchanged. No fact is added or removed and no
+release carried version 3 (the latest tag, v0.4.0, has version 1), so `CONSENT_VERSION` stays 3. Version 3
+still says what versions 1 and 2 never did (the songs are analysed from these fields, from a source other than
+Spotify), so an older consent still does not stand.)* `DELETE` revokes, in **one transaction**: the row is deleted and `forget_pool`
 (ADR 0008 §2) deletes the user's pool operation rows, the succeeded create that holds the old id and
 the replace rows whose hash covers it included. The playlist id is therefore forgotten and **never
 touched again** (no row is left from which a later pick could reuse it; the page tells the user the

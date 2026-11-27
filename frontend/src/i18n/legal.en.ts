@@ -65,7 +65,7 @@ export const legalEn = {
   'privacy.processors.li1':
     'An AI model provider (Anthropic) gets the class text and song summary described above to design your class. It is based outside the EU, so this is a transfer to a third country.',
   'privacy.processors.li2':
-    'MOWL, Spotify and Swedebeat receive requests through your connection when you connect an account, when classbeat reads your music to design a class (your playlists and their analysis, searches for songs, and mixes) and when it saves what you approved. They have their own privacy notices.',
+    'MOWL, Spotify and Swedebeat receive requests through your connection when you connect an account, when classbeat reads your music to design a class (your playlists, searches for songs, and mixes) and when it saves what you approved. MOWL plays and times your class; classbeat analyses the music. They have their own privacy notices.',
   'privacy.processors.li3':
     'If you choose to sign in with Google, GitHub or Microsoft, that provider tells us your verified email address and your account ID with it.',
   'privacy.processors.li4':
