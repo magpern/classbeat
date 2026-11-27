@@ -55,23 +55,68 @@ function retryAfterOf(response: Response): number | null {
   return Number.isFinite(value) && value > 0 ? value : null
 }
 
-/** GET /api/auth/session raw; also refreshes the remembered CSRF token. */
-export async function fetchSessionJson(signal?: AbortSignal): Promise<JsonObject> {
-  const response = await fetch('/api/auth/session', {
-    headers: { Accept: 'application/json' },
-    signal,
-  })
-  const body = await readBody(response)
-  if (!response.ok) throw new ApiError(response.status, reasonOf(body), null, body)
-  const session = object(body, 'session')
-  csrfToken = typeof session.csrf_token === 'string' ? session.csrf_token : null
-  return session
+// A lock timeout in the server's general limit answers 503 `busy` with a short Retry-After (#998):
+// the request was not served and may be repeated. Reading the session is safe to repeat, and it is
+// the page's first call: without a repeat a single busy answer leaves "Cannot reach the server".
+const SESSION_BUSY_RETRIES = 2
+const SESSION_BUSY_MAX_WAIT_SECONDS = 5
+
+function abortReason(signal: AbortSignal): Error {
+  return signal.reason instanceof Error ? signal.reason : new DOMException('Aborted', 'AbortError')
 }
 
+/** Waits, or rejects with the signal's reason at once when it aborts. */
+function pause(seconds: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortReason(signal))
+      return
+    }
+    const onAbort = () => {
+      clearTimeout(timer)
+      if (signal) reject(abortReason(signal))
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, seconds * 1000)
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
+function tokenOf(session: JsonObject): string | null {
+  return typeof session.csrf_token === 'string' ? session.csrf_token : null
+}
+
+/** GET /api/auth/session raw; also refreshes the remembered CSRF token. */
+export async function fetchSessionJson(signal?: AbortSignal): Promise<JsonObject> {
+  for (let attempt = 0; ; attempt += 1) {
+    const response = await fetch('/api/auth/session', {
+      headers: { Accept: 'application/json' },
+      signal,
+    })
+    const body = await readBody(response)
+    if (response.ok) {
+      const session = object(body, 'session')
+      csrfToken = tokenOf(session)
+      return session
+    }
+    const why = reasonOf(body)
+    if (response.status === 503 && why === 'busy' && attempt < SESSION_BUSY_RETRIES) {
+      await pause(Math.min(retryAfterOf(response) ?? 1, SESSION_BUSY_MAX_WAIT_SECONDS), signal)
+      continue
+    }
+    throw new ApiError(response.status, why, null, body)
+  }
+}
+
+// Uses the token its own read returned, never the shared one read back afterwards: another
+// request may finish meanwhile and drop it. A token that is stale by the time it is sent gets one
+// CSRF 403 and a fresh read in `request()`.
 async function currentCsrfToken(): Promise<string> {
-  if (csrfToken === null) await fetchSessionJson()
-  if (csrfToken === null) throw new ApiError(500, 'no_csrf_token', null, undefined)
-  return csrfToken
+  const token = csrfToken ?? tokenOf(await fetchSessionJson())
+  if (token === null) throw new ApiError(500, 'no_csrf_token', null, undefined)
+  return token
 }
 
 export interface RequestOptions {

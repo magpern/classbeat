@@ -59,6 +59,17 @@ test('the sign-in screen shows Google and the flagged-on Microsoft, never GitHub
   await expect(page.getByText('OR', { exact: true })).toBeVisible()
 })
 
+/**
+ * The provider flow ends at `/`, which the app then moves to `/en` once the session answered
+ * (AccountLocale, ADR 0027 section 3). The account menu is already on the page before that
+ * second load, so wait for the language URL: a step that clicks or navigates in between would
+ * be cut off by the redirect.
+ */
+async function expectSignedInAtHome(page: Page, email: string) {
+  await page.waitForURL('**/en')
+  await expect(page.getByRole('button', { name: email })).toBeVisible()
+}
+
 test('sign up and sign in with Google through the fake provider', async ({ page }) => {
   const email = uniqueEmail('google')
   await playProvider(page, 'accounts.google.com', { sub: `g-${email}`, email, emailVerified: true })
@@ -67,7 +78,7 @@ test('sign up and sign in with Google through the fake provider', async ({ page 
   await page.goto('/signup')
   await page.getByLabel(/Invite code/).fill(createInvite())
   await page.getByRole('button', { name: 'Continue with Google' }).click()
-  await expect(page.getByRole('button', { name: email })).toBeVisible()
+  await expectSignedInAtHome(page, email)
 
   await page.getByRole('button', { name: email }).click()
   await page.getByRole('menuitem', { name: 'Sign out' }).click()
@@ -75,7 +86,7 @@ test('sign up and sign in with Google through the fake provider', async ({ page 
 
   // Second time: the identity exists, no invite.
   await page.getByRole('button', { name: 'Continue with Google' }).click()
-  await expect(page.getByRole('button', { name: email })).toBeVisible()
+  await expectSignedInAtHome(page, email)
 
   await page.goto('/account#security')
   await expect(page.getByRole('button', { name: 'Unlink Google' })).toBeVisible()
