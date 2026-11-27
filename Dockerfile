@@ -24,6 +24,14 @@ ENV UV_COMPILE_BYTECODE=1 \
 RUN groupadd --system --gid 10001 classbeat \
     && useradd --system --uid 10001 --gid classbeat --no-create-home --shell /usr/sbin/nologin classbeat
 
+# CVE-2025-6020 (HIGH, linux-pam directory traversal): the base has 1.5.2-6+deb12u2, fixed in
+# 1.5.2-6+deb12u3. Upgrade only these packages, as root (before USER classbeat). Remove this block
+# when the python base image carries the fix.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends --only-upgrade \
+        libpam-modules libpam-modules-bin libpam-runtime libpam0g \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 # Dependencies first so this layer is cached until the lockfile changes.
 COPY backend/pyproject.toml backend/uv.lock ./
