@@ -24,9 +24,10 @@ music (ADR 0007 amendment of 2026-11-03, #527) ``{source: "none"}``. Stages:
    (ADR 0007 section 2); the job ends ``completed``.
 
 **A soundless class** (``NoMusicChoice``, ``classbeat.design.music_kind``): ``admit`` checks the
-music kind of the class (``admit_music``) and the soundless gate (``admit_soundless``: the switch,
-the job's own plan's route, every plan's route) before any credit is reserved; the worker checks
-the switch again and that the attempt's model covers soundless, before any call. There is **no**
+music kind of the class (``admit_music``) before any credit is reserved; no switch or flag gates it
+(ADR 0007 amendment of 2026-11-27, #1543). The worker resolves the model as for any job, then
+``music_kind.serve_model``: an attempt's model without recorded soundless coverage is served with
+the stale-route warning (ADR 0012 section 5), before any call. There is **no**
 ``music`` stage and no MOWL or Spotify call: the ``design`` stage is ``classbeat.agent.soundless``
 over the brief alone, the step is a ``NoMusicStep``, the revision's music ``{"source": "none"}``,
 the class's first ``music_source`` the same, and ``music_kind.check_stored`` runs in the store.
@@ -182,8 +183,8 @@ async def group_model(
 async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitted | Refused:
     """A Spotify playlist is admitted as before; a Swedebeat mix only through
     ``mixadmit.admit_mix`` (the flag, the MOWL connection, the user's own listing, the limit); no
-    music only through ``music_kind.admit_soundless`` (the switch, the job's own plan's route,
-    every plan's route). Every check here reads only: the jobs API reserves the credit after."""
+    music on its class's kind only (no switch, #1543), a sketch through ``sketch_gate``. Every
+    check here reads only: the jobs API reserves the credit after."""
     if not isinstance(parsed, DesignDraftInput):
         return Refused("invalid_input")
     # ADR 0018 (#509): the running gate and the class's fixed sport, before anything else is read.
@@ -218,13 +219,11 @@ async def run(job_run: JobRun) -> Complete:
         await sport.still_on(job_run)  # ADR 0018 section 5: before anything is called
     if isinstance(given.music, SwedebeatMusicChoice):
         await mixadmit.still_on(job_run, runtime.swedebeat_enabled, new_design=True)
-    if isinstance(given.music, NoMusicChoice) and given.mode != "sketch":
-        music_kind.still_on()  # #527: the switch; a sketch is never written, so has none (ADR 0038)
     model = await group_model(runtime, job_run, given.route_key, "design")  # before any MOWL call
     if given.brief.sport == sport.RUNNING:
         sport.require_evaluated(model)  # an evaluated model only (ADR 0012, issue #465)
     if isinstance(given.music, NoMusicChoice):
-        music_kind.require_covered(model)  # a model evaluated for soundless only (#527)
+        music_kind.serve_model(model, sketch=given.mode == "sketch")  # #527, #1543
         return await run_no_music(job_run, given, model)  # soundless, or a sketch (ADR 0038)
     await job_run.stage("music")
     step, timing = await music_step(job_run, runtime, given.music, given.mowl_connection_id)

@@ -1,5 +1,29 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 38 (2026-11-26, owner decision: there is no soundless switch, "No music" is always a choice; issue #1543)
+
+The owner, 2026-11-26: "There should be no such thing [as soundless off]. Sound is always on, but user
+can opt out if he says no, and music should never be totally random." Amendment 37 left the soundless
+switch to this issue.
+
+1. **No switch.** `CLASSBEAT_SOUNDLESS_ENABLED` and the effective `soundless_enabled` flag (ADR 0007
+   amendments of 2026-11-03, item 2, and 2026-11-08, items 1 and 2) are retired as a product gate:
+   from the backend, the web, the compose files, `.env.example`, `scripts/check-prod-compose.sh` and
+   `docs/developer-commands.md`. Nothing hides or refuses "No music" on a switch or a flag.
+2. **"No music" is always offered** for a cycling class: the start screen, the composer and its music
+   question, the Advanced form and Change music. A confirmed "No music" reading always reaches its
+   design; the hand-off's `feature_off` for it is gone.
+3. **Model coverage.** A soundless design uses the soundless prompts. On a route with no recorded
+   soundless eval it is served with the stale-route warning (ADR 0012 section 5), not refused. The
+   composer's sketch keeps its coverage gate (ADR 0038 amendment of 2026-11-24).
+4. **Save.** Save and Update no longer refuse a revision without a playlist on the switch; every other
+   approval check stands (ADR 0007 section 5, the amendment of 2026-11-27). The owner's live check of
+   one no-music save and one update (`PlaylistID: -1`, each read back once) stays, as a **pre-deploy**
+   item in `docs/status.md`, not as a code gate.
+
+The design is ADR 0007's amendment of 2026-11-27. Free-text "no music" is still not read as soundless
+(#1137).
+
 ## Amendment 37 (2026-11-26, owner decisions 1 to 7 and the owner's rules of 2026-11-26: the reading asks what it assumed and can be read again; issue #1536)
 
 The owner tried the composer with the request of issue #1536 (a 60-minute class that builds up, with a

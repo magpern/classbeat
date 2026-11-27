@@ -477,7 +477,9 @@ no Spotify connection could not start at all (Amendment 25).
    admit and run, a sketch edit's admit and run, whether editing a sketch is offered (`can_change`),
    and a change of shape after songs (which runs the sketch revise). A guard test lists these call
    sites. A no-music class (`music_source = none`), its revise, duplicate, Save and Update keep ADR
-   0007's gate unchanged, including the switch.
+   0007's gate unchanged, including the switch. *(Since ADR 0007's amendment of 2026-11-27, #1543,
+   the switch is gone and a no-music class has no gate; the sketch keeps this one, and the guard now
+   pins `music_kind.serve_model`, which holds `require_covered` for a sketch only.)*
 2. **Availability per plan** (amends §2). The composer is available to a user when the operator's
    pair is on (`CLASSBEAT_COMPOSER_FLOW` and a stored `on`, unchanged) **and** the user's plan has the
    sketch's coverage. The interpret admit, the hand-off and `GET /api/connections` (`composer_flow`,

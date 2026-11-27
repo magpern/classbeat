@@ -83,10 +83,9 @@ class FeatureSettings(BaseSettings):
     # only a stored admin flag ``composer_flow`` of ``on`` turns it on under it. Not set in
     # ``compose.prod.yaml`` until the owner's live check (``scripts/check-prod-compose.sh``).
     composer_flow: bool = False
-    # ADR 0007 amendments of 2026-11-03 (soundless classes, #527) and 2026-11-08 (#824): the
-    # environment's kill switch (off by default). There is no admin flag; every plan's model route
-    # must also cover soundless (``classbeat.flags.effective``).
-    soundless_enabled: bool = False
+    # Soundless classes have no switch (ADR 0007 amendment of 2026-11-27, #1543): "No music" is
+    # always a choice. An environment that still sets the retired variable is ignored
+    # (``extra="ignore"``).
     # ADR 0024 (#647): connect MOWL by scanning a QR code with the MOWL phone app. The
     # environment's switch, on by default (owner decision 2026-11-09, ADR 0028; it was off until
     # the owner's live scan); the password form stays either way.

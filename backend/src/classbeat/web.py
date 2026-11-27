@@ -223,8 +223,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # The design kinds' admit reads the running gate, with the web's own ``fake`` counting as
     # covering only outside prod (ADR 0018 section 5 and its amendment of 2026-11-04, #509).
     sport.configure(sport.SportGate.from_settings(settings))
-    # ... and the soundless switch, with the web's own ``fake`` counting as covering only outside
-    # prod (ADR 0007 amendment of 2026-11-03, #527).
+    # ... and the sketch's soundless coverage, with the web's own ``fake`` counting as covering
+    # only outside prod (ADR 0007 amendment of 2026-11-03, #527; no switch since #1543).
     music_kind.configure(music_kind.SoundlessGate.from_settings(settings))
     # ... and the composer flow's switch (ADR 0038 section 2): interpret_request's admit.
     composer.configure(composer.ComposerGate.from_settings(settings))

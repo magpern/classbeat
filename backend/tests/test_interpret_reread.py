@@ -68,7 +68,7 @@ SAID = (
 @pytest.fixture(autouse=True)
 def composer_on(renv: ReviseEnv) -> Iterator[None]:
     composer.configure(composer.ComposerGate(enabled=True))
-    music_kind.configure(music_kind.SoundlessGate(enabled=False, fake_covers=True))
+    music_kind.configure(music_kind.SoundlessGate(fake_covers=True))
     renv.sql("DELETE FROM app_settings WHERE key = 'composer_flow'")
     renv.sql(
         "INSERT INTO app_settings (key, value) VALUES ('composer_flow', CAST(:v AS jsonb))",
@@ -454,10 +454,6 @@ MUSIC_READING: dict[str, Any] = {
 }
 
 
-def soundless(on: bool) -> None:
-    music_kind.configure(music_kind.SoundlessGate(enabled=on, fake_covers=True))
-
-
 def option(reading: UUID, question: int, index: int) -> dict[str, Any]:
     return {
         "interpret_job_id": str(reading),
@@ -493,22 +489,49 @@ async def test_the_no_music_override_comes_only_from_the_stored_marker(ienv: Int
     assert ienv.stored_input(marked)["music_override"] == {"source": "none"}
 
 
-async def test_a_no_music_reading_is_refused_at_the_hand_off_while_soundless_is_off(
-    ienv: InterpretEnv,
+@pytest.mark.parametrize("answer", ["marked_option", "no_music_field"])
+async def test_a_no_music_confirmation_always_reaches_the_design(
+    ienv: InterpretEnv, answer: str
 ) -> None:
+    """#1543 (the Architect's scope item of 2026-11-27, from finding 4 of the #1550 review):
+    before, with the soundless switch off, a "No music" re-read ended at the hand-off with the
+    generic ``feature_off`` and no way back. Now, read with the composer (the fixture), then with
+    nothing configured from the hand-off on (no switch, no plan's route covers soundless, the model
+    does not cover it either), the confirmed "No music" reading is designed: one design job, its
+    credit, a revision with no music."""
     class_id, first_job = await ienv.interpreted(MUSIC_READING, spotify=False)
-    made = await ienv.renv.browser.post(path(class_id), option(first_job, 0, 2))
-    assert made.status_code == 201, made.text  # the switch is not read for the re-read
-    ienv.models(interpreter(SECOND))
+    body = (
+        option(first_job, 0, 2)
+        if answer == "marked_option"
+        else {"interpret_job_id": str(first_job), "answers": [], "no_music": True}
+    )
+    made = await ienv.renv.browser.post(path(class_id), body)
+    assert made.status_code == 201, made.text
+    # A 30 minute reading, the length the soundless script's draft is (``soundless_first_draft``).
+    ienv.models(interpreter({k: v for k, v in FIRST.items() if k != "questions"}))
     await ienv.run("interpret_request")
     assert ienv.interpretation(class_id)["music"] == {"source": "none"}
+    music_kind.configure(None)  # nothing covers soundless from here on
     before = ienv.counts()
-    refused = await ienv.handoff(class_id)
-    assert (refused.status_code, refused.json()["detail"]["reason"]) == (409, "feature_off")
-    assert (ienv.counts(), ienv.design_jobs(class_id)) == (before, [])  # no job, no credit
-    soundless(True)  # the switch is on (#1543 retires it): the same reading designs
-    designed = await ienv.handoff(class_id, retry=True)
+    designed = await ienv.handoff(class_id)
     assert designed.status_code == 201, designed.text
+    assert ienv.interpretation(class_id)["refusal"] is None
+    assert ienv.credits() == before[2] + 1
+    [job] = ienv.design_jobs(class_id)
+    assert ienv.stored_input(job.id)["music"] == {"source": "none"}
+    renv = ienv.renv
+    renv.soundless_covered = False  # served with the stale-route warning (``test_soundless_jobs``)
+    try:
+        renv.use("soundless_first_draft")
+        await renv.run("design_draft")
+    finally:
+        renv.soundless_covered = True
+    row = renv.denv.ops.row(job.id)
+    assert (row.state, row.error_category) == ("completed", None)
+    [rev] = renv.revisions(class_id)
+    assert rev.music == {"source": "none"}
+    source = ienv.sql("SELECT music_source FROM classes WHERE id = :c", c=class_id).scalar_one()
+    assert source == {"source": "none"}
 
 
 @pytest.fixture

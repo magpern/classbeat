@@ -35,7 +35,7 @@ INVALID = (422, "invalid_input")
 @pytest.fixture(autouse=True)
 def composer_on(renv: ReviseEnv) -> Iterator[None]:
     composer.configure(composer.ComposerGate(enabled=True))
-    music_kind.configure(music_kind.SoundlessGate(enabled=True, fake_covers=True))
+    music_kind.configure(music_kind.SoundlessGate(fake_covers=True))
     renv.sql("DELETE FROM app_settings WHERE key = 'composer_flow'")
     renv.sql(
         "INSERT INTO app_settings (key, value) VALUES ('composer_flow', CAST(:v AS jsonb))",

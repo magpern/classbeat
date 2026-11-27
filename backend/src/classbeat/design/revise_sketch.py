@@ -11,7 +11,8 @@ like any chat revision (``chat.create_state``).
 
 Any other base keeps its gates in their order: ``not_changeable`` for a class without a music
 source (a duplicate of a class on picked songs, #536), the running gate (``sport.admit_class``,
-ADR 0018, #509), the soundless gate of a soundless class (``music_kind.admit_class``, #528).
+ADR 0018, #509), the kind check of ``music_kind.admit_class`` (a studio class; a soundless class
+has no gate since #1543).
 """
 
 from typing import Any

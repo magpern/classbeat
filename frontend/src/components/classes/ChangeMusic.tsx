@@ -49,7 +49,6 @@ export function ChangeMusic({
                 mixes: source.mixes,
                 songs: source.songs,
                 swedebeat: source.swedebeat,
-                soundlessEnabled: source.soundlessEnabled,
                 running: summary.sport === 'running',
               })}
             />

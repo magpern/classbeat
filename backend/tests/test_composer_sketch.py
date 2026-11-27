@@ -201,11 +201,9 @@ async def test_a_sketch_revise_counts_toward_the_revise_limit_and_the_first_sket
         design_limits.configure(settings)
 
 
-async def test_a_sketch_revise_is_behind_the_plans_coverage_and_not_the_switch(
-    skenv: SketchEnv,
-) -> None:
+async def test_a_sketch_revise_is_behind_the_plans_coverage(skenv: SketchEnv) -> None:
     class_id, sketch = await skenv.sketched()
-    music_kind.configure(None)  # no plan covered (and the soundless switch off)
+    music_kind.configure(None)  # no plan covered (there is no soundless switch, #1543)
     refused = await skenv.renv.ask(class_id, sketch, "Easier start")
     assert refused.status_code == 409, refused.text
     assert refused.json()["detail"]["reason"] == "soundless_not_evaluated"  # #1484

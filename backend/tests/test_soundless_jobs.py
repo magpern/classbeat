@@ -4,29 +4,32 @@ items 1 to 7; SL1, #527), against Postgres as ``classbeat_app``, the fake MOWL a
 
 Covered: a soundless ``design_draft`` completes on the fakes with no MOWL request and no ``music``
 stage, storing ``{"source": "none"}`` as the revision's music and the class's ``music_source``;
-the model sees no ``music`` key and no music text; the gate (the environment's switch and every
-plan's route, no stored value since #824: every path that must leave the effective flag off and
-``admit`` refusing, with no job and no credit), the order of
-``admit``'s checks, and the effective flag ``GET /api/connections`` returns; the worker's
-backstops (``feature_off``, ``model_config``) before any call; the music kind never changing, at
+the model sees no ``music`` key and no music text; no switch and no coverage refuses it at
+``admit`` (ADR 0007 amendment of 2026-11-27, #1543), and ``GET /api/connections`` carries no flag;
+the worker serves an uncovered model with the stale-route warning (ADR 0012 section 5) and still
+ends an unusable route ``model_config`` before any call; the music kind never changing, at
 ``admit`` and in the final store, both ways. The revise is ``test_soundless_revise.py`` (SL2);
 Save and Update are ``test_save_soundless.py`` (SL3); here only that a class this path designs
 is admitted for Save (#586).
 """
 
 import json
+import logging
 from collections.abc import Iterator
+from dataclasses import replace
 from typing import Any
 from uuid import UUID
 
 import pytest
 from sqlalchemy.exc import IntegrityError
 
+from agentfake import RefusingModels
 from classbeat import design
 from classbeat.agent.records import Provenance
 from classbeat.agent.schemas import WorkoutDraft
 from classbeat.agent.soundless import SYSTEM_PROMPT
 from classbeat.agent.stage import prompt_version
+from classbeat.design import kind as design_kind
 from classbeat.design import music_kind, revision
 from classbeat.models import routes as routes_module
 from classbeat.models.versions import all_prompt_versions, running_suite_version
@@ -46,15 +49,15 @@ SPOTIFY: dict[str, str] = {"source": "mowl_spotify_playlist", "spotify_playlist_
 MUSIC_WORDS = ("playlist", "track", "bpm", "drop", "breakdown", "beat", "song")
 
 
-def gate(*, enabled: bool = True, fake: bool = True) -> None:
-    music_kind.configure(music_kind.SoundlessGate(enabled=enabled, fake_covers=fake))
+def gate(*, fake: bool = True) -> None:
+    music_kind.configure(music_kind.SoundlessGate(fake_covers=fake))
 
 
 @pytest.fixture(autouse=True)
 def soundless_on(renv: ReviseEnv) -> Iterator[None]:
-    """The environment's switch on and the web's ``fake`` covering (as the e2e stack); nothing is
-    stored (there is no admin flag since #824). After ``renv``, whose app configured the gate from
-    its settings (off)."""
+    """The web's ``fake`` covering (as the e2e stack); there is no switch (#1543) and nothing is
+    stored (there is no admin flag since #824). After ``renv``, whose app configured the setting
+    from its settings."""
     gate()
     try:
         yield
@@ -93,12 +96,6 @@ async def refused_with(renv: ReviseEnv, reason: str, body: dict[str, Any] | None
     assert refused.status_code == 409, refused.text
     assert refused.json()["detail"]["reason"] == reason
     assert counts(renv) == before  # no class, no job, no credit
-
-
-async def connections_flag(renv: ReviseEnv) -> bool:
-    got = await renv.browser.get("/api/connections")
-    assert got.status_code == 200, got.text
-    return got.json()["soundless_enabled"]
 
 
 async def soundless_class(renv: ReviseEnv) -> tuple[UUID, UUID]:
@@ -203,167 +200,123 @@ async def test_a_class_designed_without_music_is_admitted_for_save(
     assert fake_mowl.requests == []  # a created job calls nothing; no link was ever needed
 
 
-# --- the gate at creation -------------------------------------------------------------------
-
-
-@pytest.mark.parametrize("fake", [True, False])
-async def test_the_environment_switch_off_leaves_the_flag_off_and_admit_refusing_feature_off(
-    renv: ReviseEnv, fake_mowl: FakeMowlMusic, monkeypatch: pytest.MonkeyPatch, fake: bool
-) -> None:
-    """Item 2 (as amended on 2026-11-08, #824): ``CLASSBEAT_SOUNDLESS_ENABLED`` off is off, even
-    with every plan's route covering soundless (or the web's ``fake``)."""
-    gate(enabled=False, fake=fake)
-    monkeypatch.setattr(routes_module, "SOUNDLESS_SUITE_VERSION", running_suite_version())
-    route(renv, *plan_keys(renv))
-    assert await connections_flag(renv) is False
-    await refused_with(renv, "feature_off")
-    assert fake_mowl.requests == []
-    cycling = await create(renv, design_body(renv, SPOTIFY))  # music never reads the flag
-    assert cycling.status_code == 201, cycling.text
-
-
-async def test_the_switch_and_every_plans_route_suffice_with_no_stored_row(
-    renv: ReviseEnv, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """#824: no ``app_settings`` row takes part. With the environment on and a covering route for
-    every plan (no ``fake``), the flag is on and a soundless design is admitted, and the key can
-    no longer be stored at all (the narrowed check of migration 0043)."""
-    gate(fake=False)
-    monkeypatch.setattr(routes_module, "SOUNDLESS_SUITE_VERSION", running_suite_version())
-    route(renv, *plan_keys(renv))
-    assert await connections_flag(renv) is True
-    made = await create(renv, design_body(renv))
-    assert made.status_code == 201, made.text
-    with pytest.raises(IntegrityError):
-        renv.sql(
-            "INSERT INTO app_settings (key, value) VALUES ('soundless_enabled', '\"on\"'::jsonb)"
-        )
-
-
-async def test_the_flag_needs_every_plans_route_to_cover_soundless_read_on_every_request(
-    renv: ReviseEnv, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Item 6: without the web's own ``fake``, the effective flag needs a covering ``design``
-    route for every plan's ``route_key``, checked on each read: a result below
-    ``SOUNDLESS_SUITE_VERSION`` (or with it ``None``, as in SL1) covers nothing, and a route
-    cleared later or a plan added later turns it off with nothing stored."""
-    gate(fake=False)
-    keys = plan_keys(renv)
-    route(renv, *keys)
-    first = routes_module.SOUNDLESS_SUITE_VERSION
-    assert first is not None
-    assert running_suite_version() >= first  # SL5 (#531)
-    # The SL1 state: SOUNDLESS_SUITE_VERSION is None, so even a fresh passing route covers nothing.
-    monkeypatch.setattr(routes_module, "SOUNDLESS_SUITE_VERSION", None)
-    assert await connections_flag(renv) is False
-    await refused_with(renv, "soundless_not_evaluated")
-    # A result recorded on a suite version below the soundless one.
-    monkeypatch.setattr(routes_module, "SOUNDLESS_SUITE_VERSION", running_suite_version() + 1)
-    assert await connections_flag(renv) is False
-    await refused_with(renv, "soundless_not_evaluated")
-    # SL5's state: every plan covered, so the flag is on and a design is admitted.
-    monkeypatch.setattr(routes_module, "SOUNDLESS_SUITE_VERSION", running_suite_version())
-    assert await connections_flag(renv) is True
-    made = await create(renv, design_body(renv))
-    assert made.status_code == 201, made.text
-    renv.sql("DELETE FROM jobs WHERE owner_id = :o", o=renv.owner)
-    renv.sql("DELETE FROM credit_ledger WHERE owner_id = :o", o=renv.owner)
-    # Another plan's route cleared later: the user's own plan is covered, the flag is not.
-    mine = await own_key(renv)
-    other = next(k for k in keys if k != mine)
-    renv.sql("DELETE FROM model_routes WHERE route_key = :k", k=other)
-    assert await connections_flag(renv) is False
-    await refused_with(renv, "feature_off")
-    route(renv, other)
-    assert await connections_flag(renv) is True
-    # A plan added later, with a route key of its own and no route.
-    renv.sql(
-        "INSERT INTO plans (id, name, rank, classes_per_month, revisions_per_class, "
-        "concurrent_jobs, monthly_cost_micros, route_key) "
-        "VALUES ('later', 'Later', 99, 3, 3, 1, 10000000, 'later')"
-    )
-    try:
-        assert await connections_flag(renv) is False
-        await refused_with(renv, "feature_off")
-    finally:
-        renv.sql("DELETE FROM plans WHERE id = 'later'")
-    # The user's own plan's route cleared later.
-    renv.sql("DELETE FROM model_routes WHERE route_key = :k", k=mine)
-    assert await connections_flag(renv) is False
-    await refused_with(renv, "soundless_not_evaluated")
+# --- no switch, and the model's coverage (#1543) -------------------------------------------
 
 
 @pytest.mark.parametrize(
-    ("switch", "own", "others", "reason"),
+    ("version", "own", "others"),
     [
-        (False, False, False, "feature_off"),  # 1. the switch first, whatever is covered
-        (False, True, True, "feature_off"),
-        (True, False, True, "soundless_not_evaluated"),  # 2. the job's own plan next
-        (True, False, False, "soundless_not_evaluated"),  # (before every plan, or 2 is dead)
-        (True, True, False, "feature_off"),  # 3. then every plan
-        (True, True, True, None),
+        (None, False, False),  # SL1's state: nothing can cover soundless
+        ("below", True, True),  # results below the soundless suite version cover nothing
+        ("current", False, True),  # the job's own plan uncovered
+        ("current", True, False),  # another plan uncovered
+        ("current", False, False),  # no route at all: the bootstrap choice
+        ("current", True, True),
     ],
 )
-async def test_admit_checks_the_switch_then_its_own_plan_then_every_plan(
+async def test_no_music_is_admitted_with_no_switch_whatever_the_routes_cover(
     renv: ReviseEnv,
+    fake_mowl: FakeMowlMusic,
     monkeypatch: pytest.MonkeyPatch,
-    switch: bool,
+    version: str | None,
     own: bool,
     others: bool,
-    reason: str | None,
 ) -> None:
-    gate(enabled=switch, fake=False)
-    monkeypatch.setattr(routes_module, "SOUNDLESS_SUITE_VERSION", running_suite_version())
+    """ADR 0007 amendment of 2026-11-27 (#1543; owner, 2026-11-26: "No music" is always a choice):
+    no switch and no coverage refuses a soundless design at ``admit``. Before, the switch off was
+    ``feature_off`` and an uncovered plan ``soundless_not_evaluated`` (#527, #824); this replaces
+    those cases, it does not drop them: every coverage state that used to refuse is admitted here
+    with its one credit, and the worker decides the model (the tests below)."""
+    gate(fake=False)
+    suite = {None: None, "below": running_suite_version() + 1, "current": running_suite_version()}
+    monkeypatch.setattr(routes_module, "SOUNDLESS_SUITE_VERSION", suite[version])
     keys, mine = plan_keys(renv), await own_key(renv)
     route(
         renv,
         *([mine] if own else []),
         *([k for k in keys if k != mine] if others else []),
     )
-    if reason is None:
-        made = await create(renv, design_body(renv))
-        assert made.status_code == 201, made.text
-        assert counts(renv)[2] == 1  # the credit is reserved only once admitted
-    else:
-        await refused_with(renv, reason)
-
-
-# --- the worker's backstops -----------------------------------------------------------------
-
-
-async def test_a_queued_soundless_design_whose_switch_went_off_ends_feature_off_calling_nothing(
-    renv: ReviseEnv, fake_mowl: FakeMowlMusic
-) -> None:
-    renv.use("soundless_first_draft")
+    before = counts(renv)
     made = await create(renv, design_body(renv))
     assert made.status_code == 201, made.text
-    job_id = UUID(made.json()["id"])
-    gate(enabled=False)  # the worker runs with the environment's switch off
-    await renv.run(design.KIND)
-    row = renv.denv.ops.row(job_id)
-    assert (row.state, row.error_category) == ("failed", "feature_off")
-    assert renv.providers == []  # no model was even built
+    assert counts(renv) == (before[0] + 1, before[1] + 1, before[2] + 1)  # one class, job, credit
     assert fake_mowl.requests == []
-    assert renv.denv.revisions(job_id) == []
 
 
-async def test_a_soundless_design_on_a_model_not_covering_soundless_ends_model_config(
+async def test_the_connections_view_carries_no_soundless_flag_and_no_key_can_be_stored(
+    renv: ReviseEnv,
+) -> None:
+    """#1543: ``GET /api/connections`` has no ``soundless_enabled`` (the web always offers "No
+    music"), and the retired admin key still cannot be stored (the narrowed check of migration
+    0043, #824)."""
+    gate(fake=False)
+    got = await renv.browser.get("/api/connections")
+    assert got.status_code == 200, got.text
+    assert "soundless_enabled" not in got.json()
+    with pytest.raises(IntegrityError):
+        renv.sql(
+            "INSERT INTO app_settings (key, value) VALUES ('soundless_enabled', '\"on\"'::jsonb)"
+        )
+
+
+async def test_a_soundless_design_on_an_uncovered_model_is_served_with_the_stale_route_warning(
+    renv: ReviseEnv, fake_mowl: FakeMowlMusic, caplog: pytest.LogCaptureFixture
+) -> None:
+    """ADR 0012 section 5 (#1543): a model with no recorded soundless coverage designs the class
+    with the soundless prompt, as a stale route serves other stages, and the worker logs the
+    warning once per process and route key (codes only). Before, this was ``model_config``."""
+    warned_keys = music_kind._warned  # pyright: ignore[reportPrivateUsage]
+    warned_keys.clear()
+    renv.soundless_covered = False
+    try:
+        with caplog.at_level(logging.WARNING, logger="classbeat.design.music_kind"):
+            first, job_id = await soundless_class(renv)
+            second, _ = await soundless_class(renv)
+        [rev] = renv.denv.revisions(job_id)
+        assert rev.music == NONE
+        made = Provenance.model_validate_json(json.dumps(rev.provenance))
+        assert made.prompt_version == all_prompt_versions()["soundless_design"]
+        assert [p.spec.system for p in renv.providers[-1].sent] == [SYSTEM_PROMPT]
+        warned = [r for r in caplog.records if r.getMessage() == "model route stale"]
+        assert len(warned) == 1  # once per process and route key, not per job
+        assert (warned[0].__dict__["reason"], warned[0].__dict__["stage_group"]) == (
+            music_kind.UNCOVERED,
+            "design",
+        )
+        assert warned[0].__dict__["route_key"] is None  # the fake's config: no route
+        assert first != second
+        assert fake_mowl.requests == []
+    finally:
+        renv.soundless_covered = True
+        warned_keys.clear()
+
+
+async def test_a_covered_soundless_design_logs_no_warning(
+    renv: ReviseEnv, fake_mowl: FakeMowlMusic, caplog: pytest.LogCaptureFixture
+) -> None:
+    music_kind._warned.clear()  # pyright: ignore[reportPrivateUsage]
+    with caplog.at_level(logging.WARNING, logger="classbeat.design.music_kind"):
+        await soundless_class(renv)
+    assert [r for r in caplog.records if r.getMessage() == "model route stale"] == []
+
+
+async def test_an_unusable_route_still_ends_a_soundless_design_model_config(
     renv: ReviseEnv, fake_mowl: FakeMowlMusic
 ) -> None:
+    """The warning replaces only the coverage refusal: a route the worker may not use (a newer
+    failure, no key: ``RouteUnusable``) is still ``model_config`` before any call."""
     renv.use("soundless_first_draft")
     made = await create(renv, design_body(renv))
     assert made.status_code == 201, made.text
     job_id = UUID(made.json()["id"])
-    renv.soundless_covered = False
-    renv.use("soundless_first_draft")
+    runtime = design_kind.current_runtime()
+    assert runtime is not None
+    design.configure(replace(runtime, models=RefusingModels()))
     await renv.run(design.KIND)
     row = renv.denv.ops.row(job_id)
     assert (row.state, row.error_category) == ("failed", "model_config")
-    assert all(p.sent == [] for p in renv.providers)  # nothing sent to a model
     assert fake_mowl.requests == []
-    renv.soundless_covered = True
-    cycling, _ = await renv.design()  # a music class never needs the soundless coverage
-    assert cycling
+    assert renv.denv.revisions(job_id) == []
 
 
 # --- the music kind never changes -----------------------------------------------------------

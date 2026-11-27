@@ -120,8 +120,15 @@ describe('the claim table', () => {
   it('says a switched-off feature is available once we switch it on', () => {
     // A claim resting on a switch that defaults to off must say so in its note (review of PP4, #893).
     const switched = CLAIMS.filter((c) => /default off/i.test(c.evidence))
-    expect(switched.map((c) => c.id)).toEqual(expect.arrayContaining(['songs', 'swedebeat', 'noMusic', 'running']))
+    expect(switched.map((c) => c.id)).toEqual(expect.arrayContaining(['songs', 'swedebeat', 'running']))
     for (const claim of switched) expect(text(claim.note), claim.id).toMatch(/switch it on/)
+  })
+
+  it('says a class without music needs only MOWL: no switch since #1543', () => {
+    const noMusic = CLAIMS.find((c) => c.id === 'noMusic')
+    expect(noMusic?.availability).toBe('connection')
+    expect(noMusic?.needs).toEqual(['mowl'])
+    expect(noMusic?.evidence).not.toMatch(/default off/i)
   })
 
   it('marks a claim whose own text says classbeat picks songs', () => {

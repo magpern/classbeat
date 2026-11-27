@@ -1,8 +1,9 @@
 """The two ``design_draft`` runs with no music step (split out of ``classbeat.design.kind``, the
 repository's split-on-touch rule): a soundless class (#527) and the composer's sketch (ADR 0038
 section 4, #1186). Neither makes a MOWL or Spotify call; both run the soundless ``design`` stage
-over the brief alone (``classbeat.agent.soundless``), on a model the caller checked covers
-soundless (``music_kind.require_covered``), and store with a ``NoMusicStep``.
+over the brief alone (``classbeat.agent.soundless``), on a model the caller checked
+(``music_kind.serve_model``: a sketch needs soundless coverage, a soundless class is served with
+the stale-route warning without it, #1543), and store with a ``NoMusicStep``.
 
 - **Soundless**: the revision's music is ``{"source": "none"}`` and the class's first
   ``music_source`` the same (``music_kind.check_stored`` before and after ``adopt_first``).

@@ -84,8 +84,8 @@ async def test_a_modern_base_records_no_not_as_asked_item(renv: ReviseEnv) -> No
 
 
 async def test_a_soundless_legacy_base_is_rewritten_the_same_way(renv: ReviseEnv) -> None:
-    # The soundless gate on, as ``test_soundless_jobs.soundless_on`` sets it for its module.
-    music_kind.configure(music_kind.SoundlessGate(enabled=True, fake_covers=True))
+    # The web's ``fake`` covering, as ``test_soundless_jobs.soundless_on`` sets it for its module.
+    music_kind.configure(music_kind.SoundlessGate(fake_covers=True))
     try:
         class_id, design_job = await soundless_class(renv)
         [first] = renv.denv.revisions(design_job)

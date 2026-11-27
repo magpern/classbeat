@@ -104,10 +104,6 @@ class ConnectionsOut(BaseModel):
     # offers Running only when a running design would be admitted. Signed-in users only;
     # nothing here says anything about the user's own account.
     running_enabled: bool = False
-    # ADR 0007 amendments of 2026-11-03 (#527) and 2026-11-08 (#824): the effective
-    # ``soundless_enabled`` (the environment's switch and every plan's route covering soundless),
-    # so the form offers "No music" only when a soundless design would be admitted.
-    soundless_enabled: bool = False
     # ADR 0024 (#647): whether the desktop page may offer "Scan with the MOWL app"
     # (``CLASSBEAT_MOWL_QR_ENABLED``). Nothing here says anything about the user's own account.
     mowl_qr_enabled: bool = False
@@ -148,10 +144,9 @@ async def get_connections(
     async with system_session(factory) as db:
         # Imported here: ``classbeat.design`` imports this package (its music step opens the
         # MOWL connection), so the routes module must not import it at its own import time.
-        from classbeat.design import composer, music_kind, sport
+        from classbeat.design import composer, sport
 
         running = await sport.running_on(db)
-        soundless = await music_kind.soundless_on(db)
     async with user_session(factory, ctx) as db:  # the plan is read under the user's own context
         composing = await composer.composer_available(db, ctx)
     return ConnectionsOut(
@@ -164,7 +159,6 @@ async def get_connections(
             uses_swedebeat=await uses_swedebeat(factory, ctx),
         ),
         running_enabled=running,
-        soundless_enabled=soundless,
         mowl_qr_enabled=request.app.state.settings.mowl_qr_enabled,
         composer_flow=composing,
     )

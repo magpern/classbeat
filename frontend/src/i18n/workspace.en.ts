@@ -86,7 +86,6 @@ export const workspaceEn = {
   'cw.music.playlists': 'Share playlists',
   'cw.music.later': 'Decide later',
   'cw.music.none': 'Continue without music',
-  'cw.music.noneSoon': 'Not available here yet',
   'cw.music.note.label': 'The sound you want',
   'cw.music.note.placeholder': 'For example: 80s hits, nothing too loud',
   'cw.music.note.send': 'Use this',

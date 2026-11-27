@@ -49,7 +49,8 @@ function setup(over: Setup = {}) {
       return json({
         connections: [{ id: MOWL_CONNECTION, provider: 'mowl', ...OK }, ...(now.spotify ? [{ id: SPOTIFY_ID, provider: 'spotify', ...OK }] : [])],
         composer_flow: true,
-        soundless_enabled: over.soundless ?? false,
+        // A stale server may still send the retired flag (#1543): the page must ignore it.
+        ...(over.soundless === undefined ? {} : { soundless_enabled: over.soundless }),
       })
     },
     'GET /api/connections/spotify': async () => {
@@ -223,18 +224,12 @@ describe('the music question', () => {
     await card()
   })
 
-  it('shows "Continue without music" off, with a reason, while no-music classes are not on', async () => {
-    const api = setup({ soundless: false })
-    renderAt(PAGE)
-    const button = within(await card()).getByRole('button', { name: 'Continue without music' })
-    expect(button).toBeDisabled()
-    expect(screen.getByText('Not available here yet')).toBeInTheDocument()
-    fireEvent.click(button)
-    expect(api.to('POST', '/api/jobs')).toHaveLength(0)
-  })
-
-  it('starts the same request again as a class with no music when no-music classes are on', async () => {
-    const api = setup({ soundless: true })
+  it.each([
+    ['an answer with no flag', undefined],
+    ['a stale answer that still says off', false],
+  ] as const)('always offers "Continue without music" and starts the request with no music (%s, #1543)', async (_, soundless) => {
+    // Before #1543 the button was off, with "Not available here yet", while `soundless_enabled` was off.
+    const api = setup(soundless === undefined ? {} : { soundless })
     renderAt(PAGE)
     const button = within(await card()).getByRole('button', { name: 'Continue without music' })
     expect(screen.queryByText('Not available here yet')).toBeNull()

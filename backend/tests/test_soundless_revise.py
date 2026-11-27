@@ -6,9 +6,9 @@ Covered: the revision is a child of the base, current by compare-and-set, with i
 music ``{"source": "none"}``, ``origin = revise_draft``, no credit, no MOWL request and no
 ``music`` stage; the model sees the soundless revise prompt, two tools (no ``songs_requested``),
 no ``music`` key and no music value (planted); a "change the songs" request cannot end
-``use_change_songs``; earlier requests travel and notes never do; the gate at ``admit`` (the
-switch and the routes, nothing written) and the worker's backstops (``feature_off``,
-``model_config``) before any call; the music kind never changing in the final store.
+``use_change_songs``; earlier requests travel and notes never do; no switch or coverage refuses it
+at ``admit`` (#1543), only a studio class; the worker serves an uncovered model; the music kind
+never changing in the final store.
 """
 
 import json
@@ -33,7 +33,6 @@ from test_soundless_jobs import (  # noqa: F401  (soundless_on is the autouse fi
     MUSIC_WORDS,
     NONE,
     SPOTIFY,
-    connections_flag,
     counts,
     gate,
     own_key,
@@ -206,91 +205,52 @@ async def test_a_change_the_songs_request_cannot_end_use_change_songs(
     assert fake_mowl.requests == []
 
 
-# --- the gate at creation --------------------------------------------------------------------
-
-
-@pytest.mark.parametrize("fake", [True, False])
-async def test_a_revise_is_refused_feature_off_with_the_switch_off_writing_nothing(
-    renv: ReviseEnv, fake_mowl: FakeMowlMusic, monkeypatch: pytest.MonkeyPatch, fake: bool
-) -> None:
-    """The environment's switch, the only one since #824: off refuses even with every plan's
-    route covering soundless (or the web's ``fake``)."""
-    class_id, design_job = await soundless_class(renv)
-    [base] = renv.denv.revisions(design_job)
-    monkeypatch.setattr(routes_module, "SOUNDLESS_SUITE_VERSION", running_suite_version())
-    route(renv, *plan_keys(renv))
-    gate(enabled=False, fake=fake)
-    assert await connections_flag(renv) is False
-    await refused_with(renv, class_id, base.id, "feature_off")
-    assert fake_mowl.requests == []
+# --- no switch, and the model's coverage (#1543) --------------------------------------------
 
 
 @pytest.mark.parametrize(
-    ("switch", "own", "others", "reason"),
-    [
-        (False, True, True, "feature_off"),  # the switch first
-        (True, False, True, "soundless_not_evaluated"),  # then the job's own plan
-        (True, False, False, "soundless_not_evaluated"),
-        (True, True, False, "feature_off"),  # then every plan
-        (True, True, True, None),
-    ],
+    ("own", "others"), [(False, False), (False, True), (True, False), (True, True)]
 )
-async def test_a_revise_checks_the_switch_then_its_own_plan_then_every_plan(
+async def test_a_revise_is_admitted_with_no_switch_whatever_the_routes_cover(
     renv: ReviseEnv,
+    fake_mowl: FakeMowlMusic,
     monkeypatch: pytest.MonkeyPatch,
-    switch: bool,
     own: bool,
     others: bool,
-    reason: str | None,
 ) -> None:
+    """ADR 0007 amendment of 2026-11-27 (#1543): the cases that used to be ``feature_off`` (the
+    switch, another plan uncovered) and ``soundless_not_evaluated`` (the job's own plan) are all
+    admitted now; the worker decides the model (below)."""
     class_id, design_job = await soundless_class(renv)  # designed under the web's fake
     [base] = renv.denv.revisions(design_job)
-    gate(enabled=switch, fake=False)
+    gate(fake=False)
     monkeypatch.setattr(routes_module, "SOUNDLESS_SUITE_VERSION", running_suite_version())
     keys, mine = plan_keys(renv), await own_key(renv)
     route(renv, *([mine] if own else []), *([k for k in keys if k != mine] if others else []))
-    if reason is None:
-        made = await ask(renv, class_id, base.id)
-        assert made.status_code == 201, made.text
-    else:
-        await refused_with(renv, class_id, base.id, reason)
-
-
-async def test_a_music_class_is_revised_whatever_the_soundless_gate_says(
-    renv: ReviseEnv, fake_mowl: FakeMowlMusic
-) -> None:
-    class_id, base = await renv.design()
-    gate(enabled=False)
-    job_id, _ = await renv.revise(class_id, base, "revise_good")
-    assert renv.denv.ops.row(job_id).state == "completed"
-
-
-# --- the worker's backstops ------------------------------------------------------------------
-
-
-async def test_a_queued_soundless_revise_whose_switch_went_off_ends_feature_off_calling_nothing(
-    renv: ReviseEnv, fake_mowl: FakeMowlMusic
-) -> None:
-    class_id, design_job = await soundless_class(renv)
-    [base] = renv.denv.revisions(design_job)
-    providers = len(renv.providers)
-    renv.use("soundless_revise_good")
     made = await ask(renv, class_id, base.id)
     assert made.status_code == 201, made.text
-    job_id = UUID(made.json()["id"])
-    gate(enabled=False)  # the worker runs with the environment's switch off
-    await renv.run(design.REVISE_KIND)
-    row = renv.denv.ops.row(job_id)
-    assert (row.state, row.error_category) == ("failed", "feature_off")
-    assert len(renv.providers) == providers  # no model was even built
     assert fake_mowl.requests == []
-    assert len(renv.revisions(class_id)) == 1
-    assert renv.current(class_id) == base.id
 
 
-async def test_a_soundless_revise_on_a_model_not_covering_soundless_ends_model_config(
+async def test_a_studio_class_is_still_refused_by_the_soundless_kinds_admit(
     renv: ReviseEnv, fake_mowl: FakeMowlMusic
 ) -> None:
+    """``music_kind.admit_class`` keeps its one refusal: a studio class (ADR 0036 section 2)."""
+    class_id, design_job = await soundless_class(renv)
+    [base] = renv.denv.revisions(design_job)
+    renv.sql(
+        "UPDATE classes SET music_source = CAST(:m AS jsonb) WHERE id = :c",
+        m=json.dumps({"source": "swedebeat_studio"}),
+        c=class_id,
+    )
+    await refused_with(renv, class_id, base.id, "invalid_input")
+
+
+async def test_a_soundless_revise_on_an_uncovered_model_is_served_and_stored(
+    renv: ReviseEnv, fake_mowl: FakeMowlMusic
+) -> None:
+    """ADR 0012 section 5 (#1543): before, ``model_config``; now the soundless revise runs on the
+    model, with the stale-route warning (``test_soundless_jobs``), and stores its child."""
     class_id, design_job = await soundless_class(renv)
     [base] = renv.denv.revisions(design_job)
     renv.use("soundless_revise_good")
@@ -298,13 +258,17 @@ async def test_a_soundless_revise_on_a_model_not_covering_soundless_ends_model_c
     assert made.status_code == 201, made.text
     job_id = UUID(made.json()["id"])
     renv.soundless_covered = False
-    renv.use("soundless_revise_good")
-    await renv.run(design.REVISE_KIND)
+    try:
+        renv.use("soundless_revise_good")
+        await renv.run(design.REVISE_KIND)
+    finally:
+        renv.soundless_covered = True
     row = renv.denv.ops.row(job_id)
-    assert (row.state, row.error_category) == ("failed", "model_config")
-    assert all(p.sent == [] for p in renv.providers[1:])  # nothing sent to a model
+    assert (row.state, row.error_category) == ("completed", None)
+    [child] = [r for r in renv.revisions(class_id) if r.id != base.id]
+    assert child.music == NONE
+    assert renv.providers[-1].sent[0].spec.system == REVISE_SYSTEM_PROMPT
     assert fake_mowl.requests == []
-    assert len(renv.revisions(class_id)) == 1
 
 
 # --- the music kind never changes ------------------------------------------------------------

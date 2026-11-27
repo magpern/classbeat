@@ -1,7 +1,8 @@
-# Soundless classes: the owner's live eval and switching soundless on
+# Soundless classes: the owner's live eval
 
 [ADR 0007](../adr/0007-classes-revisions-and-saving.md) (amendment of 2026-11-03, "soundless classes", items 2 and 6,
-and the amendment of 2026-11-08, which retired the admin flag, #824),
+the amendment of 2026-11-08, which retired the admin flag, #824, and the amendment of 2026-11-27, which
+retired the environment's switch, #1543),
 [ADR 0012](../adr/0012-eval-suite-and-model-providers.md) (section 5 and its amendment of 2026-11-03).
 Suite version 12 holds soundless cases: the `soundless` category (`soundless_45`, `soundless_30_sprints`,
 `soundless_revise_sprints`) and `soundless_adversarial` in `adversarial`, all in the `design` stage group. CI
@@ -9,18 +10,20 @@ replays them against `FakeProvider` (`backend/tests/test_evals_soundless.py`, an
 four smoke files `smoke/soundless_*.json`) and never calls a model. **No live eval has been run or recorded
 for soundless yet.**
 
-## What the gate needs before real users get soundless
+## What coverage means (no gate since #1543)
 
-A soundless design or revise runs only on a `design` route that **covers soundless**: its result was
+"No music" is always offered and never refused on a switch, a flag or coverage (owner, 2026-11-26). A
+`design` route **covers soundless** when its result was
 recorded by `suite --live --record` on suite version **12 or later** (`models.routes.SOUNDLESS_SUITE_VERSION`),
 on the current manifest digest, with the current code's prompt versions of all eight stages (the six `design`
 group ones, `soundless_design` and `soundless_revise` among them, and the two song ones), and no newer
 result for that model failed. A result recorded on version 10 or earlier never covers soundless, however
-recent its prompt versions. The bootstrap model (no route) never serves soundless. Without such a route a
-soundless job ends `model_config` before any model call, a design or revise is refused
-`soundless_not_evaluated` (the job's own plan) or `feature_off` (another plan), and "No music" is not offered
-until **every plan's route key** has one. Soundless is on exactly when `CLASSBEAT_SOUNDLESS_ENABLED` (the kill
-switch) is on and every plan's route key is covered; there is no admin setting to store.
+recent its prompt versions. The bootstrap model (no route) never covers soundless. Without such a route a
+real no-music design or revise is **still served** with the soundless prompts, as a stale route serves other
+stages (ADR 0012 section 5): the worker logs `model route stale` with reason `soundless_not_evaluated` once
+per process and route key. A composer's **sketch** keeps its rule: its admit needs the job's own plan to be
+covered (`soundless_not_evaluated`) and the worker ends it `model_config` on an uncovered model. So this run
+is what turns the warning off and the sketch on; it does not switch "No music" on.
 
 The suite sends the soundless stages synthetic briefs only and **no music at all**: the model sees the brief,
 never a playlist, a track or a BPM. A soundless case is judged on the asked length, the zone share and the
@@ -67,14 +70,14 @@ Run from the stack's checkout, in the worker container (it has the key file and 
 3. **Enable the route for every plan key** that will serve soundless (the admin's Model routes page or
    `docker compose exec worker python -m classbeat models enable KEY design anthropic claude-opus-5-5 medium
    --yes`), as in [m3c-model-enable.md](m3c-model-enable.md). `models list` must show no stale reason.
-4. **Switch soundless on.** Set `SOUNDLESS_ENABLED=true` in `.env` (web and worker; restart both). Nothing is
-   stored in the admin: "No music" appears once every plan's key has a covering route (check with
-   `GET /api/connections`, which answers `soundless_enabled: true`), and stays off while any key lacks one.
-   Record the decision in `docs/status.md`.
+4. **Nothing to switch on** (#1543). The worker's `model route stale` warning with reason
+   `soundless_not_evaluated` stops for a key once its route covers soundless. Record the run in
+   `docs/status.md`. The live save and update check of a no-music class (`PlaylistID: -1`) is a separate
+   pre-deploy item there ("Waiting for the owner").
 
 ## After a change
 
 A new soundless prompt changes `soundless_design` or `soundless_revise`; a change to
 `agent/soundless_input.py`, a soundless case or a soundless check is a new suite version. Either makes the
-route stale, so running and soundless jobs stop (`model_config`) until a new recorded pass and `models
-enable`; cycling keeps working on the stale route, flagged.
+route stale, so running jobs and sketches stop (`model_config`) until a new recorded pass and `models
+enable`; cycling and real no-music classes keep working on the stale route, flagged.

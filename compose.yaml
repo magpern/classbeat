@@ -118,10 +118,6 @@ services:
       # every plan; web gets no CLASSBEAT_MODEL_PROVIDER here, so its `fake` never counts as
       # covering, and no recorded route does either until the owner records one.
       CLASSBEAT_RUNNING_ENABLED: ${RUNNING_ENABLED:-false}
-      # ADR 0007 (soundless classes): the kill switch only, off by default. Even on, a plain dev
-      # stack cannot switch soundless on: web gets no CLASSBEAT_MODEL_PROVIDER here, so its `fake`
-      # never counts as covering soundless, and no recorded route covers it before SL5.
-      CLASSBEAT_SOUNDLESS_ENABLED: ${SOUNDLESS_ENABLED:-false}
       # ADR 0024 (#647): "Scan with the MOWL app" on the account page, web only, on by default
       # (ADR 0028). Set MOWL_QR_ENABLED=false to turn it off. The password form works either way.
       CLASSBEAT_MOWL_QR_ENABLED: ${MOWL_QR_ENABLED:-true}
@@ -182,8 +178,6 @@ services:
       CLASSBEAT_SWEDEBEAT_STUDIO: ${SWEDEBEAT_STUDIO:-}
       # ADR 0018: a queued running design or revise checks the switch again; the same as web's.
       CLASSBEAT_RUNNING_ENABLED: ${RUNNING_ENABLED:-false}
-      # ADR 0007 (soundless classes): a queued soundless design checks the switch again.
-      CLASSBEAT_SOUNDLESS_ENABLED: ${SOUNDLESS_ENABLED:-false}
     # The model API keys are the worker's only: web, migrate and maint never mount them
     # (ADR 0006 section 9, ADR 0012 section 2). swedebeat_gateway_key: web's and the worker's.
     # spotdown_service_key (ADR 0040 section 10): the worker's only; empty from init (spotdown off).

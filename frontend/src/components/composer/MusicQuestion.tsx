@@ -19,7 +19,8 @@ type Mode = 'describe' | 'playlists' | null
  * The music question beside the sketch (ADR 0038 amendment of 2026-11-24, decision 5), shown while the class's
  * music is undecided. Every answer is stored on the class and starts nothing: the song search waits for the
  * answer, Spotify and the consent. Without Spotify the options stay, with a link to connect it.
- * "Continue without music" is shown but off until the `soundless_enabled` flag is on.
+ * "Continue without music" is always offered (#1543: no flag hides it); it starts once the request's words and
+ * the MOWL connection are known.
  *
  * Songs are never picked without a hint (#1538, owner rule 2026-11-26): "Choose it for me" is offered only
  * when the reading has one (`canPick`: the songs the instructor named). Without one the answers are styles
@@ -30,7 +31,6 @@ export function MusicQuestion({
   classId,
   offered,
   connected,
-  soundlessEnabled,
   canPick,
   canStartWithout,
   onAnswered,
@@ -43,7 +43,6 @@ export function MusicQuestion({
   offered: readonly PlaylistTag[]
   /** Spotify is connected (or not yet known): false shows the connect link. */
   connected: boolean
-  soundlessEnabled: boolean
   /** The reading has a hint of what to play (a song the instructor named): "Choose it for me" is offered. */
   canPick: boolean
   /** The request's words and a MOWL connection are known, so "Continue without music" can start. */
@@ -170,10 +169,9 @@ export function MusicQuestion({
         </div>
       ) : null}
       <div className="flex flex-col items-start gap-1">
-        <Button variant="secondary" disabled={busy || !soundlessEnabled || !canStartWithout} onClick={onWithoutMusic}>
+        <Button variant="secondary" disabled={busy || !canStartWithout} onClick={onWithoutMusic}>
           {t('cw.music.none')}
         </Button>
-        {!soundlessEnabled ? <span className="text-[0.8125rem] text-muted">{t('cw.music.noneSoon')}</span> : null}
       </div>
       {shown !== null ? <Notice kind="error">{shown}</Notice> : null}
     </section>

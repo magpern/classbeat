@@ -21,11 +21,11 @@ export interface MusicOffer {
   mixes: SwedebeatMix[]
   songs: SongsAvailability
   swedebeat: SwedebeatMixAvailability
-  soundlessEnabled: boolean
   running: boolean
 }
 
-/** What the instructor can pick; a running class has playlists only (as on the advanced form). */
+/** What the instructor can pick; a running class has playlists only (as on the advanced form). "No music" is
+ * always the last row of a cycling class (#1543: no switch hides it). */
 export function musicRows(t: TFunction, offer: MusicOffer): MusicRow[] {
   const rows: MusicRow[] = offer.playlists.map((p) => ({
     key: `playlist:${p.spotifyPlaylistId}`,
@@ -47,9 +47,7 @@ export function musicRows(t: TFunction, offer: MusicOffer): MusicRow[] {
   if (offer.songs.kind === 'ready') {
     rows.push({ key: 'pick', title: t('start.music.pick'), source: t('start.music.pickHint'), override: { source: 'pick' } })
   }
-  if (offer.soundlessEnabled) {
-    rows.push({ key: 'none', title: t('music.none'), source: t('music.noneHint'), override: { source: 'none' } })
-  }
+  rows.push({ key: 'none', title: t('music.none'), source: t('music.noneHint'), override: { source: 'none' } })
   return rows
 }
 

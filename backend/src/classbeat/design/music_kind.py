@@ -1,34 +1,26 @@
-"""Soundless classes at the edges of the jobs (ADR 0007 amendment of 2026-11-03, items 1 to 3;
-#527), modelled on ``classbeat.design.sport``.
+"""Soundless classes at the edges of the jobs (ADR 0007 amendments of 2026-11-03, items 1 to 3,
+and 2026-11-27; #527, #1543), modelled on ``classbeat.design.sport``.
 
 A class's music **kind** is ``none`` (``{"source": "none"}``, a soundless class) or not. This
 module holds the checks that are not the input's own validation:
 
-- **The gate** (item 2, as amended on 2026-11-08, #824). ``CLASSBEAT_SOUNDLESS_ENABLED`` is the
-  environment's kill switch (``SoundlessGate.enabled``, set by the web app and the worker at
-  start). Soundless is on only when both hold: that switch, and a ``design`` route covering
-  soundless for every plan's ``route_key`` (``flags.effective.soundless_enabled``, read on every
-  request). There is no stored admin value. ``admit_soundless`` runs in ``design_draft``'s
-  ``admit``, before the job row and before any credit is reserved (``jobs.user.create`` calls
-  ``admit`` first), in this order:
-
-  1. the switch (``switch_on``, the environment's): off is ``feature_off``;
-  2. the job's **own** plan's ``route_key`` covers soundless: otherwise
-     ``soundless_not_evaluated`` (checked before step 3, so this answer is reachable: step 3
-     includes the user's plan and would answer ``feature_off`` first);
-  3. every plan's ``route_key`` covers soundless (the effective flag the form reads): otherwise
-     ``feature_off``, so a plan added or a route cleared later refuses even a covered user.
-
-  A queued job ends ``feature_off`` in the worker when the worker's own switch is off
-  (``still_on``) and ``model_config`` when its attempt's model does not cover soundless
-  (``require_covered``), both before any call: the backstop for a route cleared after admission
-  or a worker started with the switch off.
+- **No switch** (ADR 0007 amendment of 2026-11-27, #1543; owner, 2026-11-26: "No music" is always
+  a choice). Nothing hides or refuses a soundless design, revise, duplicate, Save or Update on a
+  switch or a flag: the environment's soundless switch and the effective flag of the 2026-11-03
+  and 2026-11-08 amendments are gone. The checks below (the kind, the studio, the user's own
+  rows) and Save's approval are unchanged.
+- **Model coverage** (ADR 0012 section 5). A soundless job uses the soundless prompts on the
+  ``design`` group's model, resolved as for any job (the route, or the bootstrap choice without
+  one; a route with a newer failure is still ``model_config``). ``serve_model`` runs in the worker
+  after the model is resolved and before anything is called: a model with no recorded soundless
+  coverage (``GroupModel.soundless_covered``) serves a real no-music class with the stale-route
+  warning, once per process and route key, instead of refusing; a composer's **sketch** keeps its
+  own rule (ADR 0038 amendment of 2026-11-24): it is admitted by ``sketch_gate.admit_sketch`` and
+  ends ``model_config`` on an uncovered model (``require_covered``).
 - **The web's ``fake``.** The web process has no provider; there the ``fake`` model provider
   counts as covering soundless only when its **own** ``CLASSBEAT_MODEL_PROVIDER`` is ``fake`` and
   ``CLASSBEAT_ENVIRONMENT`` is not ``prod`` (``SoundlessGate.from_settings``), so a production
-  web never treats anything as covered without a recorded route. ``compose.yaml`` passes no
-  ``CLASSBEAT_MODEL_PROVIDER`` to web, so a plain dev stack cannot switch soundless on; only a
-  stack that sets it for web (the e2e stack, SL7) can.
+  web never treats anything as covered without a recorded route (``plan_covers``, the sketch's).
 - **The kind never changes** (item 1). ``admit_music`` (in ``admit`` when the job names a class):
   ``none`` on a class whose music is not ``none``, or other music on a class whose music is
   ``none``, is ``invalid_input``; ``check_stored`` repeats it in the final fenced store before
@@ -38,9 +30,9 @@ module holds the checks that are not the input's own validation:
   another kind here and in ``refuse_soundless``; the studio's own ``studio_songs`` is admitted
   only by ``admit_studio`` (no music yet, or the studio's), checked again by ``still_studio``
   and, in the final stores, by ``check_stored`` (``studio``; any studio revision counts there).
-- **A revise of a soundless class** (SL2, #528) is admitted by ``admit_class`` through the same
-  gate (``admit_soundless``); in the worker ``still_on`` and ``require_covered`` run before any
-  call, as for a design. Its final store repeats ``check_stored``.
+- **A revise of a soundless class** (SL2, #528) is admitted by ``admit_class`` (a studio class
+  is refused; nothing else gates it); in the worker ``serve_model`` runs before any call, as for
+  a design. Its final store repeats ``check_stored``.
 - **No songs and no Swedebeat** (item 9, #530). ``refuse_soundless`` is the explicit
   ``invalid_input`` of ``design_with_songs`` (every mode), ``revise_songs``, ``swedebeat_match``,
   the hand-off and ``swedebeat_verify_mix`` for a soundless class; their final fenced stores call
@@ -51,10 +43,9 @@ module holds the checks that are not the input's own validation:
 - **No music step** (item 3). ``NoMusicStep`` stands in for ``design.music.MusicStep``: no MOWL or
   Spotify call, and its ``still_current`` and ``close`` do nothing (the revision names no MOWL
   object).
-
-Without a configured gate the switch is off, so soundless is refused everywhere.
 """
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Final
 from uuid import UUID
@@ -67,14 +58,18 @@ from classbeat.design.music_kind_gate import SoundlessGate as SoundlessGate  # r
 from classbeat.design.music_kind_gate import configure as configure
 from classbeat.design.music_kind_gate import current
 from classbeat.design.music_kind_gate import fake_covers as fake_covers
-from classbeat.flags import effective
 from classbeat.jobs import FencedSession, JobFailure
 from classbeat.jobs.kinds import Refused
 from classbeat.models.jobs import GroupModel
 
+log = logging.getLogger(__name__)
+
 NONE: Final = "none"
 STUDIO: Final = "swedebeat_studio"  # ADR 0036 section 2: only the studio's own kinds act on it
 NO_MUSIC: Final[dict[str, str]] = {"source": NONE}  # classes.music_source and revision music
+# The stale-route warning's reason for a model with no recorded soundless coverage (ADR 0012
+# section 5, #1543): logged, never refused, for a real no-music class.
+UNCOVERED: Final = "soundless_not_evaluated"
 
 
 def is_none(music: Any) -> bool:
@@ -88,13 +83,9 @@ def is_studio(music: Any) -> bool:
     return isinstance(music, dict) and music.get("source") == STUDIO  # pyright: ignore[reportUnknownMemberType]
 
 
-async def soundless_on(db: AsyncSession) -> bool:
-    """The effective ``soundless_enabled`` (switch and every plan covered), as the form sees it."""
-    gate = current()
-    return await effective.soundless_enabled(db, gate.enabled, fake_covers=gate.fake_covers)
-
-
 async def plan_covers(db: AsyncSession, ctx: UserContext) -> bool:
+    """Whether the job's own plan's ``design`` route covers soundless (the sketch gate's check;
+    the web's ``fake`` outside prod counts)."""
     if current().fake_covers:
         return True
     from classbeat.models.routes import covers  # the web loads the stage definitions lazily
@@ -102,25 +93,6 @@ async def plan_covers(db: AsyncSession, ctx: UserContext) -> bool:
 
     plan = await effective_plan(db, ctx)
     return await covers(db, plan.route_key, "soundless")
-
-
-def switch_on() -> bool:
-    """``CLASSBEAT_SOUNDLESS_ENABLED`` of this process (the kill switch; no stored value, #824).
-    Not the effective flag: ``soundless_on`` also checks coverage."""
-    return current().enabled
-
-
-async def admit_soundless(db: AsyncSession, ctx: UserContext) -> Refused | None:
-    """A soundless design at creation, in the order of the module: the switch (``feature_off``),
-    the job's own plan's route (``soundless_not_evaluated``), every plan's route (``feature_off``).
-    None admits. Reads only; reserves nothing."""
-    if not switch_on():
-        return Refused("feature_off")
-    if not await plan_covers(db, ctx):
-        return Refused("soundless_not_evaluated")
-    if not await soundless_on(db):
-        return Refused("feature_off")
-    return None
 
 
 # The class's music kind so far: its stored ``music_source``, else its newest revision's music
@@ -192,32 +164,45 @@ _STORED_SOURCE = text(
 
 async def admit_class(db: AsyncSession, ctx: UserContext, class_id: UUID) -> Refused | None:
     """A revise of a class (SL2, #528): a studio class is ``invalid_input`` (ADR 0036 section 2;
-    ``studio_revise`` is its own); a music class passes untouched; a soundless one goes
-    through the same gate as its design (``admit_soundless``: the switch, the job's own plan's
-    route, every plan's route), before the job row is written. None admits."""
+    ``studio_revise`` is its own); a music class and a soundless one pass (no switch, #1543), and
+    the worker's ``serve_model`` decides the model. None admits. Reads the user's own row only."""
     source = (
         await db.execute(_STORED_SOURCE, {"owner_id": ctx.user_id, "class_id": class_id})
     ).scalar_one_or_none()
     if is_studio(source):  # SR C5b: only the studio's own kinds revise a studio class
         return Refused("invalid_input")
-    if not is_none(source):
-        return None
-    return await admit_soundless(db, ctx)
-
-
-def still_on() -> None:
-    """In the worker, before a soundless job calls anything: ``feature_off`` when the worker's
-    switch (``CLASSBEAT_SOUNDLESS_ENABLED``) is off. Coverage is the model's
-    (``require_covered``)."""
-    if not switch_on():
-        raise JobFailure("feature_off")
+    return None
 
 
 def require_covered(model: GroupModel) -> None:
     """In the worker, after the ``design`` group's model is resolved and before anything is
-    called: ``model_config`` unless that model covers soundless."""
+    called: ``model_config`` unless that model covers soundless. A sketch's rule only
+    (``serve_model``)."""
     if not model.soundless_covered:
         raise JobFailure("model_config")
+
+
+_warned: set[str | None] = set()
+
+
+def serve_model(model: GroupModel, *, sketch: bool) -> None:
+    """In the worker, after the ``design`` group's model is resolved and before anything is
+    called (#1543). A sketch: ``require_covered``. A real no-music class is always served: on a
+    model without recorded soundless coverage with the stale-route warning (ADR 0012 section 5),
+    once per process and route key (``None``: the bootstrap choice). Logs codes only."""
+    if sketch:
+        require_covered(model)
+        return
+    if model.soundless_covered:
+        return
+    key = model.agent.route_key
+    if key in _warned:
+        return
+    _warned.add(key)
+    log.warning(
+        "model route stale",
+        extra={"route_key": key, "stage_group": "design", "reason": UNCOVERED},
+    )
 
 
 _JOB_CLASS_SOURCE = text(

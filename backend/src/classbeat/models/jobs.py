@@ -31,7 +31,8 @@ class GroupModel:
     # ``fake`` bypass, dev and CI only, says yes). Running kinds refuse ``False`` (ADR 0018).
     running_covered: bool = False
     # The same for a soundless job (``routes.ModelChoice.soundless_covered``: also a soundless
-    # suite version; the ``fake`` bypass says yes). Soundless kinds refuse ``False`` (#527).
+    # suite version; the ``fake`` bypass says yes). A sketch refuses ``False``; a soundless class
+    # is served with the stale-route warning (``design.music_kind.serve_model``, #1543).
     soundless_covered: bool = False
 
 

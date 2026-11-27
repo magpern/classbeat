@@ -87,7 +87,7 @@ async def _run(settings: Settings, signer: EventSigner | None = None) -> None:
     # A queued running design or revise checks the running switch again (ADR 0018 section 5);
     # coverage is the model's (#509).
     sport.configure(sport.SportGate.from_settings(settings))
-    # A queued soundless design checks the soundless switch again (#527); coverage is the model's.
+    # Soundless coverage is the model's (#527); there is no switch (#1543).
     music_kind.configure(music_kind.SoundlessGate.from_settings(settings))
     # The environment's plan bounds (#496): a job stored without gates is run under the current
     # plan's, whose class length cap is bounded by ``CLASSBEAT_CLASS_MINUTES_MAX`` as at admit.

@@ -43,9 +43,9 @@ against the authenticated user and failing closed:
 
 The ``running_enabled`` flag is not checked here (the reconcilers rebuild the spec through
 ``revision`` and must still decide a running write when the flag is off): the Save and Update
-kinds check it next to these, ``running_refused``. Likewise the soundless switch
-(``CLASSBEAT_SOUNDLESS_ENABLED`` only, no stored value since #824; no coverage check, Save calls
-no model): ``soundless_refused``, at creation and in ``prepare`` only.
+kinds check it next to these, ``running_refused``. A soundless revision has no switch (ADR 0007
+amendment of 2026-11-27, #1543: "No music" is always a choice); every check above still runs for
+it, and it is saved and updated with ``NO_PLAYLIST`` only when it passes them all.
 
 For an Update (``classbeat.saving.update``) also ``targets.saved_target``: the saved row is the
 user's own live row of that class (``invalid_input`` otherwise, section 9: a detached row is
@@ -253,14 +253,6 @@ async def running_refused(db: AsyncSession, found: Revision) -> bool:
     section 5). Save makes no model call, so coverage is not read (#509). A cycling class never
     reads the flag."""
     return found.running and not await class_sport.running_switch(db)
-
-
-def soundless_refused(found: Revision) -> bool:
-    """Whether Save or Update must refuse ``feature_off``: the revision is soundless and the
-    soundless switch (``CLASSBEAT_SOUNDLESS_ENABLED``; no stored value since #824) is off (ADR
-    0007 amendments of 2026-11-03, item 2, and 2026-11-08). Coverage is not read: no model runs.
-    A class with music never reads the flag; the reconcilers never call this."""
-    return found.soundless and not music_kind.switch_on()
 
 
 async def playlist_for(db: AsyncSession, ctx: UserContext, found: Revision) -> int | None:
