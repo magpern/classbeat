@@ -133,9 +133,44 @@ ADMIT_SKETCH: dict[str, list[list[tuple[str, str]]]] = {
 }  # fmt: skip
 
 
+def gate_aliases(tree: ast.AST) -> tuple[set[str], set[str]]:
+    """The names the module ``sketch_gate`` is bound to (``import ... as sg``, ``from
+    classbeat.design import sketch_gate as g``) and those its ``admit_sketch`` is bound to
+    (``from classbeat.design.sketch_gate import admit_sketch as admit``)."""
+    modules = {"sketch_gate"}
+    functions: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules.update(
+                a.asname for a in node.names if a.asname and a.name.endswith("sketch_gate")
+            )
+        elif isinstance(node, ast.ImportFrom):
+            for a in node.names:
+                if a.name == "sketch_gate":
+                    modules.add(a.asname or a.name)
+                elif (node.module or "").endswith("sketch_gate") and a.name == "admit_sketch":
+                    functions.add(a.asname or a.name)
+    return modules, functions
+
+
 def admit_sketch_sites(source: str) -> list[list[tuple[str, str]]]:
-    """The conditions and arms above each ``sketch_gate.admit_sketch(...)`` call."""
+    """The conditions and arms above each call of ``sketch_gate.admit_sketch``, also through an
+    alias of the module or of the function and a dotted ``classbeat.design.sketch_gate`` path."""
     found: list[list[tuple[str, str]]] = []
+    tree = ast.parse(source)
+    modules, functions = gate_aliases(tree)
+
+    def is_admit(func: ast.expr) -> bool:
+        if isinstance(func, ast.Name):
+            return func.id in functions
+        return (
+            isinstance(func, ast.Attribute)
+            and func.attr == "admit_sketch"
+            and (
+                (isinstance(func.value, ast.Name) and func.value.id in modules)
+                or ast.unparse(func.value).endswith(".sketch_gate")
+            )
+        )
 
     def walk(node: ast.AST, path: list[tuple[str, str]]) -> None:
         if isinstance(node, (ast.If, ast.IfExp)):
@@ -145,13 +180,12 @@ def admit_sketch_sites(source: str) -> list[list[tuple[str, str]]]:
                 for child in children if isinstance(children, list) else [children]:
                     walk(child, [*path, (test, arm)])
             return
-        func = node.func if isinstance(node, ast.Call) else None
-        if isinstance(func, ast.Attribute) and ast.unparse(func) == "sketch_gate.admit_sketch":
+        if isinstance(node, ast.Call) and is_admit(node.func):
             found.append(path)
         for child in ast.iter_child_nodes(node):
             walk(child, path)
 
-    walk(ast.parse(source), [])
+    walk(tree, [])
     return found
 
 
@@ -218,3 +252,24 @@ def test_the_guard_sees_the_switch_through_a_function_alias() -> None:
     assert [name for name, _, _ in sites(src)] == ["still_on", "still_on"]
     # an unrelated alias is not a switch
     assert sites("from classbeat.design import sport as m\nm.switch_on()\n") == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from classbeat.design import sketch_gate as g\nawait g.admit_sketch(db, ctx)\n",
+        "import classbeat.design.sketch_gate as sg\nawait sg.admit_sketch(db, ctx)\n",
+        "import classbeat.design.sketch_gate\nawait classbeat.design.sketch_gate.admit_sketch(db)",
+        "from classbeat.design.sketch_gate import admit_sketch\nawait admit_sketch(db, ctx)\n",
+        "from classbeat.design.sketch_gate import admit_sketch as admit\nawait admit(db, ctx)\n",
+        "def f():\n    from classbeat.design import sketch_gate as g\n    g.admit_sketch(db)\n",
+    ],
+)
+def test_the_sketch_admit_pin_sees_the_call_through_an_alias(source: str) -> None:
+    assert admit_sketch_sites(source) == [[]]
+
+
+def test_the_sketch_admit_pin_ignores_other_names() -> None:
+    assert admit_sketch_sites("from classbeat.design import other as g\ng.admit_sketch(db)\n") == []
+    assert admit_sketch_sites("admit_sketch(db)\n") == []  # not imported from sketch_gate
+    assert admit_sketch_sites("sketch_gate.can_change(db)\n") == []

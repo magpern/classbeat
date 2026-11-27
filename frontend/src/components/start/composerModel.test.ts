@@ -39,11 +39,16 @@ describe('the composer request payload', () => {
     expect(input).not.toHaveProperty('music_sources')
   })
 
-  it('adds the running sport, and leaves out an unknown Spotify connection', () => {
-    const input = composerInput(request({ sport: 'running', spotifyConnectionId: undefined }))
+  it('adds the running sport chosen by hand, and leaves out an unknown Spotify connection', () => {
+    const input = composerInput(request({ sport: 'running', sportByHand: true, spotifyConnectionId: undefined }))
     expect(input.sport_override).toBe('running')
     expect(input).not.toHaveProperty('spotify_connection_id')
     expect(composerInput(request())).not.toHaveProperty('sport_override')
+  })
+
+  it('sends no sport for Running the words chose: the reading decides (#1558)', () => {
+    expect(composerInput(request({ sport: 'running', sportByHand: false }))).not.toHaveProperty('sport_override')
+    expect(composerInput(request({ sport: 'running' }))).not.toHaveProperty('sport_override')
   })
 
   it('sends a sport chosen by hand, Cycling included (#1544: a manual choice always wins)', () => {

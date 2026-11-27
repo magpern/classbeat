@@ -346,6 +346,44 @@ describe('the sport select', () => {
     expect(sent(api)).toMatchObject({ input: { request: 'A 5k run with strides', sport_override: 'cycling' } })
   })
 
+  it('gets "No music" back when the words flip the sport to Running and back (#1558)', async () => {
+    const api = fakeApi(routes())
+    renderAt('/classes/new')
+    fireEvent.change(await prompt(), { target: { value: '45 minutes of intervals' } })
+    fireEvent.click(screen.getByRole('button', { name: /Add music/ }))
+    choose('No music')
+    expect(tags()).toHaveLength(1)
+    fireEvent.change(await prompt(), { target: { value: 'A 45 minute run of intervals' } })
+    expect(screen.getByRole('combobox', { name: 'Sport' })).toHaveValue('running')
+    expect(tags()).toHaveLength(0) // a running class has no "No music"
+    fireEvent.change(await prompt(), { target: { value: 'A 45 minute ride of intervals' } })
+    expect(screen.getByRole('combobox', { name: 'Sport' })).toHaveValue('cycling')
+    expect(tags()).toHaveLength(1) // the instructor's "No music" is back
+    fireEvent.click(screen.getByRole('button', { name: /^Start/ }))
+    await waitFor(() => {
+      expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+    })
+    expect(sent(api)).toMatchObject({ input: { music_override: { source: 'none' } } })
+  })
+
+  it('sends no "No music" for a running class, and sends no sport the words chose (#1558)', async () => {
+    const api = fakeApi(routes())
+    renderAt('/classes/new')
+    fireEvent.change(await prompt(), { target: { value: '45 minutes of intervals' } })
+    fireEvent.click(screen.getByRole('button', { name: /Add music/ }))
+    choose('No music')
+    fireEvent.change(await prompt(), { target: { value: 'A 45 minute run of intervals' } })
+    choose('Sprint set')
+    fireEvent.click(screen.getByRole('button', { name: /^Start/ }))
+    await waitFor(() => {
+      expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+    })
+    const input = (sent(api) as { input: Record<string, unknown> }).input
+    expect(input).not.toHaveProperty('sport_override')
+    expect(input).not.toHaveProperty('music_override')
+    expect(input).toMatchObject({ music_sources: [{ kind: 'spotify_playlist', id: IDS[1] }] })
+  })
+
   it('sends running, and drops "No music", which a running class does not have', async () => {
     const api = fakeApi(routes())
     renderAt('/classes/new')

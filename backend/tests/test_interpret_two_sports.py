@@ -21,12 +21,13 @@ pytestmark = pytest.mark.usefixtures("jenv")
 BOTH: dict[str, Any] = {
     "length_min": {"value": 20, "origin": "explicit", "quote": "20"},
     "two_sports": True,
-    # A model's question on a reading that ends: never stored.
+    # A model's question on a reading that ends: never stored. Its topic is one the request does not
+    # state (intensity has no reading), so the policy would keep it on any other reading (#1558).
     "questions": [
         {
-            "topic": "length",
-            "text": "How long?",
-            "options": ["20 minutes", "45 minutes"],
+            "topic": "intensity",
+            "text": "How hard?",
+            "options": ["Easy", "Hard"],
             "assumed_index": 0,
         }
     ],
@@ -114,3 +115,32 @@ async def test_agreeing_sports_ask_nothing_about_the_sport(ienv: InterpretEnv) -
     class_id, _ = await ienv.interpreted(reading, spotify=False, sport_override="running")
     stored = ienv.interpretation(class_id)
     assert all(q["topic"] != "sport" for q in stored.get("questions", []))
+
+
+async def test_no_sport_sent_the_reading_decides_and_nothing_is_recorded_as_chosen(
+    ienv: InterpretEnv,
+) -> None:
+    # "a class we run on Tuesdays" (#1558): the toggle may flip on the verb, but the page sends no
+    # sport_override for a flip by the words. The model names no sport it is sure of, so the class
+    # is cycling, the sport is an inference (never `explicit`), `which_sport` is not asked (it needs
+    # a form sport to disagree with) and the model's own sport question is kept.
+    reading = {
+        "sport": {"value": "cycling", "origin": "inferred"},
+        "questions": [
+            {
+                "topic": "sport",
+                "text": "Is this a ride or a run?",
+                "options": ["A ride", "A run"],
+                "assumed_index": 0,
+            }
+        ],
+    }
+    class_id, _ = await ienv.interpreted(
+        reading, request="A 45 min class we run on Tuesdays", spotify=False
+    )
+    stored = ienv.interpretation(class_id)
+    assert stored["brief"].get("sport", "cycling") == "cycling"
+    assert [i["origin"] for i in stored["items"] if i["path"] == "sport"] == ["inferred"]
+    asked = stored["questions"]
+    assert [(q["topic"], q.get("code")) for q in asked] == [("sport", None)]
+    assert asked[0]["text"] == "Is this a ride or a run?"

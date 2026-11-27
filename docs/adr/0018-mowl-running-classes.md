@@ -410,7 +410,8 @@ ended a queued one `feature_off` or `model_config`, and Save and Update refused 
    composer set it from the words (`frontend/src/lib/sportHint.ts`, pure: whole words in English, Swedish
    and Danish; Running only when the words name a run and no ride), back to Cycling when the words are
    gone, until the instructor sets it by hand. A choice by hand always wins and is sent as
-   `sport_override`, Cycling included; the toggle on Running is sent too, as before.
+   `sport_override`, Cycling included. A flip by the words is shown but not sent (#1558): "a class we run on
+   Tuesdays" flips it, and the reading, not the word list, decides the sport.
 3. **The reading has the final say.** The model is never told `sport_override`. When it and the sport the
    request names disagree, the reading asks the closed `which_sport` question
    (`reading_question_policy.which_sport`, a first reading only) with the form's sport assumed; the

@@ -160,14 +160,11 @@ describe('duplicate words', () => {
       'already asked for with other details',
     )
     // A duplicate has no soundless gate (#1543), so that refusal has no sentence of its own any more.
-    expect(duplicateReasonText(refusal(409, { reason: 'soundless_not_evaluated' }))).not.toContain(
-      'soundless_not_evaluated',
-    )
+    // It gets the generic sentence, not the raw reason (#1558).
+    expect(duplicateReasonText(refusal(409, { reason: 'soundless_not_evaluated' }))).toBe('That did not work. Try again.')
     expect(duplicateReasonText(refusal(409, { reason: 'not_changeable' }))).toContain('no music of its own')
     // Anything else gets the generic sentence, never the raw reason.
-    expect(duplicateReasonText(refusal(400, { reason: 'idempotency_key_missing' }))).not.toContain(
-      'idempotency_key_missing',
-    )
+    expect(duplicateReasonText(refusal(400, { reason: 'idempotency_key_missing' }))).toBe('That did not work. Try again.')
     expect(
       duplicateReasonText(refusal(409, { reason: 'quota', quota: 'length', limit: 30, used: 45, plan: 'free' })),
     ).toContain('up to 30 minutes')

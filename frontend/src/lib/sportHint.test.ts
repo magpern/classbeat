@@ -13,16 +13,24 @@ describe('the sport a request names', () => {
     ['Jogging and strides', 'running'],
     ['a treadmill session', 'running'],
     ['runs of 4 minutes, run!', 'running'],
+    // "run" as a verb flips the toggle too (the reading decides the sport, #1558)
+    ['A 45 min class we run on Tuesdays', 'running'],
     // sv
     ['En löpning på 40 minuter', 'running'],
     ['Vi ska springa backintervaller', 'running'],
     ['Ett löppass med fartlek', 'running'],
     ['jogga lugnt i 30 min', 'running'],
+    ['En löprunda i skogen', 'running'],
+    ['Löpträning för nybörjare', 'running'],
+    ['ett springpass på 40 minuter', 'running'],
+    ['intervallöpning, 6 x 3 min', 'running'],
     // da
     ['En løbetur på 45 minutter', 'running'],
     ['Løb med intervaller', 'running'],
     ['et løbehold i aften', 'running'],
     ['vi skal løbe 5 km', 'running'],
+    ['Løbetræning for begyndere', 'running'],
+    ['intervalløb, 6 x 3 minutter', 'running'],
     // word boundaries: a running word inside another word never counts
     ['for runners who also ride', 'cycling'],
     ['three climbs and a rerun of last week', 'cycling'],
@@ -72,11 +80,18 @@ describe('the toggle while the instructor types', () => {
 })
 
 describe('what the request sends', () => {
-  it('sends a choice by hand as it is, Running always, and nothing for a Cycling the words chose', () => {
+  it('sends a choice by hand as it is, and nothing for a flip by the words, either sport (#1558)', () => {
     expect(sportOverride(chooseSport('cycling'))).toBe('cycling')
     expect(sportOverride(chooseSport('running'))).toBe('running')
-    expect(sportOverride({ sport: 'running', manual: false })).toBe('running')
+    expect(sportOverride({ sport: 'running', manual: false })).toBeUndefined()
     expect(sportOverride(AUTO_CYCLING)).toBeUndefined()
+  })
+
+  it('sends nothing for a toggle that flipped on the verb "run": the reading decides (#1558)', () => {
+    const typed = followText(AUTO_CYCLING, 'A 45 min class we run on Tuesdays')
+    expect(typed).toEqual({ sport: 'running', manual: false }) // the toggle flips on screen
+    expect(sportOverride(typed)).toBeUndefined() // but the request names no sport of its own
+    expect(sportOverride(initialToggle('A 45 min class we run on Tuesdays', 'running'))).toBeUndefined()
   })
 })
 
