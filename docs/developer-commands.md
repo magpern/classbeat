@@ -1046,6 +1046,10 @@ Every GitHub Action is pinned by full commit SHA with the version in a trailing 
 Dependabot (`.github/dependabot.yml`, weekly, two groups per ecosystem: one PR for minor/patch updates and a separate one for majors) keeps Actions, uv, npm and the Dockerfile and compose
 images current, with `build(deps)` and `ci(deps)` commit prefixes. It does not track Debian packages
 inside the base image: when Trivy fails on one, bump the base image tag in the Dockerfile.
+If the base tag does not carry the fix yet, upgrade just that package in the image (`apt-get install --only-upgrade`,
+with a comment naming the CVE and removing the block once the base has it): `docker/postgres/Dockerfile` does it
+for the DB image, and the app `Dockerfile` runtime stage does it for `libpam-modules`, `libpam-modules-bin`,
+`libpam-runtime` and `libpam0g` (CVE-2025-6020, #1553).
 
 New advisory: **upgrade first** (bump the dependency or base image, refresh the lockfile). Only if
 no fix exists or the code path is unreachable, add a dated ignore: `.trivyignore` (one ID per line,
