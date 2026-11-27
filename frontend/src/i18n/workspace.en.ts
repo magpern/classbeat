@@ -94,6 +94,6 @@ export const workspaceEn = {
   'cw.music.error.fixed': 'The songs are already being chosen, so the music can no longer be changed here.',
   'cw.music.error.refused': 'The answer could not be saved for this class.',
   'cw.music.consent.title': 'Before the song search',
-  'cw.music.consent.body': 'classbeat keeps one public working playlist in your Spotify account with candidate songs and links it in MOWL, so your class can be timed to it. spotdown, the music-analysis service classbeat uses, gets the title, artists, length, the explicit-lyrics flag from Spotify and a code derived from the Spotify track id of each song, and analyses the same recording from a source other than Spotify. The final playlist and the workout are created only when you approve.',
+  'cw.music.consent.body': 'classbeat keeps one public working playlist in your Spotify account with candidate songs and links it in MOWL, so your class can be timed to it. spotdown, the music-analysis service classbeat uses, gets the following for each song: the title, artists, length, the explicit-lyrics flag from Spotify and a code derived from its Spotify track id. It analyses the same recording from a source other than Spotify. The final playlist and the workout are created only when you approve.',
   'composer.spotify.later': 'Songs need Spotify. You can connect it after the sketch.',
 }

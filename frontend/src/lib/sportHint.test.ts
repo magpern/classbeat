@@ -21,6 +21,7 @@ describe('the sport a request names', () => {
     ['Ett löppass med fartlek', 'running'],
     ['jogga lugnt i 30 min', 'running'],
     ['En löprunda i skogen', 'running'],
+    ['Jag springer på löpbandet', 'running'],  // definite form (#1562)
     ['Löpträning för nybörjare', 'running'],
     ['ett springpass på 40 minuter', 'running'],
     ['intervallöpning, 6 x 3 min', 'running'],
@@ -30,6 +31,7 @@ describe('the sport a request names', () => {
     ['et løbehold i aften', 'running'],
     ['vi skal løbe 5 km', 'running'],
     ['Løbetræning for begyndere', 'running'],
+    ['Vi løber på løbebåndet', 'running'], // definite form (#1562)
     ['intervalløb, 6 x 3 minutter', 'running'],
     // word boundaries: a running word inside another word never counts
     ['for runners who also ride', 'cycling'],
@@ -102,5 +104,8 @@ describe('the first state', () => {
     expect(initialToggle('three climbs', 'running')).toEqual({ sport: 'running', manual: true })
     expect(initialToggle('A 30 min run', 'cycling')).toEqual({ sport: 'cycling', manual: true })
     expect(initialToggle('A 30 min run', 'running')).toEqual({ sport: 'running', manual: false })
+    // a sport picked by hand that matches the words stays a hand choice on a retry (#1562)
+    expect(initialToggle('A 30 min run', 'running', true)).toEqual({ sport: 'running', manual: true })
+    expect(initialToggle('three climbs', 'cycling', true)).toEqual({ sport: 'cycling', manual: true })
   })
 })

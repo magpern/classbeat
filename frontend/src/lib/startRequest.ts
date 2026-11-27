@@ -12,6 +12,8 @@ export interface KeptRequest {
   /** The composer's attached Spotify playlist ids (ADR 0038 section 10.1), in order; absent for the old start screen. */
   playlists?: string[]
   sport: 'cycling' | 'running'
+  /** The instructor picked the sport by hand (`lib/sportHint`): a retry sends it again, whatever the words say. */
+  manual?: boolean
 }
 
 export function rememberRequest(classId: string, kept: KeptRequest): void {
@@ -33,6 +35,7 @@ export function recallRequest(classId: string): KeptRequest | null {
       music: typeof parsed.music === 'string' ? parsed.music : null,
       ...(Array.isArray(parsed.playlists) ? { playlists: parsed.playlists.filter((id): id is string => typeof id === 'string') } : {}),
       sport: parsed.sport === 'running' ? 'running' : 'cycling',
+      ...(parsed.manual === true ? { manual: true } : {}),
     }
   } catch {
     return null

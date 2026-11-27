@@ -94,6 +94,14 @@ describe('the composer first state', () => {
     expect(initialDraft({ ...base, kept: { ...kept, request: 'A quiet run' } }).sport).toEqual(auto('running'))
   })
 
+  it('keeps a sport picked by hand as a hand choice, even when the words say the same (#1562)', () => {
+    const sent = request({ words: 'A 30 min run', sport: 'running', sportByHand: true })
+    const kept = keptFromRequest(sent)
+    expect(kept.manual).toBe(true)
+    expect(initialDraft({ ...base, kept }).sport).toEqual({ sport: 'running', manual: true })
+    expect(keptFromRequest(request({ words: 'A 30 min run', sport: 'running' }))).not.toHaveProperty('manual')
+  })
+
   it('keeps a request in a form it restores from', () => {
     for (const tags of [NO_TAGS, both, { kind: 'none' } as MusicTags]) {
       const kept = keptFromRequest(request({ tags }))

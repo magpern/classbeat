@@ -166,8 +166,9 @@ async def run_phase_one(
     account = spotify.account
     if account is None:  # open_spotify refuses it already
         raise JobFailure("not_connected")
-    # #1540: the pool consent, current version, before any model, Spotify or spotdown call (a job
-    # queued under an older wording contacts no one); write_pool checks it again at its decide step.
+    # #1540: the pool consent, current version, before any Spotify, MOWL or spotdown request (a job
+    # queued under an older wording makes none; a revise that states values has spent one model turn
+    # on its reading already, revise.py); write_pool checks it again at its decide step.
     await current_pool(run, spotify)
     seeded = await load_seeded(run, seed)
     plan = (

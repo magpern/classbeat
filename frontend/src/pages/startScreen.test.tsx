@@ -185,6 +185,26 @@ describe('the sport toggle (#1544: running is always available)', () => {
     expect(input).toMatchObject({ sport_override: 'running' })
   })
 
+  it('sends the sport again on Try again when Running was picked by hand and the words say run too (#1562)', async () => {
+    const api = fakeApi(routes(withSpotify(), connectionsBody(true)))
+    const first = renderAt('/classes/new')
+    fireEvent.change(await prompt(), { target: { value: 'A 30 min run' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Running' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
+    await waitFor(() => {
+      expect(window.location.pathname).toBe(`/en/classes/${CLASS_ID}`)
+    })
+    first.unmount()
+    renderAt(`/classes/new?from=${CLASS_ID}`)
+    expect(await prompt()).toHaveValue('A 30 min run')
+    fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
+    await waitFor(() => {
+      expect(api.to('POST', '/api/jobs')).toHaveLength(2)
+    })
+    const input = (api.to('POST', '/api/jobs')[1]?.body as { input: Record<string, unknown> }).input
+    expect(input).toMatchObject({ sport_override: 'running' })
+  })
+
   it('keeps a choice by hand while typing, and sends it as sport_override', async () => {
     const api = fakeApi(routes(withSpotify(), connectionsBody(true)))
     renderAt('/classes/new')

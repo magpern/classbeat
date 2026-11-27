@@ -56,7 +56,7 @@ export function initialDraft(options: {
     const request = exampleWords ?? ''
     return { request, tags: NO_TAGS, sport: initialToggle(request) }
   }
-  const toggle = initialToggle(kept.request, kept.sport)
+  const toggle = initialToggle(kept.request, kept.sport, kept.manual === true)
   const sport: Sport = toggle.sport
   const ids = kept.playlists ?? (kept.music?.startsWith('playlist:') === true ? [kept.music.slice('playlist:'.length)] : [])
   const tags: MusicTags =
@@ -74,5 +74,6 @@ export function keptFromRequest(request: ComposerRequest): KeptRequest {
     music: tags.kind === 'none' ? 'none' : first === undefined ? null : `playlist:${first}`,
     playlists: ids,
     sport: request.sport,
+    ...(request.sportByHand === true ? { manual: true } : {}),
   }
 }

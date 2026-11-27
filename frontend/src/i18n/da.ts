@@ -1768,7 +1768,7 @@ const da: Catalogue = {
   'swmatch.reason.not_connected':
     'MOWL eller Swedebeat er ikke tilsluttet. Tilslut det først på din kontoside.',
   'swmatch.reason.rate_limited':
-    'For mange forespørgsler. Prøv igen om nogle minutter.',
+    'For mange anmodninger. Prøv igen om nogle minutter.',
   'swmatch.reason.upstream_unavailable':
     'MOWL eller Swedebeat kunne ikke nås. Prøv igen om nogle minutter.',
   'swmatch.reason.invalid_input':
@@ -1965,7 +1965,7 @@ const da: Catalogue = {
   'start.sketch.note': 'Et eksempel på formen. Dit eget hold kommer herefter, med sange.',
   'composer.intro': 'Beskriv holdet, som du ville fortælle det til en kollega. Vær så konkret eller vag, som du vil: nævn sange, sig hvor de skal ligge, eller lad classbeat klare det hele.',
   'composer.music.add': 'Tilføj musik',
-  'composer.music.panel': 'Tilføj musik til din forespørgsel',
+  'composer.music.panel': 'Tilføj musik til din anmodning',
   'composer.music.search': 'Søg i dine playlister',
   'composer.music.group': 'Spotify-playlister',
   'composer.music.none': 'Der er ingen playlister at vælge imellem.',
@@ -2004,7 +2004,7 @@ const da: Catalogue = {
   'start.handoff.failed': 'Din anmodning kunne ikke læses.',
   'start.handoff.error': 'Designet kunne ikke startes.',
   'start.handoff.tryAgain': 'Prøv igen med den samme anmodning',
-  'start.handoff.changeRequest': 'Ret min forespørgsel',
+  'start.handoff.changeRequest': 'Ret min anmodning',
   'interp.title': 'Sådan læste vi din anmodning',
   'interp.asked': 'Som du bad om',
   'interp.notAsked': 'Ikke som du bad om',
@@ -2580,7 +2580,7 @@ const da: Catalogue = {
   'studio.os.category.not_connected':
     'SwedeBeat er ikke tilsluttet. Tilslut det på din kontoside, og godkend derefter igen.',
   'studio.os.category.invalid_input':
-    'SwedeBeat accepterede ikke forespørgslen. Der blev ikke sendt noget. Genindlæs siden; sker det igen, så lav et nyt valg.',
+    'SwedeBeat accepterede ikke anmodningen. Der blev ikke sendt noget. Genindlæs siden; sker det igen, så lav et nyt valg.',
   'studio.os.category.analysis_failed':
     'Musikken kunne ikke analyseres. Lav et nyt valg.',
   'studio.os.category.internal':

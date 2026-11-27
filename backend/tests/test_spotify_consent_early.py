@@ -1,4 +1,6 @@
-"""A pick queued under an older pool consent contacts no one (#1540, ADR 0009 section 9).
+"""A pick queued under an older pool consent makes no Spotify, MOWL or spotdown request.
+
+#1540, ADR 0009 section 9.
 
 The consent of version 3 names spotdown, so a job admitted under it whose consent is then of an
 older wording (a pick queued before the deploy of the new wording) must fail ``consent_missing``
