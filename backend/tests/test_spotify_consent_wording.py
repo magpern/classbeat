@@ -19,7 +19,10 @@ from classbeat.jobs.sentences import SONG_SENTENCES
 from classbeat.spotify.routes import CONSENT_TEXT, CONSENT_VERSION
 
 # The composer's consent card (``MusicConsentCard``) shows this sentence above ``CONSENT_TEXT``.
-WORKSPACE_EN = Path(__file__).resolve().parents[2] / "frontend/src/i18n/workspace.en.ts"
+FRONTEND = Path(__file__).resolve().parents[2] / "frontend/src"
+WORKSPACE_EN = FRONTEND / "i18n/workspace.en.ts"
+# Frontend tests whose ``CONSENT_TEXT`` fixture says it is the text the server sends.
+FIXTURES = ("pages/accountTabs.test.tsx", "components/account/Spotify.test.tsx")
 # What both copies must say: the MOWL link's purpose, who analyses, what it gets, and from where.
 SHARED_FACTS = (
     "links it in MOWL",
@@ -27,20 +30,38 @@ SHARED_FACTS = (
     "spotdown",
     "title, artists, length",
     "the explicit-lyrics flag from Spotify",
-    "a code derived from its Spotify track id",
+    "a code derived from the song\u2019s Spotify track id",
     "source other than Spotify",
     "public",
 )
 
 
-def card_body() -> str:
-    found = re.search(r"'cw\.music\.consent\.body': '([^']*)'", WORKSPACE_EN.read_text("utf-8"))
+def catalogue_message(source: str, key: str) -> str:
+    """The single-quoted string ``key`` holds in a catalogue file, with ``\\'`` read as ``'``."""
+    found = re.search(rf"'{re.escape(key)}': '((?:[^'\\]|\\.)*)'", source)
     assert found is not None
-    return found.group(1)
+    return found.group(1).replace("\\'", "'")
+
+
+def card_body() -> str:
+    return catalogue_message(WORKSPACE_EN.read_text("utf-8"), "cw.music.consent.body")
+
+
+def fixture_text(path: str) -> str:
+    source = (FRONTEND / path).read_text("utf-8")
+    found = re.search(r"const CONSENT_TEXT =\s*'((?:[^'\\]|\\.)*)'", source)
+    assert found is not None
+    return found.group(1).replace("\\'", "'")
 
 
 def mowl_sentences(text: str) -> list[str]:
     return [s for s in re.split(r"(?<=[.:])\s+", text) if "MOWL" in s]
+
+
+def test_the_card_regex_reads_past_an_escaped_quote() -> None:
+    source = "'a': 'x', 'k': 'It\\'s linked in MOWL. Then it is analysed.', 'z': 'y'"
+    assert catalogue_message(source, "k") == "It's linked in MOWL. Then it is analysed."
+    assert mowl_sentences(catalogue_message(source, "k")) == ["It's linked in MOWL."]
 
 
 def test_consent_text_says_the_playlist_is_public() -> None:
@@ -68,8 +89,25 @@ def test_consent_text_names_the_mowl_link_and_what_spotdown_gets() -> None:
     assert "links it in MOWL so your class can be timed to it" in CONSENT_TEXT
     assert "analysed by spotdown" in CONSENT_TEXT
     assert "title, artists, length, the explicit-lyrics flag from Spotify" in CONSENT_TEXT
-    assert "a code derived from its Spotify track id" in CONSENT_TEXT
+    assert "a code derived from the song\u2019s Spotify track id" in CONSENT_TEXT
     assert "source other than Spotify" in CONSENT_TEXT
+
+
+@pytest.mark.parametrize("path", FIXTURES)
+def test_the_frontend_consent_fixtures_are_the_text_the_server_sends(path: str) -> None:
+    assert fixture_text(path) == CONSENT_TEXT
+
+
+def test_the_composer_test_expects_the_card_as_it_is() -> None:
+    expected = (FRONTEND / "pages/composerMusicQuestion.test.tsx").read_text("utf-8")
+    assert f"'{card_body()}'" in expected
+
+
+def test_the_song_owns_its_track_id_in_both_copies() -> None:
+    # "it" is spotdown; "its" would be read as spotdown's too (#1564).
+    for text in (CONSENT_TEXT, card_body()):
+        assert "derived from the song\u2019s Spotify track id" in text
+        assert "its Spotify track id" not in text
 
 
 def test_consent_version_is_three_for_the_spotdown_wording() -> None:
