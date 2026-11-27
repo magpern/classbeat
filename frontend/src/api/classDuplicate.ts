@@ -53,7 +53,6 @@ const REASONS: Record<string, CatalogueKey> = {
   not_ready: 'class.duplicate.reason.not_ready',
   studio_not_duplicable: 'class.duplicate.reason.studio_not_duplicable',
   feature_off: 'class.duplicate.reason.feature_off',
-  soundless_not_evaluated: 'class.duplicate.reason.soundless_not_evaluated',
   not_changeable: 'class.duplicate.reason.not_changeable',
   hash_mismatch: 'class.duplicate.reason.hash_mismatch',
   game_retired: 'class.reason.game_retired',

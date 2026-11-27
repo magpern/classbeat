@@ -14,8 +14,11 @@ shared modules and kept them out of the sketch modules. The owner retired the sw
   no-music class gets the stale-route warning; swapping the argument or the arm changes the
   pinned value and fails here.
 
-A sketch revise's base gate is ``revise_sketch.admit_base``; a sketch's admit is
-``sketch_gate.admit_sketch`` (its own tests)."""
+The sketch's own gate, ``sketch_gate.admit_sketch``, is called only at the pinned sites too
+(``ADMIT_SKETCH``): the first sketch's design admit under ``soundless and sketch`` (a direct
+``design_draft`` in mode ``sketch``; its database test is
+``test_composer_sketch_gate``), a sketch edit's admit and ``can_change``, and the composer's
+availability. A sketch revise's base gate is ``revise_sketch.admit_base``."""
 
 import ast
 from pathlib import Path
@@ -118,6 +121,54 @@ def test_no_module_uses_a_retired_switch_and_the_model_checks_are_only_the_pinne
     found = {path: sites(read(path)) for path in every_module()}
     assert {path: got for path, got in found.items() if got} == PINNED
     assert all(name in MODEL_CHECKS for got in PINNED.values() for name, _, _ in got)
+
+
+# Every call of ``sketch_gate.admit_sketch`` in the tree: (the conditions it sits under).
+ADMIT_SKETCH: dict[str, list[list[tuple[str, str]]]] = {
+    "design/kind_music.py": [[("soundless and sketch", "body")]],
+    "design/revise_sketch.py": [[("await is_sketch(db, ctx.user_id, class_id, base)", "body")],
+                                [("current is not None and await is_sketch(db, ctx.user_id, "
+                                  "class_id, current)", "body")]],
+    "design/composer.py": [[]],
+}  # fmt: skip
+
+
+def admit_sketch_sites(source: str) -> list[list[tuple[str, str]]]:
+    """The conditions and arms above each ``sketch_gate.admit_sketch(...)`` call."""
+    found: list[list[tuple[str, str]]] = []
+
+    def walk(node: ast.AST, path: list[tuple[str, str]]) -> None:
+        if isinstance(node, (ast.If, ast.IfExp)):
+            test = ast.unparse(node.test)
+            walk(node.test, path)
+            for arm, children in (("body", node.body), ("orelse", node.orelse)):
+                for child in children if isinstance(children, list) else [children]:
+                    walk(child, [*path, (test, arm)])
+            return
+        func = node.func if isinstance(node, ast.Call) else None
+        if isinstance(func, ast.Attribute) and ast.unparse(func) == "sketch_gate.admit_sketch":
+            found.append(path)
+        for child in ast.iter_child_nodes(node):
+            walk(child, path)
+
+    walk(ast.parse(source), [])
+    return found
+
+
+def test_the_sketch_gate_is_called_only_at_the_pinned_sites() -> None:
+    found = {path: admit_sketch_sites(read(path)) for path in every_module()}
+    assert {path: got for path, got in found.items() if got} == ADMIT_SKETCH
+
+
+def test_the_sketch_admit_pin_can_fail() -> None:
+    right = "if soundless and sketch:\n    refused = await sketch_gate.admit_sketch(db, ctx)\n"
+    assert admit_sketch_sites(right) == ADMIT_SKETCH["design/kind_music.py"]
+    assert admit_sketch_sites("refused = await sketch_gate.admit_sketch(db, ctx)\n") == [[]]
+    assert (
+        admit_sketch_sites("if soundless:\n    await sketch_gate.admit_sketch(db, ctx)\n")
+        != (ADMIT_SKETCH["design/kind_music.py"])
+    )
+    assert admit_sketch_sites("if soundless and sketch:\n    pass\n") == []
 
 
 def test_the_guard_reads_the_whole_tree() -> None:

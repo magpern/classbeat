@@ -684,8 +684,6 @@ const sv: Catalogue = {
     'Det här passet har ingen färdig utformning ännu, så det finns inget att kopiera. Försök igen när det är klart.',
   'class.duplicate.reason.feature_off':
     'Pass som det här kan inte skapas just nu, så det går inte att kopiera.',
-  'class.duplicate.reason.soundless_not_evaluated':
-    'Pass utan musik är inte tillgängliga i din plan ännu, så det här går inte att kopiera.',
   'class.duplicate.reason.not_changeable':
     'Passet har ingen egen musik, så det kan inte ändras via chatten. Du kan fortfarande visa, använda och spara versioner.',
   'class.duplicate.reason.hash_mismatch':

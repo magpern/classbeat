@@ -671,8 +671,6 @@ const da: Catalogue = {
   'class.duplicate.reason.not_ready':
     'Dette hold har endnu intet færdigt design, så der er intet at kopiere. Prøv igen, når det er klar.',
   'class.duplicate.reason.feature_off': 'Hold som dette kan ikke oprettes lige nu, så det kan ikke kopieres.',
-  'class.duplicate.reason.soundless_not_evaluated':
-    'Hold uden musik er endnu ikke tilgængelige på din plan, så dette kan ikke kopieres.',
   'class.duplicate.reason.not_changeable':
     'Holdet har ingen egen musik, så det kan ikke ændres via chatten. Du kan stadig se, bruge og gemme versioner.',
   'class.duplicate.reason.hash_mismatch':

@@ -210,6 +210,52 @@ describe('the hand-off from the start screen', () => {
     expect(screen.queryByText(/could not be updated/)).toBeNull()
   }, 10_000)
 
+  it('counts the completed-job misses of each re-read from zero, so two in a row both reach their reading', async () => {
+    // Each re-read needs two misses (the reading fetched is still the old one although its job completed).
+    // The bound is three: carried over from the first re-read, the second would give up and show the old reading.
+    const READ_THIRD = 'd3333333-3333-4333-8333-333333333333'
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      let rereads = 0
+      let stale = 0
+      const api = fakeApi(
+        routes({
+          [INTERPRETATION]: () => {
+            if (rereads === 0) return reading({ questions: [LENGTH_Q] })
+            // The reading before this re-read, still stored for the first two reads after it.
+            if (++stale <= 2) return reading({ interpret_job_id: rereads === 1 ? READING : READ_AGAIN, questions: [LENGTH_Q] })
+            return rereads === 1
+              ? reading({ interpret_job_id: READ_AGAIN, questions: [LENGTH_Q] })
+              : reading({ interpret_job_id: READ_THIRD, questions: [] })
+          },
+          [REREAD]: () => {
+            stale = 0
+            rereads += 1
+            return { job_id: rereads === 1 ? READ_AGAIN : READ_THIRD }
+          },
+          [`GET /api/jobs/${READ_AGAIN}`]: jobBody('completed', { id: READ_AGAIN, kind: 'interpret_request' }),
+          [`GET /api/jobs/${READ_THIRD}`]: jobBody('completed', { id: READ_THIRD, kind: 'interpret_request' }),
+          [DESIGN]: { job_id: DESIGN_JOB },
+        }),
+      )
+      renderAt(PAGE)
+      for (const want of [1, 2]) {
+        fireEvent.click(await screen.findByRole('radio', { name: /60 minutes/ }))
+        fireEvent.click(screen.getByRole('button', { name: 'Update the reading' }))
+        await waitFor(() => expect(api.to('POST', `${CLASS_PATH}/reread`)).toHaveLength(want))
+        await vi.advanceTimersByTimeAsync(12000)
+      }
+      // The second re-read reached its own reading: nothing is left to answer, and the hand-off names it.
+      await waitFor(() => expect(screen.queryByRole('group', { name: 'How long should it be?' })).toBeNull())
+      await confirmDesign()
+      await waitFor(() => expect(api.to('POST', `${CLASS_PATH}/design-from-interpretation`)).toHaveLength(1))
+      expect(api.to('POST', `${CLASS_PATH}/design-from-interpretation`)[0]?.body).toEqual({ interpret_job_id: READ_THIRD })
+      expect(screen.queryByText(/could not be updated/)).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('shows the reading state while the new reading is made, then the earlier reading when the re-read failed', async () => {
     let jobState = 'running'
     fakeApi(
