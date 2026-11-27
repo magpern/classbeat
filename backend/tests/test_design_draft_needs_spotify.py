@@ -68,9 +68,12 @@ async def test_with_a_spotify_connection_the_playlist_class_is_admitted(
 async def test_other_music_is_not_refused_for_a_missing_spotify_connection(
     ienv: InterpretEnv,
 ) -> None:
-    refused = await post_draft(ienv, {"source": "none"})  # the soundless switch is off here
-    assert refused.status_code == 409
-    assert refused.json()["detail"]["reason"] == "feature_off"
+    # Before #1543 the soundless switch (off here) answered ``feature_off``; with no switch, "No
+    # music" is admitted with no Spotify connection, so ``needs_spotify`` is not asked of it.
+    before = ienv.counts()
+    made = await post_draft(ienv, {"source": "none"})
+    assert made.status_code == 201, made.text
+    assert ienv.counts()[1] == before[1] + 1  # one job
 
 
 async def test_an_interpretation_stored_before_amendment_25_still_designs(
